@@ -176,7 +176,8 @@ The platform supports two types of learning episodes:
 
 1. Clone the repository:
 ```bash
-git clone <repository-url>
+# if using https mode
+git clone https://github.com/Tsinglan-Coding-Club/ts-courser.git
 cd TS-Courser
 ```
 
