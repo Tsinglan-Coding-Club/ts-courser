@@ -158,7 +158,7 @@ The platform supports two types of learning episodes:
 
 ## File Upload Strategy
 
-1. Receive file Validate MIME type
+1. Receive file → Validate MIME type
 2. Content screening (check file headers, virus scan placeholder)
 3. Rename with unique identifier: `{uuid}_{timestamp}.{ext}`
 4. Store in `MEDIA_ROOT/episode_pdfs/` or `answer_pdfs/`
@@ -202,24 +202,32 @@ uv run python manage.py runserver
 - Main site: http://localhost:8000
 - Admin panel: http://localhost:8000/admin
 
-## Development Roadmap
+## Features & Development Status
 
-### Phase 1: MVP (Current)
-- [x] Database schema design
-- [ ] User authentication system
-- [ ] Course browsing and overview
-- [ ] Learning interface with progress tracking
-- [ ] Teacher content management
-- [ ] File upload with basic validation
-- [ ] Admin approval workflow
+### Implemented Features (MVP)
+- [x] Database schema design with Django ORM
+- [x] User authentication system (email-based login)
+- [x] Role-based access control (student/teacher/admin)
+- [x] Course browsing with tag filtering (track/subject)
+- [x] Course overview with personal progress tracking
+- [x] Learning interface with sidebar navigation
+- [x] AJAX-based progress tracking (current episode, read status)
+- [x] Teacher course management (create/edit courses)
+- [x] Section and episode management with drag-and-drop reordering
+- [x] Markdown editor (Vditor) for content creation
+- [x] PDF file upload and viewing (PDF.js)
+- [x] Tag creation modal with AJAX support
+- [x] File upload with MIME type validation
+- [x] Admin approval workflow for teachers
 
-### Phase 2: Future Enhancements
-- [ ] Email verification with real SMTP
-- [ ] Advanced quiz features (interactive questions, auto-grading)
-- [ ] Discussion forums
+### Future Enhancements
+- [ ] User progress tracking (enhanced)
+- [ ] Email verification with real SMTP service (SSO of teams accounts)
+- [ ] Advanced quiz features (interactive questions, auto-grading, etc., need ask Mr. Cao)
+- [ ] Student discussion forums (or course comments)
+- [ ] Course rating and review system (maybe, or student can share solutions to question)
 - [ ] Mobile responsive improvements
-- [ ] PostgreSQL migration for production
-- [ ] Deployment configuration
+- [ ] PostgreSQL migration for production deployment (currently using SQLite for simplicity)
 
 ## Contributing
 
