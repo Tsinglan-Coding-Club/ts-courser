@@ -2,6 +2,8 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.core.exceptions import PermissionDenied
+from django.http import JsonResponse
+from django.db import models
 from courses.models import Course, Section, Episode, Tag
 import magic
 import os
@@ -104,17 +106,23 @@ def section_create(request):
     if request.method == 'POST':
         course_id = request.POST.get('course_id')
         title = request.POST.get('title')
-        order = request.POST.get('order', 0)
 
         if not all([course_id, title]):
             messages.error(request, 'Course and title are required.')
             return redirect('teacher:course_list')
 
         course = get_object_or_404(Course, id=course_id)
+
+        # Auto-calculate order (max + 1)
+        max_order = Section.objects.filter(course=course).aggregate(
+            models.Max('order')
+        )['order__max']
+        new_order = (max_order or -1) + 1
+
         Section.objects.create(
             course=course,
             title=title,
-            order=int(order)
+            order=new_order
         )
 
         messages.success(request, f'Section "{title}" created successfully!')
@@ -130,18 +138,24 @@ def episode_create(request):
         section_id = request.POST.get('section_id')
         title = request.POST.get('title')
         episode_type = request.POST.get('type', 'material')
-        order = request.POST.get('order', 0)
 
         if not all([section_id, title]):
             messages.error(request, 'Section and title are required.')
             return redirect('teacher:course_list')
 
         section = get_object_or_404(Section, id=section_id)
+
+        # Auto-calculate order (max + 1)
+        max_order = Episode.objects.filter(section=section).aggregate(
+            models.Max('order')
+        )['order__max']
+        new_order = (max_order or -1) + 1
+
         episode = Episode.objects.create(
             section=section,
             title=title,
             type=episode_type,
-            order=int(order)
+            order=new_order
         )
 
         messages.success(request, f'Episode "{title}" created successfully!')
@@ -185,6 +199,32 @@ def episode_edit(request, episode_id):
         'course': episode.section.course,
     }
     return render(request, 'teacher/episode_edit.html', context)
+
+
+@teacher_required
+def tag_create(request):
+    """Create a new tag via AJAX."""
+    if request.method == 'POST':
+        name = request.POST.get('name')
+        category = request.POST.get('category', 'subject')
+
+        if not name:
+            return JsonResponse({'success': False, 'error': 'Name is required'})
+
+        try:
+            tag = Tag.objects.create(name=name, category=category)
+            return JsonResponse({
+                'success': True,
+                'tag': {
+                    'id': tag.id,
+                    'name': tag.name,
+                    'category': tag.category
+                }
+            })
+        except Exception as e:
+            return JsonResponse({'success': False, 'error': str(e)})
+
+    return JsonResponse({'success': False, 'error': 'Invalid request'})
 
 
 def validate_pdf(pdf_file):

@@ -10,4 +10,5 @@ urlpatterns = [
     path('sections/create/', views.section_create, name='section_create'),
     path('episodes/create/', views.episode_create, name='episode_create'),
     path('episodes/<int:episode_id>/edit/', views.episode_edit, name='episode_edit'),
+    path('tags/create/', views.tag_create, name='tag_create'),
 ]

@@ -70,7 +70,6 @@ class Section(models.Model):
 
     class Meta:
         ordering = ['order']
-        unique_together = ['course', 'order']
 
 
 def episode_pdf_path(instance, filename):
@@ -131,8 +130,7 @@ class Episode(models.Model):
         return f"{self.section.title} - {self.title} ({self.type})"
 
     class Meta:
-        ordering = ['order']
-        unique_together = ['section', 'order']
+        ordering = ['order', 'id']
 
     @property
     def has_content(self):
