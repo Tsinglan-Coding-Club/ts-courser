@@ -25,8 +25,13 @@
         </div>
 
         <div class="mb-3">
-            <label class="form-label">Tags</label>
-            <div class="row">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <label class="form-label mb-0">Tags</label>
+                <button type="button" class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#createTagModal">
+                    <i class="bi bi-plus"></i> Create New Tag
+                </button>
+            </div>
+            <div class="row" id="tagsList">
                 {% for tag in tags %}
                     <div class="col-md-3">
                         <div class="form-check">
@@ -55,4 +60,82 @@
         </div>
     </form>
 </div>
+
+<!-- Create Tag Modal -->
+<div class="modal fade" id="createTagModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Create New Tag</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="createTagForm">
+                    {% csrf_token %}
+                    <div class="mb-3">
+                        <label for="tagName" class="form-label">Tag Name</label>
+                        <input type="text" class="form-control" id="tagName" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="tagCategory" class="form-label">Category</label>
+                        <select class="form-select" id="tagCategory">
+                            <option value="track">Track (e.g. AP, A-Level)</option>
+                            <option value="subject" selected>Subject (e.g. Math, Physics)</option>
+                        </select>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="createTag()">Create Tag</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+async function createTag() {
+    const name = document.getElementById('tagName').value;
+    const category = document.getElementById('tagCategory').value;
+    const csrftoken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+
+    try {
+        const response = await fetch('{% url "teacher:tag_create" %}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-CSRFToken': csrftoken
+            },
+            body: `name=${encodeURIComponent(name)}&category=${category}`
+        });
+
+        const data = await response.json();
+        if (data.success) {
+            // Add new tag to the list
+            const tagsList = document.getElementById('tagsList');
+            const newTagHTML = `
+                <div class="col-md-3">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" name="tags" value="${data.tag.id}" id="tag${data.tag.id}" checked>
+                        <label class="form-check-label" for="tag${data.tag.id}">
+                            ${data.tag.name} (${data.tag.category})
+                        </label>
+                    </div>
+                </div>
+            `;
+            tagsList.insertAdjacentHTML('beforeend', newTagHTML);
+
+            // Close modal and reset form
+            bootstrap.Modal.getInstance(document.getElementById('createTagModal')).hide();
+            document.getElementById('createTagForm').reset();
+
+            alert('Tag created successfully!');
+        } else {
+            alert('Error: ' + data.error);
+        }
+    } catch (error) {
+        alert('Failed to create tag: ' + error);
+    }
+}
+</script>
 {% endblock %}
