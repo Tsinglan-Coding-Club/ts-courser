@@ -41,7 +41,7 @@
 }
 
 .section-card:hover {
-    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+    box-shadow: 0 0.5rem 1rem var(--shadow-color);
 }
 
 .section-card button,
@@ -55,7 +55,7 @@
 }
 
 .collapsible-header:hover {
-    background-color: #f8f9fa !important;
+    background-color: var(--bg-tertiary) !important;
 }
 
 .episode-list-item {
@@ -68,7 +68,7 @@
 }
 
 .episode-list-item:hover {
-    background-color: #f8f9fa;
+    background-color: var(--bg-tertiary);
 }
 
 .episode-list-item button,
@@ -81,16 +81,16 @@
 }
 
 .drag-over {
-    border-top: 3px solid #007bff !important;
+    border-top: 3px solid var(--primary-color) !important;
 }
 
 .drag-handle {
     cursor: move;
-    color: #6c757d;
+    color: var(--text-secondary);
 }
 
 .drag-handle:hover {
-    color: #007bff;
+    color: var(--primary-color);
 }
 </style>
 {% endblock %}

@@ -9,6 +9,13 @@
 #vditor {
     min-height: 500px;
 }
+/* Vditor dark mode */
+[data-theme="dark"] .vditor {
+    background-color: var(--bg-secondary);
+}
+[data-theme="dark"] .vditor-toolbar {
+    background-color: var(--bg-tertiary);
+}
 </style>
 {% endblock %}
 
@@ -122,10 +129,12 @@
 <script src="https://unpkg.com/vditor/dist/index.min.js"></script>
 
 <script>
-// Initialize Vditor
+// Initialize Vditor with theme support
+const currentTheme = document.documentElement.getAttribute('data-theme');
 const vditor = new Vditor('vditor', {
     height: 600,
     mode: 'wysiwyg',
+    theme: currentTheme === 'dark' ? 'dark' : 'classic',
     placeholder: 'Write your content here using Markdown...',
     toolbar: [
         'emoji',

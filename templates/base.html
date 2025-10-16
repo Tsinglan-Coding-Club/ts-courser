@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="light" data-bs-theme="light">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -10,10 +10,72 @@
     <!-- Bootstrap Icons -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
 
+    <!-- Theme Initialization (prevent flash) -->
+    <script>
+        // Execute immediately to prevent flash of wrong theme
+        (function() {
+            const savedTheme = localStorage.getItem('theme') || 'light';
+            document.documentElement.setAttribute('data-theme', savedTheme);
+            document.documentElement.setAttribute('data-bs-theme', savedTheme);
+        })();
+    </script>
+
     {% block extra_css %}{% endblock %}
     <style>
+        /* CSS Variables for Theme System */
+        :root {
+            /* Purple Theme Colors - Light Mode */
+            --primary-color: #883890;
+            --primary-hover: #6d2d73;
+            --primary-light: #a855b8;
+            --primary-pale: #f3e8f5;
+
+            --bg-primary: #ffffff;
+            --bg-secondary: #f8f9fa;
+            --bg-tertiary: #e9ecef;
+
+            --text-primary: #212529;
+            --text-secondary: #6c757d;
+            --text-muted: #adb5bd;
+
+            --border-color: #dee2e6;
+            --shadow-color: rgba(0, 0, 0, 0.1);
+
+            --success-color: #28a745;
+            --warning-color: #ffc107;
+            --danger-color: #dc3545;
+            --info-color: #17a2b8;
+        }
+
+        [data-theme="dark"] {
+            /* Purple Theme Colors - Dark Mode */
+            --primary-color: #a855b8;
+            --primary-hover: #c084cc;
+            --primary-light: #d0a3db;
+            --primary-pale: #3d2e42;
+
+            --bg-primary: #1a1a1a;
+            --bg-secondary: #2d2d2d;
+            --bg-tertiary: #3a3a3a;
+
+            --text-primary: #e5e5e5;
+            --text-secondary: #b0b0b0;
+            --text-muted: #808080;
+
+            --border-color: #404040;
+            --shadow-color: rgba(0, 0, 0, 0.3);
+
+            --success-color: #3dd865;
+            --warning-color: #ffd54f;
+            --danger-color: #f56565;
+            --info-color: #4fc3f7;
+        }
+
         html, body {
             height: 100%;
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            transition: background-color 0.3s ease, color 0.3s ease;
         }
         body {
             display: flex;
@@ -21,9 +83,186 @@
         }
         main {
             flex: 1 0 auto;
+            background-color: var(--bg-primary);
         }
         footer {
             flex-shrink: 0;
+            background-color: var(--bg-secondary) !important;
+            color: var(--text-secondary) !important;
+        }
+
+        /* Override Bootstrap colors with theme variables */
+        .bg-primary {
+            background-color: var(--primary-color) !important;
+        }
+        .bg-light {
+            background-color: var(--bg-secondary) !important;
+        }
+        .text-muted {
+            color: var(--text-muted) !important;
+        }
+        .border {
+            border-color: var(--border-color) !important;
+        }
+        .card {
+            background-color: var(--bg-secondary);
+            color: var(--text-primary);
+            border-color: var(--border-color);
+        }
+        .table {
+            color: var(--text-primary);
+        }
+        .table-light {
+            background-color: var(--bg-tertiary) !important;
+            color: var(--text-primary) !important;
+        }
+        .table-hover tbody tr:hover {
+            background-color: var(--bg-tertiary);
+        }
+        .btn-primary {
+            background-color: var(--primary-color);
+            border-color: var(--primary-color);
+        }
+        .btn-primary:hover {
+            background-color: var(--primary-hover);
+            border-color: var(--primary-hover);
+        }
+        .btn-outline-primary {
+            color: var(--primary-color);
+            border-color: var(--primary-color);
+        }
+        .btn-outline-primary:hover {
+            background-color: var(--primary-color);
+            border-color: var(--primary-color);
+            color: white;
+        }
+        .alert {
+            background-color: var(--bg-tertiary);
+            border-color: var(--border-color);
+            color: var(--text-primary);
+        }
+        .dropdown-menu {
+            background-color: var(--bg-secondary);
+            border-color: var(--border-color);
+        }
+        .dropdown-item {
+            color: var(--text-primary);
+        }
+        .dropdown-item:hover {
+            background-color: var(--bg-tertiary);
+        }
+        .form-control, .form-select {
+            background-color: var(--bg-secondary);
+            color: var(--text-primary);
+            border-color: var(--border-color);
+        }
+        .form-control:focus, .form-select:focus {
+            background-color: var(--bg-secondary);
+            color: var(--text-primary);
+            border-color: var(--primary-color);
+        }
+
+        /* Theme Toggle Button */
+        .theme-toggle {
+            background: none;
+            border: none;
+            color: white;
+            font-size: 1.2rem;
+            cursor: pointer;
+            padding: 0.5rem;
+            margin-left: 0.5rem;
+            transition: transform 0.2s;
+        }
+        .theme-toggle:hover {
+            transform: scale(1.1);
+        }
+
+        /* Additional Bootstrap overrides */
+        .progress-bar {
+            background-color: var(--primary-color) !important;
+        }
+        .breadcrumb {
+            background-color: transparent;
+        }
+        .breadcrumb-item a {
+            color: var(--primary-color);
+            text-decoration: none;
+        }
+        .breadcrumb-item a:hover {
+            color: var(--primary-hover);
+            text-decoration: underline;
+        }
+        .breadcrumb-item.active {
+            color: var(--text-secondary);
+        }
+        .modal-content {
+            background-color: var(--bg-secondary);
+            color: var(--text-primary);
+        }
+        .modal-header, .modal-footer {
+            border-color: var(--border-color);
+        }
+        .btn-close {
+            filter: var(--bs-btn-close-filter, invert(1) grayscale(100%) brightness(200%));
+        }
+        [data-theme="light"] .btn-close {
+            filter: none;
+        }
+
+        /* Links */
+        a {
+            color: var(--primary-color);
+        }
+        a:hover {
+            color: var(--primary-hover);
+        }
+
+        /* Nav links */
+        .nav-link {
+            color: var(--text-primary);
+        }
+        .nav-link:hover {
+            color: var(--primary-color);
+        }
+        .navbar-dark .nav-link {
+            color: rgba(255,255,255,.85);
+        }
+        .navbar-dark .nav-link:hover {
+            color: white;
+        }
+
+        /* List groups */
+        .list-group-item-action:hover {
+            background-color: var(--bg-tertiary);
+        }
+
+        /* Better form focus states */
+        .form-control:focus, .form-select:focus, .form-check-input:focus {
+            box-shadow: 0 0 0 0.25rem rgba(136, 56, 144, 0.25);
+        }
+
+        /* Button secondary for dark mode */
+        .btn-secondary {
+            background-color: var(--text-secondary);
+            border-color: var(--text-secondary);
+        }
+        .btn-secondary:hover {
+            background-color: var(--text-primary);
+            border-color: var(--text-primary);
+        }
+
+        /* Success/warning/info button adjustments */
+        .btn-success {
+            background-color: var(--success-color);
+            border-color: var(--success-color);
+        }
+        .btn-warning {
+            background-color: var(--warning-color);
+            border-color: var(--warning-color);
+        }
+        .btn-info {
+            background-color: var(--info-color);
+            border-color: var(--info-color);
         }
     </style>
 </head>
@@ -62,6 +301,12 @@
                     {% endif %}
                 </ul>
                 <ul class="navbar-nav">
+                    <!-- Theme Toggle Button -->
+                    <li class="nav-item">
+                        <button class="theme-toggle" id="themeToggle" title="Toggle theme">
+                            <i class="bi bi-sun-fill" id="themeIcon"></i>
+                        </button>
+                    </li>
                     {% if user.is_authenticated %}
                         <li class="nav-item dropdown">
                             <a class="nav-link dropdown-toggle" href="#" id="userDropdown" role="button" data-bs-toggle="dropdown">
@@ -117,6 +362,39 @@
 
     <!-- Bootstrap 5 JS Bundle -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+    <!-- Theme Toggle Script -->
+    <script>
+        // Theme toggle functionality (theme already initialized in head)
+        const themeToggle = document.getElementById('themeToggle');
+        const themeIcon = document.getElementById('themeIcon');
+        const html = document.documentElement;
+
+        // Update icon based on current theme
+        const currentTheme = html.getAttribute('data-theme');
+        updateThemeIcon(currentTheme);
+
+        // Theme toggle handler
+        themeToggle.addEventListener('click', () => {
+            const currentTheme = html.getAttribute('data-theme');
+            const newTheme = currentTheme === 'light' ? 'dark' : 'light';
+
+            html.setAttribute('data-theme', newTheme);
+            html.setAttribute('data-bs-theme', newTheme);
+            localStorage.setItem('theme', newTheme);
+            updateThemeIcon(newTheme);
+        });
+
+        function updateThemeIcon(theme) {
+            if (theme === 'dark') {
+                themeIcon.classList.remove('bi-sun-fill');
+                themeIcon.classList.add('bi-moon-fill');
+            } else {
+                themeIcon.classList.remove('bi-moon-fill');
+                themeIcon.classList.add('bi-sun-fill');
+            }
+        }
+    </script>
 
     {% block extra_js %}{% endblock %}
 </body>

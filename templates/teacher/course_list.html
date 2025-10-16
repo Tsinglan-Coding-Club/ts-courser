@@ -2,6 +2,52 @@
 
 {% block title %}Manage Courses - Teacher{% endblock %}
 
+{% block extra_css %}
+<style>
+/* Additional styles for teacher course list dark mode */
+.table thead {
+    background-color: var(--bg-tertiary);
+    border-color: var(--border-color);
+}
+
+.table tbody tr {
+    background-color: var(--bg-secondary);
+    border-color: var(--border-color);
+}
+
+.table tbody tr:hover {
+    background-color: var(--bg-tertiary);
+}
+
+.badge.bg-success {
+    background-color: var(--success-color) !important;
+}
+
+.badge.bg-warning {
+    background-color: var(--warning-color) !important;
+    color: #212529 !important;
+}
+
+.form-check-input {
+    background-color: var(--bg-tertiary);
+    border-color: var(--border-color);
+}
+
+.form-check-input:checked {
+    background-color: var(--primary-color);
+    border-color: var(--primary-color);
+}
+
+.form-check-label {
+    color: var(--text-primary);
+}
+
+.card-title {
+    color: var(--text-primary);
+}
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="container my-5">
     <div class="row mb-4">
@@ -15,9 +61,37 @@
         </div>
     </div>
 
+    <!-- Filter Section -->
+    <div class="card mb-4">
+        <div class="card-body">
+            <h5 class="card-title mb-3"><i class="bi bi-funnel"></i> 筛选课程</h5>
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="filterMyCreated" checked>
+                        <label class="form-check-label" for="filterMyCreated">
+                            <i class="bi bi-person-check"></i> 我创建的
+                        </label>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="filterPublished" checked>
+                        <label class="form-check-label" for="filterPublished">
+                            <i class="bi bi-globe"></i> 公开发布
+                        </label>
+                    </div>
+                </div>
+            </div>
+            <div class="mt-3">
+                <span class="text-muted" id="filterStatus">显示全部课程</span>
+            </div>
+        </div>
+    </div>
+
     <div class="table-responsive">
         <table class="table table-hover">
-            <thead class="table-light">
+            <thead class="table">
                 <tr>
                     <th>Title</th>
                     <th>Creator</th>
@@ -26,9 +100,12 @@
                     <th>Actions</th>
                 </tr>
             </thead>
-            <tbody>
+            <tbody id="courseTableBody">
                 {% for course in courses %}
-                    <tr>
+                    <tr class="course-row"
+                        data-creator="{{ course.creator.username }}"
+                        data-is-published="{{ course.is_published|yesno:'true,false' }}"
+                        data-is-my-course="{% if course.creator.id == user.id %}true{% else %}false{% endif %}">
                         <td>{{ course.title }}</td>
                         <td>{{ course.creator.username }}</td>
                         <td>
@@ -46,7 +123,7 @@
                         </td>
                     </tr>
                 {% empty %}
-                    <tr>
+                    <tr id="emptyRow">
                         <td colspan="5" class="text-center text-muted">No courses yet</td>
                     </tr>
                 {% endfor %}
@@ -54,4 +131,64 @@
         </table>
     </div>
 </div>
+
+<script>
+// Course filtering functionality
+const filterMyCreated = document.getElementById('filterMyCreated');
+const filterPublished = document.getElementById('filterPublished');
+const filterStatus = document.getElementById('filterStatus');
+const courseRows = document.querySelectorAll('.course-row');
+
+function updateFilters() {
+    const showMyCreated = filterMyCreated.checked;
+    const showPublished = filterPublished.checked;
+    let visibleCount = 0;
+
+    courseRows.forEach(row => {
+        const isMyCourse = row.dataset.isMyCourse === 'true';
+        const isPublished = row.dataset.isPublished === 'true';
+
+        let shouldShow = false;
+
+        // Logic: Show courses that match at least one checked filter
+        if (showMyCreated && showPublished) {
+            // Both checked: show my courses OR published courses
+            shouldShow = isMyCourse || isPublished;
+        } else if (showMyCreated) {
+            // Only "my created" checked: show only my courses
+            shouldShow = isMyCourse;
+        } else if (showPublished) {
+            // Only "published" checked: show only published courses
+            shouldShow = isPublished;
+        }
+
+        if (shouldShow) {
+            row.style.display = '';
+            visibleCount++;
+        } else {
+            row.style.display = 'none';
+        }
+    });
+
+    // Update status text
+    if (!showMyCreated && !showPublished) {
+        filterStatus.textContent = '请至少选择一个筛选条件';
+        filterStatus.style.color = '#dc3545';
+    } else {
+        let statusParts = [];
+        if (showMyCreated) statusParts.push('我创建的');
+        if (showPublished) statusParts.push('公开发布');
+        filterStatus.textContent = `显示: ${statusParts.join(' 或 ')} (${visibleCount} 门课程)`;
+        filterStatus.style.color = '';
+    }
+}
+
+// Add event listeners
+filterMyCreated.addEventListener('change', updateFilters);
+filterPublished.addEventListener('change', updateFilters);
+
+// Initial filter update
+updateFilters();
+</script>
+
 {% endblock %}

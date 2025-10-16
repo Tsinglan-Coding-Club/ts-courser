@@ -89,8 +89,11 @@
 
 <style>
 .hover-shadow:hover {
-    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15) !important;
+    box-shadow: 0 0.5rem 1rem var(--shadow-color) !important;
     transition: box-shadow 0.3s ease-in-out;
+}
+.badge.bg-secondary {
+    background-color: var(--primary-light) !important;
 }
 </style>
 {% endblock %}
