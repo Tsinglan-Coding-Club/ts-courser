@@ -1,0 +1,101 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ course.title }} - Overview{% endblock %}
+
+{% block content %}
+<div class="container my-5">
+    <!-- Course Header -->
+    <div class="row mb-4">
+        <div class="col-lg-8">
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="{% url 'courses:course_list' %}">Courses</a></li>
+                    <li class="breadcrumb-item active">{{ course.title }}</li>
+                </ol>
+            </nav>
+
+            <h1 class="display-5">{{ course.title }}</h1>
+            <p class="lead">{{ course.description }}</p>
+
+            <div class="mb-3">
+                {% for tag in course.tags.all %}
+                    <span class="badge bg-primary me-1">{{ tag.name }}</span>
+                {% endfor %}
+            </div>
+
+            <p class="text-muted">
+                <i class="bi bi-person"></i> Created by {{ course.creator.username }}
+            </p>
+        </div>
+
+        <div class="col-lg-4">
+            {% if course.thumbnail %}
+                <img src="{{ course.thumbnail.url }}" class="img-fluid rounded shadow" alt="{{ course.title }}">
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Progress Card -->
+    <div class="card bg-light mb-4">
+        <div class="card-body">
+            <h5 class="card-title"><i class="bi bi-graph-up"></i> Your Progress</h5>
+            <div class="progress mb-3" style="height: 30px;">
+                <div class="progress-bar" role="progressbar"
+                     style="width: {{ progress_percentage }}%;"
+                     aria-valuenow="{{ progress_percentage }}"
+                     aria-valuemin="0"
+                     aria-valuemax="100">
+                    {{ progress_percentage }}%
+                </div>
+            </div>
+            <p class="mb-0">
+                <strong>{{ read_episodes }}</strong> of <strong>{{ total_episodes }}</strong> episodes completed
+            </p>
+        </div>
+    </div>
+
+    <!-- Course Sections -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0"><i class="bi bi-list-ul"></i> Course Content</h5>
+        </div>
+        <div class="list-group list-group-flush">
+            {% for section in course.sections.all %}
+                <div class="list-group-item">
+                    <h6 class="mb-2"><i class="bi bi-folder"></i> {{ section.title }}</h6>
+                    <ul class="list-unstyled ms-3">
+                        {% for episode in section.episodes.all %}
+                            <li class="mb-1">
+                                {% if episode.type == 'material' %}
+                                    <i class="bi bi-file-text text-primary"></i>
+                                {% else %}
+                                    <i class="bi bi-question-circle text-success"></i>
+                                {% endif %}
+                                {{ episode.title }}
+                            </li>
+                        {% empty %}
+                            <li class="text-muted">No episodes yet</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            {% empty %}
+                <div class="list-group-item text-muted">
+                    No sections available yet
+                </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- Start Learning Button -->
+    <div class="text-center">
+        <a href="{% url 'courses:learning_interface' course.id %}" class="btn btn-success btn-lg">
+            <i class="bi bi-play-circle"></i>
+            {% if progress.current_episode %}
+                Continue Learning
+            {% else %}
+                Start Learning
+            {% endif %}
+        </a>
+    </div>
+</div>
+{% endblock %}

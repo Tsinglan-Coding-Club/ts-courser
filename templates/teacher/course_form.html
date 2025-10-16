@@ -1,0 +1,58 @@
+{% extends 'base.html' %}
+
+{% block title %}Create Course - Teacher{% endblock %}
+
+{% block content %}
+<div class="container my-5">
+    <h1 class="mb-4"><i class="bi bi-plus-circle"></i> Create New Course</h1>
+
+    <form method="post" enctype="multipart/form-data">
+        {% csrf_token %}
+
+        <div class="mb-3">
+            <label for="title" class="form-label">Course Title *</label>
+            <input type="text" class="form-control" id="title" name="title" required>
+        </div>
+
+        <div class="mb-3">
+            <label for="description" class="form-label">Description *</label>
+            <textarea class="form-control" id="description" name="description" rows="5" required></textarea>
+        </div>
+
+        <div class="mb-3">
+            <label for="thumbnail" class="form-label">Thumbnail Image</label>
+            <input type="file" class="form-control" id="thumbnail" name="thumbnail" accept="image/*">
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label">Tags</label>
+            <div class="row">
+                {% for tag in tags %}
+                    <div class="col-md-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="tags" value="{{ tag.id }}" id="tag{{ tag.id }}">
+                            <label class="form-check-label" for="tag{{ tag.id }}">
+                                {{ tag.name }} ({{ tag.category }})
+                            </label>
+                        </div>
+                    </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <div class="mb-3 form-check">
+            <input type="checkbox" class="form-check-input" id="is_published" name="is_published">
+            <label class="form-check-label" for="is_published">
+                Publish this course (make it visible to students)
+            </label>
+        </div>
+
+        <div class="d-flex gap-2">
+            <button type="submit" class="btn btn-primary">
+                <i class="bi bi-check-circle"></i> Create Course
+            </button>
+            <a href="{% url 'teacher:course_list' %}" class="btn btn-secondary">Cancel</a>
+        </div>
+    </form>
+</div>
+{% endblock %}

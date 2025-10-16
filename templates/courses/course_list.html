@@ -1,0 +1,96 @@
+{% extends 'base.html' %}
+
+{% block title %}Courses - TS-Courser{% endblock %}
+
+{% block content %}
+<div class="container my-5">
+    <div class="row mb-4">
+        <div class="col">
+            <h1 class="display-5"><i class="bi bi-book"></i> All Courses</h1>
+            <p class="text-muted">Browse and enroll in courses to start learning</p>
+        </div>
+    </div>
+
+    <!-- Filters -->
+    <div class="card mb-4">
+        <div class="card-body">
+            <form method="get" class="row g-3">
+                <div class="col-md-4">
+                    <label for="track" class="form-label">Track</label>
+                    <select class="form-select" id="track" name="track" onchange="this.form.submit()">
+                        <option value="">All Tracks</option>
+                        {% for tag in track_tags %}
+                            <option value="{{ tag.name }}" {% if tag.name == selected_track %}selected{% endif %}>
+                                {{ tag.name }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label for="subject" class="form-label">Subject</label>
+                    <select class="form-select" id="subject" name="subject" onchange="this.form.submit()">
+                        <option value="">All Subjects</option>
+                        {% for tag in subject_tags %}
+                            <option value="{{ tag.name }}" {% if tag.name == selected_subject %}selected{% endif %}>
+                                {{ tag.name }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-4 d-flex align-items-end">
+                    <a href="{% url 'courses:course_list' %}" class="btn btn-secondary">
+                        <i class="bi bi-x-circle"></i> Clear Filters
+                    </a>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Course Grid -->
+    <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
+        {% for course in courses %}
+            <div class="col">
+                <div class="card h-100 shadow-sm hover-shadow">
+                    {% if course.thumbnail %}
+                        <img src="{{ course.thumbnail.url }}" class="card-img-top" alt="{{ course.title }}" style="height: 200px; object-fit: cover;">
+                    {% else %}
+                        <div class="card-img-top bg-primary d-flex align-items-center justify-content-center text-white" style="height: 200px;">
+                            <i class="bi bi-book" style="font-size: 4rem;"></i>
+                        </div>
+                    {% endif %}
+
+                    <div class="card-body">
+                        <h5 class="card-title">{{ course.title }}</h5>
+                        <p class="card-text text-muted">{{ course.description|truncatewords:20 }}</p>
+
+                        <div class="mb-2">
+                            {% for tag in course.tags.all %}
+                                <span class="badge bg-secondary me-1">{{ tag.name }}</span>
+                            {% endfor %}
+                        </div>
+                    </div>
+
+                    <div class="card-footer bg-transparent">
+                        <a href="{% url 'courses:course_overview' course.id %}" class="btn btn-primary w-100">
+                            <i class="bi bi-eye"></i> View Course
+                        </a>
+                    </div>
+                </div>
+            </div>
+        {% empty %}
+            <div class="col-12">
+                <div class="alert alert-info text-center">
+                    <i class="bi bi-info-circle"></i> No courses available yet.
+                </div>
+            </div>
+        {% endfor %}
+    </div>
+</div>
+
+<style>
+.hover-shadow:hover {
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15) !important;
+    transition: box-shadow 0.3s ease-in-out;
+}
+</style>
+{% endblock %}

@@ -1,0 +1,333 @@
+{% extends 'base.html' %}
+{% load course_filters %}
+
+{% block title %}{{ course.title }} - Learning{% endblock %}
+
+{% block extra_css %}
+<!-- Marked.js for markdown rendering -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/github-markdown-css/5.2.0/github-markdown.min.css">
+<!-- PDF.js -->
+<style>
+.sidebar {
+    height: calc(100vh - 56px);
+    overflow-y: auto;
+    position: sticky;
+    top: 56px;
+    background-color: #f8f9fa;
+}
+
+.content-area {
+    min-height: calc(100vh - 56px);
+    padding: 2rem;
+}
+
+.episode-item {
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.episode-item:hover {
+    background-color: #e9ecef;
+}
+
+.episode-item.active {
+    background-color: #007bff;
+    color: white;
+}
+
+.episode-item.active .badge {
+    background-color: white !important;
+    color: #007bff !important;
+}
+
+.episode-read {
+    opacity: 0.7;
+}
+
+#pdf-canvas {
+    border: 1px solid #dee2e6;
+    max-width: 100%;
+    margin: 0 auto;
+    display: block;
+}
+
+.markdown-body {
+    box-sizing: border-box;
+    min-width: 200px;
+    max-width: 980px;
+    margin: 0 auto;
+    padding: 45px;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid p-0">
+    <div class="row g-0">
+        <!-- Left Sidebar -->
+        <div class="col-md-3 sidebar border-end">
+            <div class="p-3">
+                <h5 class="mb-3">
+                    <a href="{% url 'courses:course_overview' course.id %}" class="text-decoration-none">
+                        <i class="bi bi-arrow-left"></i> {{ course.title }}
+                    </a>
+                </h5>
+
+                <!-- Sections and Episodes -->
+                <div class="accordion" id="sectionsAccordion">
+                    {% for section in sections %}
+                        <div class="accordion-item">
+                            <h2 class="accordion-header">
+                                <button class="accordion-button {% if not forloop.first %}collapsed{% endif %}"
+                                        type="button"
+                                        data-bs-toggle="collapse"
+                                        data-bs-target="#section{{ section.id }}">
+                                    {{ section.title }}
+                                </button>
+                            </h2>
+                            <div id="section{{ section.id }}"
+                                 class="accordion-collapse collapse {% if forloop.first %}show{% endif %}"
+                                 data-bs-parent="#sectionsAccordion">
+                                <div class="accordion-body p-0">
+                                    <div class="list-group list-group-flush">
+                                        {% for episode in section.episodes.all %}
+                                            <a href="{% url 'courses:learning_interface_episode' course.id episode.id %}"
+                                               class="list-group-item list-group-item-action episode-item {% if episode.id == current_episode.id %}active{% endif %} {% if read_status_dict|get_item:episode.id %}episode-read{% endif %}"
+                                               data-episode-id="{{ episode.id }}">
+                                                <div class="d-flex justify-content-between align-items-center">
+                                                    <span>
+                                                        {% if episode.type == 'material' %}
+                                                            <i class="bi bi-file-text"></i>
+                                                        {% else %}
+                                                            <i class="bi bi-question-circle"></i>
+                                                        {% endif %}
+                                                        {{ episode.title }}
+                                                    </span>
+                                                    {% if read_status_dict|get_item:episode.id %}
+                                                        <span class="badge bg-success">
+                                                            <i class="bi bi-check-circle"></i>
+                                                        </span>
+                                                    {% endif %}
+                                                </div>
+                                            </a>
+                                        {% endfor %}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Content Area -->
+        <div class="col-md-9 content-area">
+            {% if current_episode %}
+                <!-- Episode Header -->
+                <div class="d-flex justify-content-between align-items-start mb-4">
+                    <div>
+                        <h2>{{ current_episode.title }}</h2>
+                        <p class="text-muted">
+                            {% if current_episode.type == 'material' %}
+                                <span class="badge bg-primary">Material</span>
+                            {% else %}
+                                <span class="badge bg-success">Quiz</span>
+                            {% endif %}
+                            {{ current_episode.section.title }}
+                        </p>
+                    </div>
+
+                    <div class="btn-group">
+                        <button type="button" class="btn btn-outline-primary" id="markReadBtn"
+                                data-episode-id="{{ current_episode.id }}"
+                                data-is-read="{{ current_read_status.is_read|yesno:'true,false' }}">
+                            {% if current_read_status.is_read %}
+                                <i class="bi bi-check-circle-fill"></i> Mark as Unread
+                            {% else %}
+                                <i class="bi bi-circle"></i> Mark as Read
+                            {% endif %}
+                        </button>
+
+                        {% if is_teacher %}
+                            <a href="{% url 'teacher:episode_edit' current_episode.id %}" class="btn btn-warning">
+                                <i class="bi bi-pencil"></i> Edit Episode
+                            </a>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <!-- Episode Content -->
+                {% if current_episode.info_page_content %}
+                    <div class="card mb-4">
+                        <div class="card-body">
+                            <div id="markdown-content" class="markdown-body"></div>
+                        </div>
+                    </div>
+                {% endif %}
+
+                {% if current_episode.content_pdf %}
+                    <div class="card mb-4">
+                        <div class="card-header bg-primary text-white">
+                            <h5 class="mb-0"><i class="bi bi-file-pdf"></i> Content PDF</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="text-center mb-3">
+                                <a href="{{ current_episode.content_pdf.url }}" target="_blank" class="btn btn-primary">
+                                    <i class="bi bi-download"></i> Download PDF
+                                </a>
+                                <button class="btn btn-secondary" id="prevPage">
+                                    <i class="bi bi-arrow-left"></i> Previous
+                                </button>
+                                <span class="mx-2">
+                                    Page <span id="pageNum"></span> of <span id="pageCount"></span>
+                                </span>
+                                <button class="btn btn-secondary" id="nextPage">
+                                    Next <i class="bi bi-arrow-right"></i>
+                                </button>
+                            </div>
+                            <canvas id="pdf-canvas" class="border"></canvas>
+                        </div>
+                    </div>
+                {% endif %}
+
+                {% if current_episode.answer_pdf and current_episode.type == 'quiz' %}
+                    <div class="card">
+                        <div class="card-header bg-success text-white">
+                            <h5 class="mb-0"><i class="bi bi-check-circle"></i> Answer Key</h5>
+                        </div>
+                        <div class="card-body">
+                            <a href="{{ current_episode.answer_pdf.url }}" target="_blank" class="btn btn-success">
+                                <i class="bi bi-download"></i> Download Answer Key
+                            </a>
+                        </div>
+                    </div>
+                {% endif %}
+
+                {% if not current_episode.info_page_content and not current_episode.content_pdf %}
+                    <div class="alert alert-warning">
+                        <i class="bi bi-exclamation-triangle"></i> No content available for this episode yet.
+                    </div>
+                {% endif %}
+
+            {% else %}
+                <div class="alert alert-info">
+                    <i class="bi bi-info-circle"></i> Please select an episode from the sidebar to begin learning.
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<!-- Marked.js for markdown -->
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<!-- PDF.js -->
+<script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+
+<script>
+// CSRF token for AJAX requests
+const csrftoken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+
+// Markdown rendering
+{% if current_episode.info_page_content %}
+const markdownContent = `{{ current_episode.info_page_content|escapejs }}`;
+document.getElementById('markdown-content').innerHTML = marked.parse(markdownContent);
+{% endif %}
+
+// Mark as read/unread functionality
+const markReadBtn = document.getElementById('markReadBtn');
+if (markReadBtn) {
+    markReadBtn.addEventListener('click', async function() {
+        const episodeId = this.dataset.episodeId;
+        const isRead = this.dataset.isRead === 'true';
+
+        try {
+            const response = await fetch('{% url "progress:mark_episode" %}', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'X-CSRFToken': csrftoken
+                },
+                body: `episode_id=${episodeId}&is_read=${!isRead}`
+            });
+
+            const data = await response.json();
+            if (data.success) {
+                location.reload();
+            }
+        } catch (error) {
+            console.error('Error:', error);
+        }
+    });
+}
+
+// PDF.js rendering
+{% if current_episode.content_pdf %}
+pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
+
+let pdfDoc = null;
+let pageNum = 1;
+let pageRendering = false;
+let pageNumPending = null;
+const scale = 1.5;
+const canvas = document.getElementById('pdf-canvas');
+const ctx = canvas.getContext('2d');
+
+function renderPage(num) {
+    pageRendering = true;
+    pdfDoc.getPage(num).then(function(page) {
+        const viewport = page.getViewport({scale: scale});
+        canvas.height = viewport.height;
+        canvas.width = viewport.width;
+
+        const renderContext = {
+            canvasContext: ctx,
+            viewport: viewport
+        };
+
+        const renderTask = page.render(renderContext);
+        renderTask.promise.then(function() {
+            pageRendering = false;
+            if (pageNumPending !== null) {
+                renderPage(pageNumPending);
+                pageNumPending = null;
+            }
+        });
+    });
+
+    document.getElementById('pageNum').textContent = num;
+}
+
+function queueRenderPage(num) {
+    if (pageRendering) {
+        pageNumPending = num;
+    } else {
+        renderPage(num);
+    }
+}
+
+function onPrevPage() {
+    if (pageNum <= 1) return;
+    pageNum--;
+    queueRenderPage(pageNum);
+}
+
+function onNextPage() {
+    if (pageNum >= pdfDoc.numPages) return;
+    pageNum++;
+    queueRenderPage(pageNum);
+}
+
+document.getElementById('prevPage').addEventListener('click', onPrevPage);
+document.getElementById('nextPage').addEventListener('click', onNextPage);
+
+// Load PDF
+pdfjsLib.getDocument('{{ current_episode.content_pdf.url }}').promise.then(function(pdfDoc_) {
+    pdfDoc = pdfDoc_;
+    document.getElementById('pageCount').textContent = pdfDoc.numPages;
+    renderPage(pageNum);
+});
+{% endif %}
+</script>
+{% endblock %}
