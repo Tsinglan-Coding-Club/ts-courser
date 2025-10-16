@@ -5,6 +5,7 @@
 {% block extra_css %}
 <style>
 .stats-card {
+    display: none;
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     color: white;
     border: none;
@@ -107,7 +108,7 @@
         <!-- Left Sidebar: Stats and Course Info -->
         <div class="col-md-3">
             <!-- Statistics Card -->
-            <div class="card stats-card mb-3">
+            <div class="card stats-card mb-3" style="opacity: none;">
                 <div class="card-body p-0">
                     <div class="stat-item">
                         <div class="stat-number">{{ sections|length }}</div>
