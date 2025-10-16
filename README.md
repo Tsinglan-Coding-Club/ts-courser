@@ -1,3 +1,5 @@
+![alt text](docs/image.png)
+
 # TS-Courser
 
 An MVP-version online learning platform inspired by Khan Academy, designed for students to browse courses, track learning progress, and practice with quizzes.
