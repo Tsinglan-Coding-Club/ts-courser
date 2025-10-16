@@ -92,10 +92,14 @@ def course_edit(request, course_id):
     tags = Tag.objects.all()
     sections = Section.objects.filter(course=course).prefetch_related('episodes')
 
+    # Calculate total episodes
+    total_episodes = sum(section.episodes.count() for section in sections)
+
     context = {
         'course': course,
         'tags': tags,
         'sections': sections,
+        'total_episodes': total_episodes,
     }
     return render(request, 'teacher/course_edit.html', context)
 
@@ -221,6 +225,52 @@ def tag_create(request):
                     'category': tag.category
                 }
             })
+        except Exception as e:
+            return JsonResponse({'success': False, 'error': str(e)})
+
+    return JsonResponse({'success': False, 'error': 'Invalid request'})
+
+
+@teacher_required
+def section_reorder(request):
+    """Reorder sections via AJAX."""
+    if request.method == 'POST':
+        try:
+            import json
+            data = json.loads(request.body)
+            section_orders = data.get('section_orders', [])
+
+            for item in section_orders:
+                section_id = item.get('id')
+                new_order = item.get('order')
+                section = Section.objects.get(id=section_id)
+                section.order = new_order
+                section.save()
+
+            return JsonResponse({'success': True})
+        except Exception as e:
+            return JsonResponse({'success': False, 'error': str(e)})
+
+    return JsonResponse({'success': False, 'error': 'Invalid request'})
+
+
+@teacher_required
+def episode_reorder(request):
+    """Reorder episodes via AJAX."""
+    if request.method == 'POST':
+        try:
+            import json
+            data = json.loads(request.body)
+            episode_orders = data.get('episode_orders', [])
+
+            for item in episode_orders:
+                episode_id = item.get('id')
+                new_order = item.get('order')
+                episode = Episode.objects.get(id=episode_id)
+                episode.order = new_order
+                episode.save()
+
+            return JsonResponse({'success': True})
         except Exception as e:
             return JsonResponse({'success': False, 'error': str(e)})
 

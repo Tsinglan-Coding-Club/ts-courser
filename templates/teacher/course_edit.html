@@ -2,8 +2,100 @@
 
 {% block title %}Edit {{ course.title }} - Teacher{% endblock %}
 
+{% block extra_css %}
+<style>
+.stats-card {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border: none;
+}
+
+.stats-card .stat-item {
+    padding: 1rem;
+    text-align: center;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.stats-card .stat-item:last-child {
+    border-bottom: none;
+}
+
+.stats-card .stat-number {
+    font-size: 2rem;
+    font-weight: bold;
+}
+
+.stats-card .stat-label {
+    font-size: 0.9rem;
+    opacity: 0.9;
+}
+
+.section-card {
+    transition: all 0.2s;
+    cursor: grab;
+}
+
+.section-card:active {
+    cursor: grabbing;
+}
+
+.section-card:hover {
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+}
+
+.section-card button,
+.section-card a {
+    cursor: pointer;
+}
+
+.collapsible-header {
+    cursor: pointer;
+    user-select: none;
+}
+
+.collapsible-header:hover {
+    background-color: #f8f9fa !important;
+}
+
+.episode-list-item {
+    transition: background-color 0.2s;
+    cursor: grab;
+}
+
+.episode-list-item:active {
+    cursor: grabbing;
+}
+
+.episode-list-item:hover {
+    background-color: #f8f9fa;
+}
+
+.episode-list-item button,
+.episode-list-item a {
+    cursor: pointer;
+}
+
+.dragging {
+    opacity: 0.5;
+}
+
+.drag-over {
+    border-top: 3px solid #007bff !important;
+}
+
+.drag-handle {
+    cursor: move;
+    color: #6c757d;
+}
+
+.drag-handle:hover {
+    color: #007bff;
+}
+</style>
+{% endblock %}
+
 {% block content %}
-<div class="container my-5">
+<div class="container-fluid my-4">
     <nav aria-label="breadcrumb">
         <ol class="breadcrumb">
             <li class="breadcrumb-item"><a href="{% url 'teacher:course_list' %}">Manage Courses</a></li>
@@ -11,107 +103,188 @@
         </ol>
     </nav>
 
-    <h1 class="mb-4"><i class="bi bi-pencil"></i> Edit Course</h1>
-
-    <!-- Course Basic Info Form -->
-    <div class="card mb-4">
-        <div class="card-header">
-            <h5 class="mb-0">Course Information</h5>
-        </div>
-        <div class="card-body">
-            <form method="post" enctype="multipart/form-data">
-                {% csrf_token %}
-
-                <div class="mb-3">
-                    <label for="title" class="form-label">Title</label>
-                    <input type="text" class="form-control" id="title" name="title" value="{{ course.title }}" required>
-                </div>
-
-                <div class="mb-3">
-                    <label for="description" class="form-label">Description</label>
-                    <textarea class="form-control" id="description" name="description" rows="5" required>{{ course.description }}</textarea>
-                </div>
-
-                <div class="mb-3">
-                    <label for="thumbnail" class="form-label">Thumbnail</label>
-                    {% if course.thumbnail %}
-                        <div class="mb-2">
-                            <img src="{{ course.thumbnail.url }}" class="img-thumbnail" style="max-width: 200px;">
+    <div class="row">
+        <!-- Left Sidebar: Stats and Course Info -->
+        <div class="col-md-3">
+            <!-- Statistics Card -->
+            <div class="card stats-card mb-3">
+                <div class="card-body p-0">
+                    <div class="stat-item">
+                        <div class="stat-number">{{ sections|length }}</div>
+                        <div class="stat-label">Sections</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-number">{{ total_episodes }}</div>
+                        <div class="stat-label">Episodes</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-number">
+                            {% if course.is_published %}
+                                <i class="bi bi-check-circle-fill"></i>
+                            {% else %}
+                                <i class="bi bi-x-circle-fill"></i>
+                            {% endif %}
                         </div>
-                    {% endif %}
-                    <input type="file" class="form-control" id="thumbnail" name="thumbnail" accept="image/*">
-                </div>
-
-                <div class="mb-3">
-                    <label class="form-label">Tags</label>
-                    <div class="row">
-                        {% for tag in tags %}
-                            <div class="col-md-3">
-                                <div class="form-check">
-                                    <input class="form-check-input" type="checkbox" name="tags" value="{{ tag.id }}" id="tag{{ tag.id }}"
-                                           {% if tag in course.tags.all %}checked{% endif %}>
-                                    <label class="form-check-label" for="tag{{ tag.id }}">
-                                        {{ tag.name }}
-                                    </label>
-                                </div>
-                            </div>
-                        {% endfor %}
+                        <div class="stat-label">
+                            {% if course.is_published %}Published{% else %}Draft{% endif %}
+                        </div>
                     </div>
                 </div>
+            </div>
 
-                <div class="mb-3 form-check">
-                    <input type="checkbox" class="form-check-input" id="is_published" name="is_published"
-                           {% if course.is_published %}checked{% endif %}>
-                    <label class="form-check-label" for="is_published">Published</label>
+            <!-- Course Basic Info (Collapsible) -->
+            <div class="card mb-3">
+                <div class="card-header collapsible-header" data-bs-toggle="collapse" data-bs-target="#courseInfoCollapse">
+                    <h6 class="mb-0">
+                        <i class="bi bi-gear"></i> Course Settings
+                        <i class="bi bi-chevron-down float-end"></i>
+                    </h6>
                 </div>
+                <div id="courseInfoCollapse" class="collapse show">
+                    <div class="card-body">
+                        <form method="post" enctype="multipart/form-data" id="courseInfoForm">
+                            {% csrf_token %}
 
-                <button type="submit" class="btn btn-primary">
-                    <i class="bi bi-check-circle"></i> Update Course
-                </button>
-            </form>
-        </div>
-    </div>
+                            <div class="mb-3">
+                                <label for="title" class="form-label">Title</label>
+                                <input type="text" class="form-control form-control-sm" id="title" name="title" value="{{ course.title }}" required>
+                            </div>
 
-    <!-- Sections and Episodes -->
-    <div class="card mb-4">
-        <div class="card-header d-flex justify-content-between align-items-center">
-            <h5 class="mb-0">Sections & Episodes</h5>
-            <button class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#addSectionModal">
-                <i class="bi bi-plus-circle"></i> Add Section
-            </button>
-        </div>
-        <div class="card-body">
-            {% for section in sections %}
-                <div class="card mb-3">
-                    <div class="card-header bg-light d-flex justify-content-between align-items-center">
-                        <h6 class="mb-0"><i class="bi bi-folder"></i> {{ section.title }}</h6>
-                        <button class="btn btn-sm btn-primary" onclick="addEpisode({{ section.id }})">
-                            <i class="bi bi-plus"></i> Add Episode
+                            <div class="mb-3">
+                                <label for="description" class="form-label">Description</label>
+                                <textarea class="form-control form-control-sm" id="description" name="description" rows="4" required>{{ course.description }}</textarea>
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="thumbnail" class="form-label">Thumbnail</label>
+                                {% if course.thumbnail %}
+                                    <div class="mb-2">
+                                        <img src="{{ course.thumbnail.url }}" class="img-thumbnail" style="max-width: 100%;">
+                                    </div>
+                                {% endif %}
+                                <input type="file" class="form-control form-control-sm" id="thumbnail" name="thumbnail" accept="image/*">
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label">Tags</label>
+                                <div class="form-text mb-2">Select applicable tags</div>
+                                {% for tag in tags %}
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" name="tags" value="{{ tag.id }}" id="tag{{ tag.id }}"
+                                               {% if tag in course.tags.all %}checked{% endif %}>
+                                        <label class="form-check-label small" for="tag{{ tag.id }}">
+                                            {{ tag.name }}
+                                        </label>
+                                    </div>
+                                {% endfor %}
+                            </div>
+
+                            <div class="mb-3 form-check">
+                                <input type="checkbox" class="form-check-input" id="is_published" name="is_published"
+                                       {% if course.is_published %}checked{% endif %}>
+                                <label class="form-check-label" for="is_published">Published</label>
+                            </div>
+
+                            <button type="submit" class="btn btn-primary btn-sm w-100">
+                                <i class="bi bi-check-circle"></i> Save Changes
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Quick Actions -->
+            <div class="card">
+                <div class="card-body">
+                    <h6 class="card-title">Quick Actions</h6>
+                    <div class="d-grid gap-2">
+                        <button class="btn btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#addSectionModal">
+                            <i class="bi bi-plus-circle"></i> Add Section
                         </button>
+                        <a href="{% url 'courses:learning_interface' course.id %}" class="btn btn-outline-primary btn-sm" target="_blank">
+                            <i class="bi bi-eye"></i> Preview Course
+                        </a>
                     </div>
-                    <div class="list-group list-group-flush">
-                        {% for episode in section.episodes.all %}
-                            <div class="list-group-item d-flex justify-content-between align-items-center">
-                                <span>
-                                    {% if episode.type == 'material' %}
-                                        <i class="bi bi-file-text text-primary"></i>
-                                    {% else %}
-                                        <i class="bi bi-question-circle text-success"></i>
-                                    {% endif %}
-                                    {{ episode.title }}
-                                </span>
-                                <a href="{% url 'teacher:episode_edit' episode.id %}" class="btn btn-sm btn-outline-primary">
-                                    <i class="bi bi-pencil"></i> Edit
-                                </a>
-                            </div>
-                        {% empty %}
-                            <div class="list-group-item text-muted">No episodes yet</div>
-                        {% endfor %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Main Area: Sections & Episodes -->
+        <div class="col-md-9">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h3><i class="bi bi-pencil"></i> Sections & Episodes</h3>
+                <span class="text-muted"><i class="bi bi-grip-vertical"></i> Drag to reorder</span>
+            </div>
+
+            <div id="sectionsContainer">
+            {% for section in sections %}
+                <div class="card section-card mb-3" draggable="true" data-section-id="{{ section.id }}">
+                    <div class="card-header collapsible-header d-flex justify-content-between align-items-center"
+                         data-bs-toggle="collapse" data-bs-target="#section{{ section.id }}Collapse">
+                        <div>
+                            <i class="bi bi-grip-vertical drag-handle me-2"></i>
+                            <i class="bi bi-folder"></i>
+                            <strong>{{ section.title }}</strong>
+                            <span class="badge bg-secondary ms-2">{{ section.episodes.all|length }} episodes</span>
+                        </div>
+                        <div>
+                            <button class="btn btn-sm btn-primary" onclick="event.stopPropagation(); addEpisode({{ section.id }})">
+                                <i class="bi bi-plus"></i> Add Episode
+                            </button>
+                            <i class="bi bi-chevron-down"></i>
+                        </div>
+                    </div>
+                    <div id="section{{ section.id }}Collapse" class="collapse show">
+                        <div class="list-group list-group-flush episodes-container" data-section-id="{{ section.id }}">
+                            {% for episode in section.episodes.all %}
+                                <div class="list-group-item episode-list-item d-flex justify-content-between align-items-center"
+                                     draggable="true" data-episode-id="{{ episode.id }}">
+                                    <div>
+                                        <i class="bi bi-grip-vertical drag-handle me-2"></i>
+                                        {% if episode.type == 'material' %}
+                                            <i class="bi bi-file-text text-primary"></i>
+                                        {% else %}
+                                            <i class="bi bi-question-circle text-success"></i>
+                                        {% endif %}
+                                        <span class="ms-2">{{ episode.title }}</span>
+
+                                        <!-- Content indicators -->
+                                        <span class="ms-2">
+                                            {% if episode.info_page_content %}
+                                                <span class="badge bg-info" title="Has info content">
+                                                    <i class="bi bi-info-circle"></i>
+                                                </span>
+                                            {% endif %}
+                                            {% if episode.content_pdf %}
+                                                <span class="badge bg-primary" title="Has PDF">
+                                                    <i class="bi bi-file-pdf"></i>
+                                                </span>
+                                            {% endif %}
+                                            {% if episode.answer_pdf %}
+                                                <span class="badge bg-success" title="Has answer key">
+                                                    <i class="bi bi-check-circle"></i>
+                                                </span>
+                                            {% endif %}
+                                        </span>
+                                    </div>
+                                    <a href="{% url 'teacher:episode_edit' episode.id %}" class="btn btn-sm btn-outline-primary">
+                                        <i class="bi bi-pencil"></i> Edit
+                                    </a>
+                                </div>
+                            {% empty %}
+                                <div class="list-group-item text-muted text-center py-4">
+                                    <i class="bi bi-inbox"></i> No episodes yet. Click "Add Episode" to create one.
+                                </div>
+                            {% endfor %}
+                        </div>
                     </div>
                 </div>
             {% empty %}
-                <p class="text-muted">No sections yet. Add a section to get started.</p>
+                <div class="alert alert-info">
+                    <i class="bi bi-info-circle"></i> No sections yet. Click "Add Section" in the sidebar to get started.
+                </div>
             {% endfor %}
+            </div>
         </div>
     </div>
 </div>
@@ -132,10 +305,7 @@
                     <div class="mb-3">
                         <label for="sectionTitle" class="form-label">Section Title</label>
                         <input type="text" class="form-control" id="sectionTitle" name="title" required>
-                    </div>
-                    <div class="mb-3">
-                        <label for="sectionOrder" class="form-label">Order</label>
-                        <input type="number" class="form-control" id="sectionOrder" name="order" value="0">
+                        <div class="form-text">Choose a descriptive name for this section</div>
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -153,13 +323,194 @@
     <input type="hidden" name="section_id" id="episodeSectionId">
     <input type="hidden" name="title" value="New Episode">
     <input type="hidden" name="type" value="material">
-    <input type="hidden" name="order" value="0">
 </form>
 
 <script>
+const csrftoken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+
 function addEpisode(sectionId) {
     document.getElementById('episodeSectionId').value = sectionId;
     document.getElementById('addEpisodeForm').submit();
+}
+
+// Update chevron icon when collapsing/expanding
+document.querySelectorAll('.collapsible-header').forEach(header => {
+    header.addEventListener('click', function() {
+        const icon = this.querySelector('.bi-chevron-down, .bi-chevron-up');
+        if (icon) {
+            icon.classList.toggle('bi-chevron-down');
+            icon.classList.toggle('bi-chevron-up');
+        }
+    });
+});
+
+// ========== Drag and Drop for Sections ==========
+let draggedSection = null;
+
+document.querySelectorAll('.section-card').forEach(card => {
+    card.addEventListener('dragstart', function(e) {
+        // Don't allow drag from buttons or links
+        if (e.target.tagName === 'BUTTON' ||
+            e.target.tagName === 'A' ||
+            e.target.closest('button') ||
+            e.target.closest('a')) {
+            e.preventDefault();
+            return;
+        }
+        draggedSection = this;
+        this.classList.add('dragging');
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/html', this.innerHTML);
+    });
+
+    card.addEventListener('dragend', function() {
+        this.classList.remove('dragging');
+        document.querySelectorAll('.section-card').forEach(c => c.classList.remove('drag-over'));
+    });
+
+    card.addEventListener('dragover', function(e) {
+        e.preventDefault();
+        if (this === draggedSection) return;
+        this.classList.add('drag-over');
+    });
+
+    card.addEventListener('dragleave', function() {
+        this.classList.remove('drag-over');
+    });
+
+    card.addEventListener('drop', function(e) {
+        e.preventDefault();
+        if (this === draggedSection) return;
+
+        const container = document.getElementById('sectionsContainer');
+        const allCards = [...container.querySelectorAll('.section-card')];
+        const draggedIndex = allCards.indexOf(draggedSection);
+        const targetIndex = allCards.indexOf(this);
+
+        if (draggedIndex < targetIndex) {
+            this.parentNode.insertBefore(draggedSection, this.nextSibling);
+        } else {
+            this.parentNode.insertBefore(draggedSection, this);
+        }
+
+        this.classList.remove('drag-over');
+        saveSectionOrder();
+    });
+});
+
+async function saveSectionOrder() {
+    const sections = document.querySelectorAll('.section-card');
+    const sectionOrders = [];
+    sections.forEach((section, index) => {
+        sectionOrders.push({
+            id: parseInt(section.dataset.sectionId),
+            order: index
+        });
+    });
+
+    try {
+        const response = await fetch('{% url "teacher:section_reorder" %}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrftoken
+            },
+            body: JSON.stringify({ section_orders: sectionOrders })
+        });
+
+        const data = await response.json();
+        if (data.success) {
+            console.log('Section order saved successfully');
+        }
+    } catch (error) {
+        console.error('Error saving section order:', error);
+    }
+}
+
+// ========== Drag and Drop for Episodes ==========
+document.querySelectorAll('.episodes-container').forEach(container => {
+    let draggedEpisode = null;
+
+    container.querySelectorAll('.episode-list-item').forEach(item => {
+        item.addEventListener('dragstart', function(e) {
+            // Don't allow drag from buttons or links
+            if (e.target.tagName === 'BUTTON' ||
+                e.target.tagName === 'A' ||
+                e.target.closest('button') ||
+                e.target.closest('a')) {
+                e.preventDefault();
+                return;
+            }
+            draggedEpisode = this;
+            this.classList.add('dragging');
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/html', this.innerHTML);
+        });
+
+        item.addEventListener('dragend', function() {
+            this.classList.remove('dragging');
+            container.querySelectorAll('.episode-list-item').forEach(i => i.classList.remove('drag-over'));
+        });
+
+        item.addEventListener('dragover', function(e) {
+            e.preventDefault();
+            if (this === draggedEpisode) return;
+            this.classList.add('drag-over');
+        });
+
+        item.addEventListener('dragleave', function() {
+            this.classList.remove('drag-over');
+        });
+
+        item.addEventListener('drop', function(e) {
+            e.preventDefault();
+            if (this === draggedEpisode) return;
+
+            const allItems = [...container.querySelectorAll('.episode-list-item')];
+            const draggedIndex = allItems.indexOf(draggedEpisode);
+            const targetIndex = allItems.indexOf(this);
+
+            if (draggedIndex < targetIndex) {
+                this.parentNode.insertBefore(draggedEpisode, this.nextSibling);
+            } else {
+                this.parentNode.insertBefore(draggedEpisode, this);
+            }
+
+            this.classList.remove('drag-over');
+            saveEpisodeOrder(container.dataset.sectionId);
+        });
+    });
+});
+
+async function saveEpisodeOrder(sectionId) {
+    const container = document.querySelector(`.episodes-container[data-section-id="${sectionId}"]`);
+    const episodes = container.querySelectorAll('.episode-list-item');
+    const episodeOrders = [];
+
+    episodes.forEach((episode, index) => {
+        episodeOrders.push({
+            id: parseInt(episode.dataset.episodeId),
+            order: index
+        });
+    });
+
+    try {
+        const response = await fetch('{% url "teacher:episode_reorder" %}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrftoken
+            },
+            body: JSON.stringify({ episode_orders: episodeOrders })
+        });
+
+        const data = await response.json();
+        if (data.success) {
+            console.log('Episode order saved successfully');
+        }
+    } catch (error) {
+        console.error('Error saving episode order:', error);
+    }
 }
 </script>
 {% endblock %}

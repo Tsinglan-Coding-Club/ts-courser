@@ -4,8 +4,6 @@
 {% block title %}{{ course.title }} - Learning{% endblock %}
 
 {% block extra_css %}
-<!-- Marked.js for markdown rendering -->
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/github-markdown-css/5.2.0/github-markdown.min.css">
 <!-- PDF.js -->
 <style>
 .sidebar {
@@ -14,11 +12,46 @@
     position: sticky;
     top: 56px;
     background-color: #f8f9fa;
+    transition: margin-left 0.3s ease;
+}
+
+.sidebar.collapsed {
+    margin-left: -100%;
 }
 
 .content-area {
     min-height: calc(100vh - 56px);
     padding: 2rem;
+    transition: margin-left 0.3s ease;
+}
+
+.sidebar-toggle {
+    position: fixed;
+    left: calc(16.666% - 15px); /* col-md-2 is 16.666%, minus half button width */
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 1000;
+    background-color: #007bff;
+    color: white;
+    border: none;
+    border-radius: 50%;
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    cursor: pointer;
+    transition: left 0.3s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+}
+
+.sidebar-toggle:hover {
+    background-color: #0056b3;
+}
+
+.sidebar-toggle.collapsed {
+    left: 0;
 }
 
 .episode-item {
@@ -57,16 +90,47 @@
     max-width: 980px;
     margin: 0 auto;
     padding: 45px;
+    background: white;
+    color: #24292f;
+    line-height: 1.6;
+}
+
+.markdown-body h1, .markdown-body h2, .markdown-body h3 {
+    border-bottom: 1px solid #d0d7de;
+    padding-bottom: 0.3em;
+    margin-top: 24px;
+    margin-bottom: 16px;
+    font-weight: 600;
+}
+
+.markdown-body code {
+    background-color: rgba(175,184,193,0.2);
+    padding: 0.2em 0.4em;
+    border-radius: 6px;
+    font-size: 85%;
+}
+
+.markdown-body pre {
+    background-color: #f6f8fa;
+    padding: 16px;
+    border-radius: 6px;
+    overflow: auto;
 }
 </style>
 {% endblock %}
 
 {% block content %}
 {% csrf_token %}
+
+<!-- Sidebar Toggle Button -->
+<button class="sidebar-toggle" id="sidebarToggle" type="button">
+    <i class="bi bi-chevron-left" id="toggleIcon"></i>
+</button>
+
 <div class="container-fluid p-0">
     <div class="row g-0">
         <!-- Left Sidebar -->
-        <div class="col-md-3 sidebar border-end">
+        <div class="col-md-2 sidebar border-end" id="sidebar">
             <div class="p-3">
                 <h5 class="mb-3">
                     <a href="{% url 'courses:course_overview' course.id %}" class="text-decoration-none">
@@ -122,7 +186,7 @@
         </div>
 
         <!-- Main Content Area -->
-        <div class="col-md-9 content-area">
+        <div class="col-md-10 content-area" id="contentArea">
             {% if current_episode %}
                 <!-- Episode Header -->
                 <div class="d-flex justify-content-between align-items-start mb-4">
@@ -157,55 +221,82 @@
                     </div>
                 </div>
 
-                <!-- Episode Content -->
-                {% if current_episode.info_page_content %}
-                    <div class="card mb-4">
-                        <div class="card-body">
-                            <div id="markdown-content" class="markdown-body"></div>
-                        </div>
+                <!-- Episode Content Tabs -->
+                <div class="card">
+                    <div class="card-header">
+                        <ul class="nav nav-tabs card-header-tabs" id="episodeTabs" role="tablist">
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link active" id="info-tab" data-bs-toggle="tab" data-bs-target="#info" type="button" role="tab">
+                                    <i class="bi bi-info-circle"></i> Info
+                                </button>
+                            </li>
+                            {% if current_episode.content_pdf %}
+                                <li class="nav-item" role="presentation">
+                                    <button class="nav-link" id="material-tab" data-bs-toggle="tab" data-bs-target="#material" type="button" role="tab">
+                                        <i class="bi bi-file-pdf"></i> Material
+                                    </button>
+                                </li>
+                            {% endif %}
+                            {% if current_episode.answer_pdf and current_episode.type == 'quiz' %}
+                                <li class="nav-item" role="presentation">
+                                    <button class="nav-link" id="answer-tab" data-bs-toggle="tab" data-bs-target="#answer" type="button" role="tab">
+                                        <i class="bi bi-check-circle"></i> Answer
+                                    </button>
+                                </li>
+                            {% endif %}
+                        </ul>
                     </div>
-                {% endif %}
-
-                {% if current_episode.content_pdf %}
-                    <div class="card mb-4">
-                        <div class="card-header bg-primary text-white">
-                            <h5 class="mb-0"><i class="bi bi-file-pdf"></i> Content PDF</h5>
-                        </div>
-                        <div class="card-body">
-                            <div class="text-center mb-3">
-                                <a href="{{ current_episode.content_pdf.url }}" target="_blank" class="btn btn-primary">
-                                    <i class="bi bi-download"></i> Download PDF
-                                </a>
-                                <button class="btn btn-secondary" id="prevPage">
-                                    <i class="bi bi-arrow-left"></i> Previous
-                                </button>
-                                <span class="mx-2">
-                                    Page <span id="pageNum"></span> of <span id="pageCount"></span>
-                                </span>
-                                <button class="btn btn-secondary" id="nextPage">
-                                    Next <i class="bi bi-arrow-right"></i>
-                                </button>
+                    <div class="card-body">
+                        <div class="tab-content" id="episodeTabContent">
+                            <!-- Info Tab -->
+                            <div class="tab-pane fade show active" id="info" role="tabpanel">
+                                {% if current_episode.info_page_content %}
+                                    <div id="markdown-content" class="markdown-body"></div>
+                                {% else %}
+                                    <div class="alert alert-info">
+                                        <i class="bi bi-info-circle"></i> No info page content available for this episode.
+                                    </div>
+                                {% endif %}
                             </div>
-                            <canvas id="pdf-canvas" class="border"></canvas>
+
+                            <!-- Material Tab -->
+                            {% if current_episode.content_pdf %}
+                                <div class="tab-pane fade" id="material" role="tabpanel">
+                                    <div class="text-center mb-3">
+                                        <a href="{{ current_episode.content_pdf.url }}" target="_blank" class="btn btn-primary">
+                                            <i class="bi bi-download"></i> Download PDF
+                                        </a>
+                                        <button class="btn btn-secondary" id="prevPage">
+                                            <i class="bi bi-arrow-left"></i> Previous
+                                        </button>
+                                        <span class="mx-2">
+                                            Page <span id="pageNum"></span> of <span id="pageCount"></span>
+                                        </span>
+                                        <button class="btn btn-secondary" id="nextPage">
+                                            Next <i class="bi bi-arrow-right"></i>
+                                        </button>
+                                    </div>
+                                    <canvas id="pdf-canvas" class="border"></canvas>
+                                </div>
+                            {% endif %}
+
+                            <!-- Answer Tab -->
+                            {% if current_episode.answer_pdf and current_episode.type == 'quiz' %}
+                                <div class="tab-pane fade" id="answer" role="tabpanel">
+                                    <div class="alert alert-success">
+                                        <i class="bi bi-check-circle"></i> Answer key is available for download.
+                                    </div>
+                                    <a href="{{ current_episode.answer_pdf.url }}" target="_blank" class="btn btn-success btn-lg">
+                                        <i class="bi bi-download"></i> Download Answer Key
+                                    </a>
+                                </div>
+                            {% endif %}
                         </div>
                     </div>
-                {% endif %}
+                </div>
 
-                {% if current_episode.answer_pdf and current_episode.type == 'quiz' %}
-                    <div class="card">
-                        <div class="card-header bg-success text-white">
-                            <h5 class="mb-0"><i class="bi bi-check-circle"></i> Answer Key</h5>
-                        </div>
-                        <div class="card-body">
-                            <a href="{{ current_episode.answer_pdf.url }}" target="_blank" class="btn btn-success">
-                                <i class="bi bi-download"></i> Download Answer Key
-                            </a>
-                        </div>
-                    </div>
-                {% endif %}
-
-                {% if not current_episode.info_page_content and not current_episode.content_pdf %}
-                    <div class="alert alert-warning">
+                {% if not current_episode.info_page_content and not current_episode.content_pdf and not current_episode.answer_pdf %}
+                    <div class="alert alert-warning mt-3">
                         <i class="bi bi-exclamation-triangle"></i> No content available for this episode yet.
                     </div>
                 {% endif %}
@@ -330,5 +421,31 @@ pdfjsLib.getDocument('{{ current_episode.content_pdf.url }}').promise.then(funct
     renderPage(pageNum);
 });
 {% endif %}
+
+// Sidebar toggle functionality
+document.getElementById('sidebarToggle').addEventListener('click', function(e) {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const sidebar = document.getElementById('sidebar');
+    const contentArea = document.getElementById('contentArea');
+    const toggleBtn = document.getElementById('sidebarToggle');
+    const toggleIcon = document.getElementById('toggleIcon');
+
+    sidebar.classList.toggle('collapsed');
+    toggleBtn.classList.toggle('collapsed');
+
+    if (sidebar.classList.contains('collapsed')) {
+        contentArea.classList.remove('col-md-10');
+        contentArea.classList.add('col-md-12');
+        toggleIcon.classList.remove('bi-chevron-left');
+        toggleIcon.classList.add('bi-chevron-right');
+    } else {
+        contentArea.classList.remove('col-md-12');
+        contentArea.classList.add('col-md-10');
+        toggleIcon.classList.remove('bi-chevron-right');
+        toggleIcon.classList.add('bi-chevron-left');
+    }
+});
 </script>
 {% endblock %}
