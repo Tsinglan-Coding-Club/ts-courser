@@ -1,7 +1,12 @@
 [project]
 name = "ts-courser"
 version = "0.1.0"
-description = "Add your description here"
+description = "An MVP-version online learning platform for students to browse courses and practice with quizzes"
 readme = "README.md"
 requires-python = ">=3.13"
-dependencies = []
+dependencies = [
+    "django>=5.1",
+    "pillow>=10.0.0",
+    "python-magic-bin>=0.4.14; sys_platform == 'win32'",
+    "python-magic>=0.4.27; sys_platform != 'win32'",
+]
