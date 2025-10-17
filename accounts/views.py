@@ -1,9 +1,14 @@
-from django.shortcuts import render, redirect
+from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth import login, logout, authenticate
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.db import IntegrityError
+from django.http import JsonResponse
+from django.core.files.storage import default_storage
+from django.views.decorators.http import require_POST
 from .models import User
+from courses.models import Tag
+import os
 
 
 def register(request):
@@ -87,3 +92,113 @@ def logout_view(request):
     logout(request)
     messages.success(request, 'You have been logged out successfully.')
     return redirect('accounts:login')
+
+
+@login_required
+def profile_view(request, username=None):
+    """View user profile."""
+    if username:
+        profile_user = get_object_or_404(User, username=username)
+    else:
+        profile_user = request.user
+
+    # Check if viewing own profile
+    is_own_profile = (request.user == profile_user)
+
+    # Get favorite tags
+    favorite_tags = profile_user.favorite_tags.all()
+
+    # Get enrolled courses count (if student)
+    enrolled_count = 0
+    if profile_user.is_student:
+        enrolled_count = profile_user.enrolled_courses.count()
+
+    # Get created courses count (if teacher)
+    created_count = 0
+    if profile_user.is_teacher:
+        created_count = profile_user.created_courses.filter(is_published=True).count()
+
+    context = {
+        'profile_user': profile_user,
+        'is_own_profile': is_own_profile,
+        'favorite_tags': favorite_tags,
+        'enrolled_count': enrolled_count,
+        'created_count': created_count,
+    }
+
+    return render(request, 'accounts/profile.html', context)
+
+
+@login_required
+def profile_edit(request):
+    """Edit user profile."""
+    if request.method == 'POST':
+        user = request.user
+
+        # Update basic info
+        user.display_name = request.POST.get('display_name', '').strip()
+        user.bio = request.POST.get('bio', '').strip()
+
+        # Handle avatar upload
+        if 'avatar' in request.FILES:
+            avatar_file = request.FILES['avatar']
+
+            # Validate file size (2MB max)
+            if avatar_file.size > 2 * 1024 * 1024:
+                messages.error(request, 'Avatar file size must be less than 2MB.')
+                return redirect('accounts:profile_edit')
+
+            # Validate file type
+            allowed_types = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
+            if avatar_file.content_type not in allowed_types:
+                messages.error(request, 'Avatar must be a valid image file (JPEG, PNG, GIF, or WebP).')
+                return redirect('accounts:profile_edit')
+
+            # Delete old avatar if exists
+            if user.avatar:
+                user.delete_old_avatar()
+
+            # Save new avatar
+            user.avatar = avatar_file
+
+        user.save()
+        messages.success(request, 'Profile updated successfully!')
+        return redirect('accounts:profile')
+
+    # GET request - show edit form
+    all_tags = Tag.objects.all().order_by('category', 'name')
+    user_favorite_tag_ids = list(request.user.favorite_tags.values_list('id', flat=True))
+
+    context = {
+        'all_tags': all_tags,
+        'user_favorite_tag_ids': user_favorite_tag_ids,
+    }
+
+    return render(request, 'accounts/profile_edit.html', context)
+
+
+@login_required
+@require_POST
+def update_favorite_tags(request):
+    """AJAX endpoint to update user's favorite tags."""
+    try:
+        tag_ids = request.POST.getlist('tag_ids[]')
+
+        # Clear existing favorite tags
+        request.user.favorite_tags.clear()
+
+        # Add selected tags
+        if tag_ids:
+            tags = Tag.objects.filter(id__in=tag_ids)
+            request.user.favorite_tags.set(tags)
+
+        return JsonResponse({
+            'success': True,
+            'message': 'Favorite tags updated successfully!'
+        })
+
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'message': str(e)
+        }, status=400)
