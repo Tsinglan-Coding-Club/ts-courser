@@ -3,18 +3,114 @@
 {% block title %}Edit {{ episode.title }} - Teacher{% endblock %}
 
 {% block extra_css %}
-<!-- Vditor CSS -->
-<link rel="stylesheet" href="https://unpkg.com/vditor/dist/index.css" />
 <style>
-#vditor {
-    min-height: 500px;
+/* Markdown Editor Styles */
+.md-editor-container {
+    border: 1px solid var(--border-color);
+    border-radius: 0.25rem;
+    overflow: hidden;
 }
-/* Vditor dark mode */
-[data-theme="dark"] .vditor {
-    background-color: var(--bg-secondary);
-}
-[data-theme="dark"] .vditor-toolbar {
+
+.md-toolbar {
     background-color: var(--bg-tertiary);
+    border-bottom: 1px solid var(--border-color);
+    padding: 0.5rem;
+    display: flex;
+    gap: 0.25rem;
+}
+
+.md-toolbar-btn {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.25rem;
+    cursor: pointer;
+    font-size: 0.9rem;
+    transition: background-color 0.2s;
+}
+
+.md-toolbar-btn:hover {
+    background-color: var(--bg-primary);
+}
+
+.md-toolbar-separator {
+    width: 1px;
+    background-color: var(--border-color);
+    margin: 0 0.25rem;
+}
+
+.md-editor-panels {
+    display: flex;
+    height: 500px;
+}
+
+.md-editor-panel {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.md-editor-panel + .md-editor-panel {
+    border-left: 1px solid var(--border-color);
+}
+
+.md-panel-header {
+    background-color: var(--bg-tertiary);
+    padding: 0.5rem;
+    border-bottom: 1px solid var(--border-color);
+    font-weight: 600;
+    font-size: 0.9rem;
+}
+
+.md-textarea {
+    flex: 1;
+    padding: 1rem;
+    border: none;
+    background-color: var(--bg-secondary);
+    color: var(--text-primary);
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-size: 0.9rem;
+    resize: none;
+    outline: none;
+}
+
+.md-preview {
+    flex: 1;
+    padding: 1rem;
+    overflow-y: auto;
+    background-color: var(--bg-secondary);
+    color: var(--text-primary);
+}
+
+.md-preview h1, .md-preview h2, .md-preview h3 {
+    margin-top: 1rem;
+    margin-bottom: 0.5rem;
+}
+
+.md-preview img {
+    max-width: 100%;
+    height: auto;
+}
+
+.md-preview code {
+    background-color: var(--bg-tertiary);
+    padding: 0.2rem 0.4rem;
+    border-radius: 0.25rem;
+}
+
+.md-preview pre {
+    background-color: var(--bg-tertiary);
+    padding: 1rem;
+    border-radius: 0.25rem;
+    overflow-x: auto;
+}
+
+.md-preview blockquote {
+    border-left: 4px solid var(--primary-color);
+    padding-left: 1rem;
+    margin-left: 0;
+    color: var(--text-secondary);
 }
 </style>
 {% endblock %}
@@ -66,9 +162,60 @@
             <div class="card-header">
                 <h5 class="mb-0"><i class="bi bi-file-text"></i> Info Page Content (Markdown)</h5>
             </div>
-            <div class="card-body">
-                <div id="vditor"></div>
-                <input type="hidden" name="info_page_content" id="info_page_content">
+            <div class="card-body p-0">
+                <div class="md-editor-container">
+                    <!-- Toolbar -->
+                    <div class="md-toolbar">
+                        <button type="button" class="md-toolbar-btn" data-action="bold" title="Bold">
+                            <i class="bi bi-type-bold"></i>
+                        </button>
+                        <button type="button" class="md-toolbar-btn" data-action="italic" title="Italic">
+                            <i class="bi bi-type-italic"></i>
+                        </button>
+                        <button type="button" class="md-toolbar-btn" data-action="strikethrough" title="Strikethrough">
+                            <i class="bi bi-type-strikethrough"></i>
+                        </button>
+                        <div class="md-toolbar-separator"></div>
+                        <button type="button" class="md-toolbar-btn" data-action="h1" title="Heading 1">H1</button>
+                        <button type="button" class="md-toolbar-btn" data-action="h2" title="Heading 2">H2</button>
+                        <button type="button" class="md-toolbar-btn" data-action="h3" title="Heading 3">H3</button>
+                        <div class="md-toolbar-separator"></div>
+                        <button type="button" class="md-toolbar-btn" data-action="ul" title="Bulleted List">
+                            <i class="bi bi-list-ul"></i>
+                        </button>
+                        <button type="button" class="md-toolbar-btn" data-action="ol" title="Numbered List">
+                            <i class="bi bi-list-ol"></i>
+                        </button>
+                        <button type="button" class="md-toolbar-btn" data-action="quote" title="Quote">
+                            <i class="bi bi-quote"></i>
+                        </button>
+                        <div class="md-toolbar-separator"></div>
+                        <button type="button" class="md-toolbar-btn" data-action="link" title="Link">
+                            <i class="bi bi-link-45deg"></i>
+                        </button>
+                        <button type="button" class="md-toolbar-btn" data-action="image" title="Image">
+                            <i class="bi bi-image"></i>
+                        </button>
+                        <button type="button" class="md-toolbar-btn" data-action="code" title="Code Block">
+                            <i class="bi bi-code-square"></i>
+                        </button>
+                    </div>
+
+                    <!-- Editor Panels -->
+                    <div class="md-editor-panels">
+                        <div class="md-editor-panel">
+                            <div class="md-panel-header">Markdown</div>
+                            <textarea class="md-textarea" id="mdEditor" name="info_page_content">{{ episode.info_page_content }}</textarea>
+                        </div>
+                        <div class="md-editor-panel">
+                            <div class="md-panel-header">Preview</div>
+                            <div class="md-preview" id="mdPreview"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Hidden file input for image upload -->
+                <input type="file" id="imageUploadInput" accept="image/*" style="display: none;">
             </div>
         </div>
 
@@ -125,83 +272,169 @@
 {% endblock %}
 
 {% block extra_js %}
-<!-- Vditor -->
-<script src="https://unpkg.com/vditor/dist/index.min.js"></script>
+<!-- Marked.js for Markdown rendering -->
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 
 <script>
-// Initialize Vditor with theme support
-const currentTheme = document.documentElement.getAttribute('data-theme');
-const vditor = new Vditor('vditor', {
-    height: 600,
-    mode: 'wysiwyg',
-    theme: currentTheme === 'dark' ? 'dark' : 'classic',
-    placeholder: 'Write your content here using Markdown...',
-    toolbar: [
-        'emoji',
-        'headings',
-        'bold',
-        'italic',
-        'strike',
-        'link',
-        '|',
-        'list',
-        'ordered-list',
-        'check',
-        'outdent',
-        'indent',
-        '|',
-        'quote',
-        'line',
-        'code',
-        'inline-code',
-        'insert-before',
-        'insert-after',
-        '|',
-        'upload',
-        'table',
-        '|',
-        'undo',
-        'redo',
-        '|',
-        'fullscreen',
-        'edit-mode',
-        'preview',
-        'outline',
-    ],
-    upload: {
-        accept: 'image/*',
-        url: '{% url "progress:vditor_upload" %}',
-        max: 10 * 1024 * 1024, // 10MB
-        fieldName: 'file[]',
-        headers: {
-            'X-CSRFToken': '{{ csrf_token }}'
-        },
-        format(files, responseText) {
-            const response = JSON.parse(responseText);
-            if (response.code === 0) {
-                const result = {};
-                Object.keys(response.data.succMap).forEach(key => {
-                    result[key] = response.data.succMap[key];
-                });
-                return JSON.stringify({
-                    code: 0,
-                    data: {
-                        succMap: result
-                    }
-                });
-            }
-            return responseText;
-        }
-    },
-    after: () => {
-        // Set initial content
-        vditor.setValue(`{{ episode.info_page_content|escapejs }}`);
-    }
+// Markdown Editor
+const mdEditor = document.getElementById('mdEditor');
+const mdPreview = document.getElementById('mdPreview');
+const imageUploadInput = document.getElementById('imageUploadInput');
+
+// Configure marked.js
+marked.setOptions({
+    breaks: true,
+    gfm: true
 });
 
-// Update hidden field before form submission
-document.getElementById('episodeForm').addEventListener('submit', function(e) {
-    document.getElementById('info_page_content').value = vditor.getValue();
+// Update preview with debounce
+let previewTimeout;
+function updatePreview() {
+    clearTimeout(previewTimeout);
+    previewTimeout = setTimeout(() => {
+        const markdown = mdEditor.value;
+        mdPreview.innerHTML = marked.parse(markdown);
+    }, 300);
+}
+
+// Initial preview render
+updatePreview();
+
+// Listen to editor changes
+mdEditor.addEventListener('input', updatePreview);
+
+// Toolbar actions
+const toolbarButtons = document.querySelectorAll('.md-toolbar-btn');
+
+toolbarButtons.forEach(btn => {
+    btn.addEventListener('click', function() {
+        const action = this.getAttribute('data-action');
+        const start = mdEditor.selectionStart;
+        const end = mdEditor.selectionEnd;
+        const selectedText = mdEditor.value.substring(start, end);
+        const beforeText = mdEditor.value.substring(0, start);
+        const afterText = mdEditor.value.substring(end);
+
+        let replacement = '';
+        let cursorOffset = 0;
+
+        switch(action) {
+            case 'bold':
+                replacement = `**${selectedText || 'bold text'}**`;
+                cursorOffset = selectedText ? 0 : -2;
+                break;
+            case 'italic':
+                replacement = `*${selectedText || 'italic text'}*`;
+                cursorOffset = selectedText ? 0 : -1;
+                break;
+            case 'strikethrough':
+                replacement = `~~${selectedText || 'strikethrough text'}~~`;
+                cursorOffset = selectedText ? 0 : -2;
+                break;
+            case 'h1':
+                replacement = `# ${selectedText || 'Heading 1'}`;
+                cursorOffset = selectedText ? 0 : 0;
+                break;
+            case 'h2':
+                replacement = `## ${selectedText || 'Heading 2'}`;
+                cursorOffset = selectedText ? 0 : 0;
+                break;
+            case 'h3':
+                replacement = `### ${selectedText || 'Heading 3'}`;
+                cursorOffset = selectedText ? 0 : 0;
+                break;
+            case 'ul':
+                replacement = `- ${selectedText || 'List item'}`;
+                cursorOffset = selectedText ? 0 : 0;
+                break;
+            case 'ol':
+                replacement = `1. ${selectedText || 'List item'}`;
+                cursorOffset = selectedText ? 0 : 0;
+                break;
+            case 'quote':
+                replacement = `> ${selectedText || 'Quote'}`;
+                cursorOffset = selectedText ? 0 : 0;
+                break;
+            case 'link':
+                const url = prompt('Enter URL:', 'https://');
+                if (url) {
+                    replacement = `[${selectedText || 'link text'}](${url})`;
+                    cursorOffset = selectedText ? 0 : -url.length - 3;
+                }
+                break;
+            case 'image':
+                imageUploadInput.click();
+                return; // Don't update text yet
+            case 'code':
+                replacement = '```\n' + (selectedText || 'code') + '\n```';
+                cursorOffset = selectedText ? 0 : -4;
+                break;
+        }
+
+        mdEditor.value = beforeText + replacement + afterText;
+        const newCursorPos = start + replacement.length + cursorOffset;
+        mdEditor.setSelectionRange(newCursorPos, newCursorPos);
+        mdEditor.focus();
+        updatePreview();
+    });
+});
+
+// Image upload handler
+imageUploadInput.addEventListener('change', async function(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    // Validate file
+    if (file.size > 10 * 1024 * 1024) {
+        alert('Image size must be less than 10MB');
+        return;
+    }
+
+    if (!file.type.startsWith('image/')) {
+        alert('Please select an image file');
+        return;
+    }
+
+    // Upload image
+    const formData = new FormData();
+    formData.append('file[]', file);
+
+    try {
+        const response = await fetch('{% url "progress:vditor_upload" %}', {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': '{{ csrf_token }}'
+            },
+            body: formData
+        });
+
+        const data = await response.json();
+
+        if (data.code === 0 && data.data.succMap) {
+            const imageUrl = Object.values(data.data.succMap)[0];
+
+            // Insert image markdown
+            const start = mdEditor.selectionStart;
+            const beforeText = mdEditor.value.substring(0, start);
+            const afterText = mdEditor.value.substring(start);
+
+            const imageMarkdown = `![Image](${imageUrl})`;
+            mdEditor.value = beforeText + imageMarkdown + afterText;
+
+            const newPos = start + imageMarkdown.length;
+            mdEditor.setSelectionRange(newPos, newPos);
+            mdEditor.focus();
+            updatePreview();
+        } else {
+            alert('Image upload failed');
+        }
+    } catch (error) {
+        console.error('Upload error:', error);
+        alert('Image upload failed');
+    }
+
+    // Reset input
+    imageUploadInput.value = '';
 });
 </script>
 {% endblock %}

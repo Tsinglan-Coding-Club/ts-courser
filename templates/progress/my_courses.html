@@ -1,0 +1,150 @@
+{% extends 'base.html' %}
+
+{% block title %}My Courses{% endblock %}
+
+{% block content %}
+<div class="container my-5">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2><i class="bi bi-collection"></i> My Courses</h2>
+        <a href="{% url 'courses:course_list' %}" class="btn btn-outline-primary">
+            <i class="bi bi-plus-circle"></i> Browse More Courses
+        </a>
+    </div>
+
+    {% if courses_data %}
+        <div class="row">
+            {% for data in courses_data %}
+                <div class="col-lg-6 mb-4">
+                    <div class="card shadow-sm h-100">
+                        <div class="card-body">
+                            <!-- Course Title and Creator -->
+                            <h5 class="card-title">
+                                <a href="{% url 'courses:course_overview' data.course.id %}" class="text-decoration-none">
+                                    {{ data.course.title }}
+                                </a>
+                            </h5>
+                            <p class="text-muted small mb-2">
+                                <i class="bi bi-person"></i> {{ data.course.creator.get_display_name }}
+                            </p>
+
+                            <!-- Course Description -->
+                            <p class="card-text text-muted mb-3">
+                                {{ data.course.description|truncatewords:20 }}
+                            </p>
+
+                            <!-- Tags -->
+                            {% if data.course.tags.all %}
+                                <div class="mb-3">
+                                    {% for tag in data.course.tags.all|slice:":3" %}
+                                        <span class="badge bg-secondary me-1">{{ tag.name }}</span>
+                                    {% endfor %}
+                                </div>
+                            {% endif %}
+
+                            <!-- Progress Bar -->
+                            <div class="mb-3">
+                                <div class="d-flex justify-content-between mb-1">
+                                    <small class="text-muted">Progress</small>
+                                    <small class="text-muted">
+                                        {{ data.read_episodes }}/{{ data.total_episodes }} episodes
+                                        ({{ data.progress_percentage }}%)
+                                    </small>
+                                </div>
+                                <div class="progress" style="height: 8px;">
+                                    <div class="progress-bar"
+                                         role="progressbar"
+                                         style="width: {{ data.progress_percentage }}%"
+                                         aria-valuenow="{{ data.progress_percentage }}"
+                                         aria-valuemin="0"
+                                         aria-valuemax="100"></div>
+                                </div>
+                            </div>
+
+                            <!-- Enrollment Info -->
+                            <p class="text-muted small mb-3">
+                                <i class="bi bi-calendar-check"></i> Enrolled on {{ data.enrollment.enrolled_at|date:"M d, Y" }}
+                            </p>
+
+                            <!-- Action Buttons -->
+                            <div class="d-flex gap-2">
+                                {% if data.current_episode %}
+                                    <a href="{% url 'courses:learn_episode' data.course.id data.current_episode.id %}"
+                                       class="btn btn-primary flex-fill">
+                                        <i class="bi bi-play-circle"></i> Continue Learning
+                                    </a>
+                                {% else %}
+                                    <a href="{% url 'courses:learn' data.course.id %}"
+                                       class="btn btn-primary flex-fill">
+                                        <i class="bi bi-play-circle"></i> Start Learning
+                                    </a>
+                                {% endif %}
+                                <button type="button"
+                                        class="btn btn-outline-danger unenroll-btn"
+                                        data-course-id="{{ data.course.id }}"
+                                        data-course-title="{{ data.course.title }}">
+                                    <i class="bi bi-x-circle"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+    {% else %}
+        <!-- Empty State -->
+        <div class="text-center py-5">
+            <i class="bi bi-inbox" style="font-size: 4rem; color: var(--text-muted);"></i>
+            <h4 class="mt-3 text-muted">No courses enrolled yet</h4>
+            <p class="text-muted">Start your learning journey by browsing our course catalog!</p>
+            <a href="{% url 'courses:course_list' %}" class="btn btn-primary mt-3">
+                <i class="bi bi-search"></i> Browse Courses
+            </a>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Unenroll functionality
+    const unenrollBtns = document.querySelectorAll('.unenroll-btn');
+
+    unenrollBtns.forEach(btn => {
+        btn.addEventListener('click', async function() {
+            const courseId = this.getAttribute('data-course-id');
+            const courseTitle = this.getAttribute('data-course-title');
+
+            if (!confirm(`Are you sure you want to unenroll from "${courseTitle}"?`)) {
+                return;
+            }
+
+            try {
+                const formData = new FormData();
+                formData.append('course_id', courseId);
+
+                const csrfToken = '{{ csrf_token }}';
+
+                const response = await fetch('{% url "progress:unenroll_course" %}', {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRFToken': csrfToken
+                    },
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    // Reload page to show updated list
+                    window.location.reload();
+                } else {
+                    alert('Error: ' + (data.error || 'Failed to unenroll'));
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('An error occurred while unenrolling from the course.');
+            }
+        });
+    });
+</script>
+{% endblock %}

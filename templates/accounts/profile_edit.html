@@ -1,0 +1,251 @@
+{% extends 'base.html' %}
+
+{% block title %}Edit Profile{% endblock %}
+
+{% block content %}
+<div class="container my-5">
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <div class="card shadow-sm">
+                <div class="card-header">
+                    <h4 class="mb-0"><i class="bi bi-pencil-square"></i> Edit Profile</h4>
+                </div>
+                <div class="card-body">
+                    <form method="post" enctype="multipart/form-data">
+                        {% csrf_token %}
+
+                        <!-- Avatar Upload -->
+                        <div class="mb-4 text-center">
+                            <label class="form-label d-block"><strong>Profile Avatar</strong></label>
+                            <img src="{{ user.get_avatar_url }}"
+                                 alt="Current Avatar"
+                                 id="avatarPreview"
+                                 class="rounded-circle mb-3"
+                                 style="width: 120px; height: 120px; object-fit: cover; border: 3px solid var(--primary-color);">
+                            <div>
+                                <input type="file"
+                                       class="form-control w-auto d-inline-block"
+                                       id="avatarInput"
+                                       name="avatar"
+                                       accept="image/jpeg,image/png,image/gif,image/webp">
+                                <small class="text-muted d-block mt-2">
+                                    Max size: 2MB. Formats: JPEG, PNG, GIF, WebP
+                                </small>
+                            </div>
+                        </div>
+
+                        <!-- Display Name -->
+                        <div class="mb-3">
+                            <label for="display_name" class="form-label">
+                                <strong>Display Name</strong>
+                            </label>
+                            <input type="text"
+                                   class="form-control"
+                                   id="display_name"
+                                   name="display_name"
+                                   value="{{ user.display_name }}"
+                                   maxlength="100"
+                                   placeholder="Your display name (leave empty to use username)">
+                            <small class="text-muted">
+                                Current: {{ user.get_display_name }}
+                            </small>
+                        </div>
+
+                        <!-- Bio -->
+                        <div class="mb-3">
+                            <label for="bio" class="form-label">
+                                <strong>Bio</strong>
+                            </label>
+                            <textarea class="form-control"
+                                      id="bio"
+                                      name="bio"
+                                      rows="4"
+                                      maxlength="500"
+                                      placeholder="Tell us about yourself...">{{ user.bio }}</textarea>
+                            <small class="text-muted">
+                                <span id="bioCharCount">{{ user.bio|length }}</span>/500 characters
+                            </small>
+                        </div>
+
+                        <!-- Favorite Tags -->
+                        <div class="mb-4">
+                            <label class="form-label">
+                                <strong>Favorite Tags</strong>
+                            </label>
+                            <div class="border rounded p-3" style="background-color: var(--bg-tertiary);">
+                                <div id="selectedTagsDisplay" class="mb-2">
+                                    {% for tag in user.favorite_tags.all %}
+                                        <span class="badge bg-secondary me-1 mb-1">{{ tag.name }}</span>
+                                    {% empty %}
+                                        <span class="text-muted">No tags selected</span>
+                                    {% endfor %}
+                                </div>
+                                <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#tagSelectModal">
+                                    <i class="bi bi-tags"></i> Select Tags
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Action Buttons -->
+                        <div class="d-flex justify-content-between">
+                            <a href="{% url 'accounts:profile' %}" class="btn btn-secondary">
+                                <i class="bi bi-x-circle"></i> Cancel
+                            </a>
+                            <button type="submit" class="btn btn-primary">
+                                <i class="bi bi-check-circle"></i> Save Changes
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Tag Selection Modal -->
+<div class="modal fade" id="tagSelectModal" tabindex="-1" aria-labelledby="tagSelectModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="tagSelectModalLabel">
+                    <i class="bi bi-tags"></i> Select Your Favorite Tags
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted">Select tags that match your interests:</p>
+                <div class="row">
+                    {% regroup all_tags by category as tag_groups %}
+                    {% for group in tag_groups %}
+                        <div class="col-md-6 mb-3">
+                            <h6 class="text-primary">{{ group.grouper|title }}</h6>
+                            {% for tag in group.list %}
+                                <div class="form-check">
+                                    <input class="form-check-input tag-checkbox"
+                                           type="checkbox"
+                                           value="{{ tag.id }}"
+                                           id="tag_{{ tag.id }}"
+                                           {% if tag.id in user_favorite_tag_ids %}checked{% endif %}>
+                                    <label class="form-check-label" for="tag_{{ tag.id }}">
+                                        {{ tag.name }}
+                                    </label>
+                                </div>
+                            {% endfor %}
+                        </div>
+                    {% endfor %}
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="saveTagsBtn">
+                    <i class="bi bi-check-circle"></i> Save Tags
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Avatar Preview
+    const avatarInput = document.getElementById('avatarInput');
+    const avatarPreview = document.getElementById('avatarPreview');
+
+    avatarInput.addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (file) {
+            // Validate file size (2MB)
+            if (file.size > 2 * 1024 * 1024) {
+                alert('File size must be less than 2MB');
+                e.target.value = '';
+                return;
+            }
+
+            // Preview image
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                avatarPreview.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+    });
+
+    // Bio Character Count
+    const bioTextarea = document.getElementById('bio');
+    const charCount = document.getElementById('bioCharCount');
+
+    bioTextarea.addEventListener('input', function() {
+        charCount.textContent = this.value.length;
+    });
+
+    // Save Tags (AJAX)
+    const saveTagsBtn = document.getElementById('saveTagsBtn');
+    const tagCheckboxes = document.querySelectorAll('.tag-checkbox');
+    const selectedTagsDisplay = document.getElementById('selectedTagsDisplay');
+    const tagModal = new bootstrap.Modal(document.getElementById('tagSelectModal'));
+
+    saveTagsBtn.addEventListener('click', async function() {
+        // Get selected tag IDs
+        const selectedTagIds = Array.from(tagCheckboxes)
+            .filter(cb => cb.checked)
+            .map(cb => cb.value);
+
+        // Prepare form data
+        const formData = new FormData();
+        selectedTagIds.forEach(id => {
+            formData.append('tag_ids[]', id);
+        });
+
+        // Get CSRF token
+        const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+
+        try {
+            const response = await fetch('{% url "accounts:update_favorite_tags" %}', {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': csrfToken
+                },
+                body: formData
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                // Update display
+                if (selectedTagIds.length === 0) {
+                    selectedTagsDisplay.innerHTML = '<span class="text-muted">No tags selected</span>';
+                } else {
+                    const selectedLabels = Array.from(tagCheckboxes)
+                        .filter(cb => cb.checked)
+                        .map(cb => cb.nextElementSibling.textContent.trim());
+
+                    selectedTagsDisplay.innerHTML = selectedLabels
+                        .map(label => `<span class="badge bg-secondary me-1 mb-1">${label}</span>`)
+                        .join('');
+                }
+
+                // Close modal
+                tagModal.hide();
+
+                // Show success message (optional)
+                const alertDiv = document.createElement('div');
+                alertDiv.className = 'alert alert-success alert-dismissible fade show';
+                alertDiv.innerHTML = `
+                    ${data.message}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                `;
+                document.querySelector('.container').insertBefore(alertDiv, document.querySelector('.row'));
+
+                // Auto-dismiss after 3 seconds
+                setTimeout(() => alertDiv.remove(), 3000);
+            } else {
+                alert('Error: ' + data.message);
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            alert('An error occurred while saving tags.');
+        }
+    });
+</script>
+{% endblock %}

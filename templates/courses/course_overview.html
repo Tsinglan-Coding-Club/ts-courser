@@ -14,7 +14,22 @@
                 </ol>
             </nav>
 
-            <h1 class="display-5">{{ course.title }}</h1>
+            <div class="d-flex align-items-center mb-3">
+                <h1 class="display-5 mb-0">{{ course.title }}</h1>
+                {% if user.is_student %}
+                    <button type="button"
+                            class="btn ms-3 enroll-toggle-btn"
+                            id="enrollBtn"
+                            data-course-id="{{ course.id }}"
+                            data-enrolled="{{ is_enrolled|yesno:'true,false' }}"
+                            style="{% if is_enrolled %}background-color: var(--warning-color); border-color: var(--warning-color);{% else %}background-color: transparent; border: 2px solid var(--primary-color); color: var(--primary-color);{% endif %}">
+                        <i class="bi {% if is_enrolled %}bi-star-fill{% else %}bi-star{% endif %}"></i>
+                        <span class="d-none d-md-inline ms-1">
+                            {% if is_enrolled %}Enrolled{% else %}Enroll{% endif %}
+                        </span>
+                    </button>
+                {% endif %}
+            </div>
             <p class="lead">{{ course.description }}</p>
 
             <div class="mb-3">
@@ -98,4 +113,69 @@
         </a>
     </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const enrollBtn = document.getElementById('enrollBtn');
+
+    if (enrollBtn) {
+        enrollBtn.addEventListener('click', async function() {
+            const courseId = this.getAttribute('data-course-id');
+            const isEnrolled = this.getAttribute('data-enrolled') === 'true';
+
+            try {
+                const formData = new FormData();
+                formData.append('course_id', courseId);
+
+                const csrfToken = '{{ csrf_token }}';
+                const endpoint = isEnrolled ? '{% url "progress:unenroll_course" %}' : '{% url "progress:enroll_course" %}';
+
+                const response = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRFToken': csrfToken
+                    },
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    // Toggle button state
+                    const newEnrolled = data.enrolled;
+                    this.setAttribute('data-enrolled', newEnrolled);
+
+                    // Update button appearance
+                    const icon = this.querySelector('i');
+                    const text = this.querySelector('span');
+
+                    if (newEnrolled) {
+                        this.style.backgroundColor = 'var(--warning-color)';
+                        this.style.borderColor = 'var(--warning-color)';
+                        this.style.color = 'white';
+                        icon.classList.remove('bi-star');
+                        icon.classList.add('bi-star-fill');
+                        if (text) text.textContent = 'Enrolled';
+                    } else {
+                        this.style.backgroundColor = 'transparent';
+                        this.style.border = '2px solid var(--primary-color)';
+                        this.style.color = 'var(--primary-color)';
+                        icon.classList.remove('bi-star-fill');
+                        icon.classList.add('bi-star');
+                        if (text) text.textContent = 'Enroll';
+                    }
+
+                    // Optional: Show success message
+                    console.log(data.message);
+                } else {
+                    alert('Error: ' + (data.error || 'Failed to update enrollment status'));
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('An error occurred. Please try again.');
+            }
+        });
+    }
+</script>
 {% endblock %}

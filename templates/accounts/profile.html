@@ -1,0 +1,118 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ profile_user.get_display_name }} - Profile{% endblock %}
+
+{% block content %}
+<div class="container my-5">
+    <div class="row">
+        <!-- Profile Card -->
+        <div class="col-lg-4 mb-4">
+            <div class="card shadow-sm">
+                <div class="card-body text-center">
+                    <!-- Avatar -->
+                    <img src="{{ profile_user.get_avatar_url }}"
+                         alt="{{ profile_user.username }}"
+                         class="rounded-circle mb-3"
+                         style="width: 150px; height: 150px; object-fit: cover; border: 3px solid var(--primary-color);">
+
+                    <!-- Display Name -->
+                    <h3 class="mb-1">{{ profile_user.get_display_name }}</h3>
+                    <p class="text-muted mb-2">@{{ profile_user.username }}</p>
+
+                    <!-- Role Badge -->
+                    {% if profile_user.is_teacher %}
+                        <span class="badge bg-success mb-3">
+                            <i class="bi bi-mortarboard"></i> Teacher
+                        </span>
+                    {% elif profile_user.is_admin %}
+                        <span class="badge bg-danger mb-3">
+                            <i class="bi bi-shield-check"></i> Admin
+                        </span>
+                    {% else %}
+                        <span class="badge bg-primary mb-3">
+                            <i class="bi bi-person"></i> Student
+                        </span>
+                    {% endif %}
+
+                    <!-- Stats -->
+                    <div class="row mt-3">
+                        {% if profile_user.is_student %}
+                            <div class="col-12">
+                                <div class="p-3 rounded" style="background-color: var(--bg-tertiary);">
+                                    <h4 class="mb-0">{{ enrolled_count }}</h4>
+                                    <small class="text-muted">Enrolled Courses</small>
+                                </div>
+                            </div>
+                        {% elif profile_user.is_teacher %}
+                            <div class="col-12">
+                                <div class="p-3 rounded" style="background-color: var(--bg-tertiary);">
+                                    <h4 class="mb-0">{{ created_count }}</h4>
+                                    <small class="text-muted">Courses Created</small>
+                                </div>
+                            </div>
+                        {% endif %}
+                    </div>
+
+                    <!-- Edit Profile Button (only for own profile) -->
+                    {% if is_own_profile %}
+                        <div class="mt-3">
+                            <a href="{% url 'accounts:profile_edit' %}" class="btn btn-primary w-100">
+                                <i class="bi bi-pencil"></i> Edit Profile
+                            </a>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Profile Details -->
+        <div class="col-lg-8">
+            <div class="card shadow-sm mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-info-circle"></i> About</h5>
+                </div>
+                <div class="card-body">
+                    {% if profile_user.bio %}
+                        <p class="mb-0">{{ profile_user.bio }}</p>
+                    {% else %}
+                        <p class="text-muted mb-0">
+                            <i>No bio provided yet.</i>
+                        </p>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Favorite Tags -->
+            {% if favorite_tags %}
+                <div class="card shadow-sm">
+                    <div class="card-header">
+                        <h5 class="mb-0"><i class="bi bi-tags"></i> Favorite Tags</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="d-flex flex-wrap gap-2">
+                            {% for tag in favorite_tags %}
+                                <span class="badge bg-secondary" style="font-size: 0.9rem; padding: 0.5rem 1rem;">
+                                    {{ tag.name }}
+                                </span>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+            {% else %}
+                {% if is_own_profile %}
+                    <div class="card shadow-sm">
+                        <div class="card-header">
+                            <h5 class="mb-0"><i class="bi bi-tags"></i> Favorite Tags</h5>
+                        </div>
+                        <div class="card-body">
+                            <p class="text-muted mb-0">
+                                <i>No favorite tags selected yet. Add some in your profile settings!</i>
+                            </p>
+                        </div>
+                    </div>
+                {% endif %}
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
