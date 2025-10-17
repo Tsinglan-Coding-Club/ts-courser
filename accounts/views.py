@@ -53,19 +53,47 @@ def send_verification_code(request):
 
 
 def register(request):
-    """User registration view supporting both students and teachers."""
+    """User registration view with email verification code."""
     if request.method == 'POST':
-        username = request.POST.get('username')
+        # Get form data
         email = request.POST.get('email')
+        verification_code = request.POST.get('verification_code')
+        username = request.POST.get('username')
         password = request.POST.get('password')
         password_confirm = request.POST.get('password_confirm')
         role = request.POST.get('role', 'student')
 
         # Validation
-        if not all([username, email, password, password_confirm]):
+        if not all([email, verification_code, username, password, password_confirm]):
             messages.error(request, 'All fields are required.')
             return render(request, 'accounts/register.html')
 
+        # Verify email matches session
+        session_email = request.session.get('verification_email')
+        if not session_email or session_email != email:
+            messages.error(request, 'Email verification required. Please request a new code.')
+            return render(request, 'accounts/register.html')
+
+        # Verify code matches and hasn't expired
+        session_code = request.session.get('verification_code')
+        code_sent_at = request.session.get('code_sent_at')
+
+        if not session_code or session_code != verification_code:
+            messages.error(request, 'Invalid verification code.')
+            return render(request, 'accounts/register.html')
+
+        # Check code expiration (10 minutes)
+        if code_sent_at:
+            sent_time = timezone.datetime.fromisoformat(code_sent_at)
+            if timezone.now() - sent_time > timedelta(minutes=10):
+                messages.error(request, 'Verification code expired. Please request a new one.')
+                # Clear session
+                request.session.pop('verification_code', None)
+                request.session.pop('verification_email', None)
+                request.session.pop('code_sent_at', None)
+                return render(request, 'accounts/register.html')
+
+        # Validate passwords
         if password != password_confirm:
             messages.error(request, 'Passwords do not match.')
             return render(request, 'accounts/register.html')
@@ -78,12 +106,13 @@ def register(request):
                 password=password,
                 role=role
             )
+            user.is_email_verified = True
+            user.save()
 
-            # Print verification code (MVP placeholder)
-            verification_code = f"{user.id:06d}"
-            print(f"\n{'='*50}")
-            print(f"VERIFICATION CODE for {email}: {verification_code}")
-            print(f"{'='*50}\n")
+            # Clear session
+            request.session.pop('verification_code', None)
+            request.session.pop('verification_email', None)
+            request.session.pop('code_sent_at', None)
 
             if role == 'teacher':
                 messages.success(

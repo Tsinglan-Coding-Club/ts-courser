@@ -12,17 +12,12 @@
                         <i class="bi bi-person-plus"></i> Register
                     </h2>
 
-                    <form method="post">
+                    <form method="post" id="registerForm">
                         {% csrf_token %}
 
                         <div class="mb-3">
                             <label for="username" class="form-label">Username</label>
                             <input type="text" class="form-control" id="username" name="username" required autofocus>
-                        </div>
-
-                        <div class="mb-3">
-                            <label for="email" class="form-label">Email</label>
-                            <input type="email" class="form-control" id="email" name="email" required>
                         </div>
 
                         <div class="mb-3">
@@ -33,6 +28,11 @@
                         <div class="mb-3">
                             <label for="password_confirm" class="form-label">Confirm Password</label>
                             <input type="password" class="form-control" id="password_confirm" name="password_confirm" required>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="email" class="form-label">Email</label>
+                            <input type="email" class="form-control" id="email" name="email" required>
                         </div>
 
                         <div class="mb-4">
@@ -51,8 +51,26 @@
                             </div>
                         </div>
 
+                        <div class="mb-3">
+                            <label class="form-label">Email Verification</label>
+                            <div class="d-grid mb-2">
+                                <button type="button" class="btn btn-outline-primary" id="sendCodeBtn">
+                                    <i class="bi bi-envelope"></i> Send Verification Code
+                                </button>
+                            </div>
+                            <small id="codeStatus" class="text-muted"></small>
+                        </div>
+
+                        <div class="mb-3" id="codeInputDiv" style="display: none;">
+                            <label for="verification_code" class="form-label">Verification Code</label>
+                            <input type="text" class="form-control" id="verification_code" name="verification_code"
+                                   maxlength="6" pattern="\d{6}"
+                                   placeholder="Enter 6-digit code">
+                            <small class="text-muted">Code expires in 10 minutes</small>
+                        </div>
+
                         <div class="d-grid">
-                            <button type="submit" class="btn btn-primary btn-lg">
+                            <button type="submit" class="btn btn-primary btn-lg" id="registerBtn" disabled>
                                 <i class="bi bi-person-plus"></i> Register
                             </button>
                         </div>
@@ -68,4 +86,117 @@
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const usernameInput = document.getElementById('username');
+    const passwordInput = document.getElementById('password');
+    const passwordConfirmInput = document.getElementById('password_confirm');
+    const emailInput = document.getElementById('email');
+    const sendCodeBtn = document.getElementById('sendCodeBtn');
+    const verificationCodeInput = document.getElementById('verification_code');
+    const codeInputDiv = document.getElementById('codeInputDiv');
+    const registerBtn = document.getElementById('registerBtn');
+    const codeStatus = document.getElementById('codeStatus');
+    const registerForm = document.getElementById('registerForm');
+
+    let codeSent = false;
+
+    // Send verification code
+    sendCodeBtn.addEventListener('click', async function() {
+        // Validate basic fields first
+        if (!usernameInput.value.trim()) {
+            alert('Please enter username');
+            usernameInput.focus();
+            return;
+        }
+
+        if (!passwordInput.value) {
+            alert('Please enter password');
+            passwordInput.focus();
+            return;
+        }
+
+        if (!passwordConfirmInput.value) {
+            alert('Please confirm password');
+            passwordConfirmInput.focus();
+            return;
+        }
+
+        if (passwordInput.value !== passwordConfirmInput.value) {
+            alert('Passwords do not match');
+            passwordConfirmInput.focus();
+            return;
+        }
+
+        const email = emailInput.value.trim();
+        if (!email) {
+            alert('Please enter your email');
+            emailInput.focus();
+            return;
+        }
+
+        // Disable button and show loading
+        sendCodeBtn.disabled = true;
+        sendCodeBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Sending...';
+
+        try {
+            const formData = new FormData();
+            formData.append('email', email);
+
+            const response = await fetch('{% url "accounts:send_verification_code" %}', {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': '{{ csrf_token }}'
+                },
+                body: formData
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                // Show verification code input
+                codeInputDiv.style.display = 'block';
+                verificationCodeInput.focus();
+
+                // Update status
+                codeStatus.textContent = data.message;
+                codeStatus.className = 'text-success';
+
+                // Update button
+                sendCodeBtn.innerHTML = '<i class="bi bi-check-circle"></i> Code Sent';
+
+                codeSent = true;
+
+                // Enable verification code input to trigger register button
+                verificationCodeInput.addEventListener('input', function() {
+                    if (this.value.length === 6) {
+                        registerBtn.disabled = false;
+                    } else {
+                        registerBtn.disabled = true;
+                    }
+                });
+            } else {
+                alert('Error: ' + data.error);
+                sendCodeBtn.disabled = false;
+                sendCodeBtn.innerHTML = '<i class="bi bi-envelope"></i> Send Verification Code';
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            alert('Failed to send verification code');
+            sendCodeBtn.disabled = false;
+            sendCodeBtn.innerHTML = '<i class="bi bi-envelope"></i> Send Verification Code';
+        }
+    });
+
+    // Form validation before submit
+    registerForm.addEventListener('submit', function(e) {
+        if (!codeSent || verificationCodeInput.value.length !== 6) {
+            e.preventDefault();
+            alert('Please send and enter the verification code first');
+            return false;
+        }
+    });
+</script>
 {% endblock %}

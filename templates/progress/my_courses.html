@@ -68,12 +68,12 @@
                             <!-- Action Buttons -->
                             <div class="d-flex gap-2">
                                 {% if data.current_episode %}
-                                    <a href="{% url 'courses:learn_episode' data.course.id data.current_episode.id %}"
+                                    <a href="{% url 'courses:learning_interface_episode' data.course.id data.current_episode.id %}"
                                        class="btn btn-primary flex-fill">
                                         <i class="bi bi-play-circle"></i> Continue Learning
                                     </a>
                                 {% else %}
-                                    <a href="{% url 'courses:learn' data.course.id %}"
+                                    <a href="{% url 'courses:learning_interface' data.course.id %}"
                                        class="btn btn-primary flex-fill">
                                         <i class="bi bi-play-circle"></i> Start Learning
                                     </a>
