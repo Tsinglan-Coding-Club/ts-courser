@@ -3,6 +3,31 @@ from django.conf import settings
 from courses.models import Course, Episode
 
 
+class CourseEnrollment(models.Model):
+    """
+    Tracks which courses a user has enrolled in (added to their learning list).
+    """
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='enrolled_courses'
+    )
+    course = models.ForeignKey(
+        Course,
+        on_delete=models.CASCADE,
+        related_name='enrollments'
+    )
+    enrolled_at = models.DateTimeField(auto_now_add=True, help_text='When the user enrolled in this course')
+
+    def __str__(self):
+        return f"{self.user.username} enrolled in {self.course.title}"
+
+    class Meta:
+        unique_together = ['user', 'course']
+        ordering = ['-enrolled_at']
+        verbose_name_plural = 'Course Enrollments'
+
+
 class UserProgress(models.Model):
     """
     Tracks a user's overall progress in a course.
