@@ -2,7 +2,7 @@ from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib.auth.decorators import login_required
 from django.db.models import Q, Prefetch
 from .models import Course, Tag, Section, Episode
-from progress.models import UserProgress, EpisodeReadStatus
+from progress.models import UserProgress, EpisodeReadStatus, CourseEnrollment
 
 
 @login_required
@@ -55,12 +55,19 @@ def course_overview(request, course_id):
     total_episodes = all_episodes.count()
     progress_percentage = (read_episodes / total_episodes * 100) if total_episodes > 0 else 0
 
+    # Check if user is enrolled in this course
+    is_enrolled = CourseEnrollment.objects.filter(
+        user=request.user,
+        course=course
+    ).exists()
+
     context = {
         'course': course,
         'progress': progress,
         'total_episodes': total_episodes,
         'read_episodes': read_episodes,
         'progress_percentage': round(progress_percentage, 1),
+        'is_enrolled': is_enrolled,
     }
     return render(request, 'courses/course_overview.html', context)
 

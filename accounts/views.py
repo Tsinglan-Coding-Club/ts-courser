@@ -6,9 +6,50 @@ from django.db import IntegrityError
 from django.http import JsonResponse
 from django.core.files.storage import default_storage
 from django.views.decorators.http import require_POST
+from django.utils import timezone
+from datetime import timedelta
 from .models import User
 from courses.models import Tag
 import os
+import random
+import string
+
+
+def generate_verification_code():
+    """Generate a 6-digit verification code."""
+    return ''.join(random.choices(string.digits, k=6))
+
+
+@require_POST
+def send_verification_code(request):
+    """Send verification code to email (MVP: print to console)."""
+    email = request.POST.get('email')
+
+    if not email:
+        return JsonResponse({'success': False, 'error': 'Email is required'})
+
+    # Check if email already exists
+    if User.objects.filter(email=email).exists():
+        return JsonResponse({'success': False, 'error': 'Email already registered'})
+
+    # Generate verification code
+    code = generate_verification_code()
+
+    # Store code in session (temporary storage for MVP)
+    request.session['verification_code'] = code
+    request.session['verification_email'] = email
+    request.session['code_sent_at'] = timezone.now().isoformat()
+
+    # MVP: Print to console (replace with email sending in production)
+    print(f"\n{'='*50}")
+    print(f"VERIFICATION CODE for {email}: {code}")
+    print(f"Code expires in 10 minutes")
+    print(f"{'='*50}\n")
+
+    return JsonResponse({
+        'success': True,
+        'message': 'Verification code sent! (Check console in MVP mode)'
+    })
 
 
 def register(request):
