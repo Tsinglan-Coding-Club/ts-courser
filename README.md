@@ -196,6 +196,8 @@ uv run python manage.py migrate
 uv run python manage.py createsuperuser
 ```
 
+SECURITY CHECK！Make sure you change the SECRET_KEY in settings.py to a random value for production use.
+
 5. Run development server:
 ```bash
 uv run python manage.py runserver
