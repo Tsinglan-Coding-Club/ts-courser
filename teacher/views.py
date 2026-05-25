@@ -206,6 +206,7 @@ def episode_edit(request, episode_id):
     context = {
         'episode': episode,
         'course': episode.section.course,
+        'type_options': Episode.TYPE_CHOICES,
     }
     return render(request, 'teacher/episode_edit.html', context)
 

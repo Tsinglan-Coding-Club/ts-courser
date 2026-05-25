@@ -112,6 +112,16 @@
     margin-left: 0;
     color: var(--text-secondary);
 }
+
+.type-toggle-group {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.type-toggle-btn {
+    min-width: 120px;
+}
 </style>
 {% endblock %}
 
@@ -132,24 +142,37 @@
 
         <div class="card mb-4">
             <div class="card-header">
+                <h5 class="mb-0">Episode Type</h5>
+            </div>
+            <div class="card-body">
+                <input type="hidden" id="selectedType" name="type" value="{{ episode.type }}">
+                <div class="type-toggle-group" id="typeToggleGroup">
+                    {% for type_value, type_label in type_options %}
+                        <button
+                            type="button"
+                            class="btn {% if episode.type == type_value %}btn-primary{% else %}btn-outline-primary{% endif %} type-toggle-btn episode-type-btn"
+                            data-type="{{ type_value }}"
+                            aria-pressed="{% if episode.type == type_value %}true{% else %}false{% endif %}"
+                        >
+                            {{ type_label }}
+                        </button>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
+        <div class="card mb-4">
+            <div class="card-header">
                 <h5 class="mb-0">Episode Information</h5>
             </div>
             <div class="card-body">
                 <div class="row">
-                    <div class="col-md-6 mb-3">
+                    <div class="col-md-8 mb-3">
                         <label for="title" class="form-label">Title *</label>
                         <input type="text" class="form-control" id="title" name="title" value="{{ episode.title }}" required>
                     </div>
 
-                    <div class="col-md-3 mb-3">
-                        <label for="type" class="form-label">Type *</label>
-                        <select class="form-select" id="type" name="type">
-                            <option value="material" {% if episode.type == 'material' %}selected{% endif %}>Material</option>
-                            <option value="quiz" {% if episode.type == 'quiz' %}selected{% endif %}>Quiz</option>
-                        </select>
-                    </div>
-
-                    <div class="col-md-3 mb-3">
+                    <div class="col-md-4 mb-3">
                         <label for="order" class="form-label">Order</label>
                         <input type="number" class="form-control" id="order" name="order" value="{{ episode.order }}" required>
                     </div>
@@ -280,6 +303,8 @@
 const mdEditor = document.getElementById('mdEditor');
 const mdPreview = document.getElementById('mdPreview');
 const imageUploadInput = document.getElementById('imageUploadInput');
+const selectedTypeInput = document.getElementById('selectedType');
+const typeToggleButtons = document.querySelectorAll('.episode-type-btn');
 
 // Configure marked.js
 marked.setOptions({
@@ -302,6 +327,31 @@ updatePreview();
 
 // Listen to editor changes
 mdEditor.addEventListener('input', updatePreview);
+
+// Toggle actions for episode type selection
+function setEpisodeType(selectedType) {
+    selectedTypeInput.value = selectedType;
+
+    typeToggleButtons.forEach(button => {
+        const isActive = button.dataset.type === selectedType;
+        button.classList.toggle('btn-primary', isActive);
+        button.classList.toggle('btn-outline-primary', !isActive);
+        button.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+    });
+}
+
+typeToggleButtons.forEach(button => {
+    button.addEventListener('click', () => {
+        setEpisodeType(button.dataset.type);
+    });
+});
+
+// Ensure a valid initial active state on first render
+if (selectedTypeInput && selectedTypeInput.value) {
+    setEpisodeType(selectedTypeInput.value);
+} else if (typeToggleButtons.length > 0) {
+    setEpisodeType(typeToggleButtons[0].dataset.type);
+}
 
 // Toolbar actions
 const toolbarButtons = document.querySelectorAll('.md-toolbar-btn');
@@ -413,7 +463,7 @@ imageUploadInput.addEventListener('change', async function(e) {
         if (data.code === 0 && data.data.succMap) {
             const imageUrl = Object.values(data.data.succMap)[0];
 
-            // Insert image markdown
+            // Insert image Markdown
             const start = mdEditor.selectionStart;
             const beforeText = mdEditor.value.substring(0, start);
             const afterText = mdEditor.value.substring(start);

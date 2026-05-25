@@ -241,6 +241,21 @@
             box-shadow: 0 0 0 0.25rem rgba(136, 56, 144, 0.25);
         }
 
+        /* Button active / focus states: use primary-light for pressed/focused buttons
+           Override browser default blue so pressed buttons stay harmonious with theme */
+        .btn {
+            -webkit-tap-highlight-color: rgba(168,85,184,0.18);
+        }
+
+        .btn:active,.btn:focus:active{
+            background-color: var(--primary-light);
+        }
+
+        /* Ensure outline/outline variants behave consistently when pressed/focused */
+        .btn-outline-primary:active, .btn-outline-primary:focus:active {
+            background-color: var(--primary-light) !important;
+        }
+
         /* Button secondary for dark mode */
         .btn-secondary {
             background-color: var(--text-secondary);
