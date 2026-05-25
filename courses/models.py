@@ -93,6 +93,7 @@ class Episode(models.Model):
     TYPE_CHOICES = [
         ('material', 'Material'),
         ('quiz', 'Quiz'),
+        ('code', 'Code')
     ]
 
     section = models.ForeignKey(
