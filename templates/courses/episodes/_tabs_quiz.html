@@ -1,0 +1,75 @@
+{# Tabs and content for episode type: quiz #}
+{% load course_filters %}
+
+<div class="card">
+    <div class="card-header">
+        <ul class="nav nav-tabs card-header-tabs" id="episodeTabs" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="info-tab" data-bs-toggle="tab" data-bs-target="#info" type="button" role="tab">
+                    <i class="bi bi-info-circle"></i> Info
+                </button>
+            </li>
+            {% if current_episode.content_pdf %}
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="material-tab" data-bs-toggle="tab" data-bs-target="#material" type="button" role="tab">
+                        <i class="bi bi-file-pdf"></i> Material
+                    </button>
+                </li>
+            {% endif %}
+            {% if current_episode.answer_pdf %}
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="answer-tab" data-bs-toggle="tab" data-bs-target="#answer" type="button" role="tab">
+                        <i class="bi bi-check-circle"></i> Answer
+                    </button>
+                </li>
+            {% endif %}
+        </ul>
+    </div>
+    <div class="card-body">
+        <div class="tab-content" id="episodeTabContent">
+            <!-- Info Tab -->
+            <div class="tab-pane fade show active" id="info" role="tabpanel">
+                {% if current_episode.info_page_content %}
+                    <div id="markdown-content" class="markdown-body"></div>
+                {% else %}
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle"></i> No info page content available for this episode.
+                    </div>
+                {% endif %}
+            </div>
+
+            <!-- Material Tab -->
+            {% if current_episode.content_pdf %}
+                <div class="tab-pane fade" id="material" role="tabpanel">
+                    <div class="text-center mb-3">
+                        <a href="{{ current_episode.content_pdf.url }}" target="_blank" class="btn btn-primary">
+                            <i class="bi bi-download"></i> Download PDF
+                        </a>
+                        <button class="btn btn-secondary" id="prevPage">
+                            <i class="bi bi-arrow-left"></i> Previous
+                        </button>
+                        <span class="mx-2">
+                            Page <span id="pageNum"></span> of <span id="pageCount"></span>
+                        </span>
+                        <button class="btn btn-secondary" id="nextPage">
+                            Next <i class="bi bi-arrow-right"></i>
+                        </button>
+                    </div>
+                    <canvas id="pdf-canvas" class="border"></canvas>
+                </div>
+            {% endif %}
+
+            <!-- Answer Tab -->
+            {% if current_episode.answer_pdf %}
+                <div class="tab-pane fade" id="answer" role="tabpanel">
+                    <div class="alert alert-success">
+                        <i class="bi bi-check-circle"></i> Answer key is available for download.
+                    </div>
+                    <a href="{{ current_episode.answer_pdf.url }}" target="_blank" class="btn btn-success btn-lg">
+                        <i class="bi bi-download"></i> Download Answer Key
+                    </a>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
