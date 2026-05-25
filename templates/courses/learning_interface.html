@@ -90,6 +90,14 @@
     background-color: white;
 }
 
+#answer-pdf-canvas {
+    border: 1px solid var(--border-color);
+    max-width: 100%;
+    margin: 0 auto;
+    display: block;
+    background-color: white;
+}
+
 .markdown-body {
     box-sizing: border-box;
     min-width: 200px;
@@ -263,6 +271,8 @@
                     {% include 'courses/episodes/_tabs_quiz.html' %}
                 {% elif current_episode.type == 'code' %}
                     {% include 'courses/episodes/_tabs_code.html' %}
+                {% elif current_episode.type == 'paper' %}
+                    {% include 'courses/episodes/_tabs_paper.html' %}
                 {% else %}
                     {# Fallback for unknown types: render info + generic content #}
                     {% include 'courses/episodes/_tabs_material.html' %}
@@ -297,7 +307,10 @@ const csrftoken = document.querySelector('[name=csrfmiddlewaretoken]').value;
 // Markdown rendering
 {% if current_episode.info_page_content %}
 const markdownContent = `{{ current_episode.info_page_content|escapejs }}`;
-document.getElementById('markdown-content').innerHTML = marked.parse(markdownContent);
+const markdownEl = document.getElementById('markdown-content'); //当markdown不需要渲染的时候跳过
+if (markdownEl) {
+    markdownEl.innerHTML = marked.parse(markdownContent);
+}
 {% endif %}
 
 // Mark as read/unread functionality
@@ -392,6 +405,58 @@ pdfjsLib.getDocument('{{ current_episode.content_pdf.url }}').promise.then(funct
     pdfDoc = pdfDoc_;
     document.getElementById('pageCount').textContent = pdfDoc.numPages;
     renderPage(pageNum);
+});
+{% endif %}
+
+// Answer PDF.js rendering
+{% if current_episode.answer_pdf %}
+let answerPdfDoc = null;
+let answerPageNum = 1;
+let answerPageRendering = false;
+let answerPageNumPending = null;
+const answerScale = 1.5;
+const answerCanvas = document.getElementById('answer-pdf-canvas');
+const answerCtx = answerCanvas.getContext('2d');
+
+function renderAnswerPage(num) {
+    answerPageRendering = true;
+    answerPdfDoc.getPage(num).then(function(page) {
+        const viewport = page.getViewport({scale: answerScale});
+        answerCanvas.height = viewport.height;
+        answerCanvas.width = viewport.width;
+        const renderContext = { canvasContext: answerCtx, viewport: viewport };
+        const renderTask = page.render(renderContext);
+        renderTask.promise.then(function() {
+            answerPageRendering = false;
+            if (answerPageNumPending !== null) {
+                renderAnswerPage(answerPageNumPending);
+                answerPageNumPending = null;
+            }
+        });
+    });
+    document.getElementById('answer-pageNum').textContent = num;
+}
+
+function queueAnswerRenderPage(num) {
+    if (answerPageRendering) { answerPageNumPending = num; }
+    else { renderAnswerPage(num); }
+}
+
+document.getElementById('answer-prevPage').addEventListener('click', function() {
+    if (answerPageNum <= 1) return;
+    answerPageNum--;
+    queueAnswerRenderPage(answerPageNum);
+});
+document.getElementById('answer-nextPage').addEventListener('click', function() {
+    if (answerPageNum >= answerPdfDoc.numPages) return;
+    answerPageNum++;
+    queueAnswerRenderPage(answerPageNum);
+});
+
+pdfjsLib.getDocument('{{ current_episode.answer_pdf.url }}').promise.then(function(pdf) {
+    answerPdfDoc = pdf;
+    document.getElementById('answer-pageCount').textContent = pdf.numPages;
+    renderAnswerPage(1);
 });
 {% endif %}
 

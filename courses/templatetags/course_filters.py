@@ -4,9 +4,10 @@ register = template.Library()
 
 # Episode type → display config mapping (badge CSS class, icon class, label)
 EPISODE_TYPE_CONFIG = {
-    'material': {'badge': 'bg-primary', 'icon': 'bi-file-text', 'label': 'Material'},
+    'material': {'badge': 'bg-primary', 'icon': 'bi-file-text',       'label': 'Material'},
     'quiz':     {'badge': 'bg-success', 'icon': 'bi-question-circle', 'label': 'Quiz'},
-    'code':     {'badge': 'bg-info',    'icon': 'bi-code-slash',          'label': 'Code'},
+    'code':     {'badge': 'bg-info',    'icon': 'bi-code',            'label': 'Code'},
+    'paper':    {'badge': 'bg-warning', 'icon': 'bi-file-earmark-pdf','label': 'Paper'},
 }
 
 

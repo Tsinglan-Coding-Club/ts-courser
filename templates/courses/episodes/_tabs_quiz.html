@@ -62,12 +62,21 @@
             <!-- Answer Tab -->
             {% if current_episode.answer_pdf %}
                 <div class="tab-pane fade" id="answer" role="tabpanel">
-                    <div class="alert alert-success">
-                        <i class="bi bi-check-circle"></i> Answer key is available for download.
+                    <div class="text-center mb-3">
+                        <a href="{{ current_episode.answer_pdf.url }}" target="_blank" class="btn btn-primary">
+                            <i class="bi bi-download"></i> Download Answer Key
+                        </a>
+                        <button class="btn btn-secondary" id="answer-prevPage">
+                            <i class="bi bi-arrow-left"></i> Previous
+                        </button>
+                        <span class="mx-2">
+                            Page <span id="answer-pageNum"></span> of <span id="answer-pageCount"></span>
+                        </span>
+                        <button class="btn btn-secondary" id="answer-nextPage">
+                            Next <i class="bi bi-arrow-right"></i>
+                        </button>
                     </div>
-                    <a href="{{ current_episode.answer_pdf.url }}" target="_blank" class="btn btn-success btn-lg">
-                        <i class="bi bi-download"></i> Download Answer Key
-                    </a>
+                    <canvas id="answer-pdf-canvas" class="border"></canvas>
                 </div>
             {% endif %}
         </div>

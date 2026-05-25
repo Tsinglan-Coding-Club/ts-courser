@@ -263,7 +263,7 @@
                     </div>
 
                     <div class="col-md-6 mb-3">
-                        <label for="answer_pdf" class="form-label">Answer PDF (for quizzes)</label>
+                        <label for="answer_pdf" class="form-label">Answer PDF (for quiz &amp; paper)</label>
                         {% if episode.answer_pdf %}
                             <div class="mb-2">
                                 <a href="{{ episode.answer_pdf.url }}" target="_blank" class="btn btn-sm btn-outline-success">
@@ -322,6 +322,9 @@ const TYPE_CARD_VISIBILITY = {
     },
     code: {
         cards: ['episodeInfoCard', 'infoContentCard'],
+    },
+    paper: {
+        cards: ['episodeInfoCard', 'pdfFilesCard'],
     },
 };
 

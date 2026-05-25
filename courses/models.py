@@ -88,12 +88,13 @@ def answer_pdf_path(instance, filename):
 
 class Episode(models.Model):
     """
-    Individual learning unit - either material (content) or quiz (practice).
+    Individual learning unit: material, quiz, code, or paper.
     """
     TYPE_CHOICES = [
         ('material', 'Material'),
         ('quiz', 'Quiz'),
-        ('code', 'Code')
+        ('code', 'Code'),
+        ('paper', 'Paper'),
     ]
 
     section = models.ForeignKey(
@@ -121,7 +122,7 @@ class Episode(models.Model):
         upload_to=answer_pdf_path,
         null=True,
         blank=True,
-        help_text='Answer PDF (for quizzes only)'
+        help_text='Answer PDF (for quiz and paper types)'
     )
 
     created_at = models.DateTimeField(auto_now_add=True)
