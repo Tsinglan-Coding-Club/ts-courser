@@ -125,6 +125,16 @@ class Episode(models.Model):
         help_text='Answer PDF (for quiz and paper types)'
     )
 
+    # Code episode layout toggles
+    show_interactive = models.BooleanField(
+        default=True,
+        help_text='Show the Interactive panel in code episodes'
+    )
+    show_reference = models.BooleanField(
+        default=True,
+        help_text='Show the Reference panel in code episodes'
+    )
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

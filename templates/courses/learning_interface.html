@@ -27,6 +27,10 @@
     background-color: var(--bg-primary);
 }
 
+.content-area-code {
+    padding: 0.75rem;
+}
+
 .sidebar-toggle {
     position: fixed;
     left: calc(16.666% - 15px); /* col-md-2 is 16.666%, minus half button width */
@@ -163,6 +167,109 @@
     color: var(--text-primary);
     border-color: var(--border-color);
 }
+
+/* ---- Code Playground: LeetCode-style 5-column grid ---- */
+.code-playground {
+    display: flex;
+    height: calc(100vh - 56px - 5.5rem);
+    border: 1px solid var(--border-color);
+    border-radius: 0.5rem;
+    overflow: hidden;
+    background-color: var(--bg-secondary);
+}
+
+.code-col {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    border-right: 1px solid var(--border-color);
+}
+
+.code-col:last-child {
+    border-right: none;
+}
+
+/* Column widths — ratio-based classes */
+.code-col-1of5 { flex: 1; }   /* ⅕ in 4-col layout */
+.code-col-2of5 { flex: 2; }   /* ⅖ in 4-col layout */
+.code-col-1of4 { flex: 1; }   /* ¼ in 3-col layout */
+.code-col-2of4 { flex: 2; }   /* ½ in 3-col layout */
+
+/* Panel: header + body */
+.code-panel {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+/* Col-1: top & bottom panels split height equally */
+.code-panel-top,
+.code-panel-bottom {
+    flex: 1;
+    min-height: 0;
+}
+
+.code-panel-top {
+    border-bottom: 1px solid var(--border-color);
+}
+
+/* Col-2/3/4: full-height panel */
+.code-panel-fill {
+    flex: 1;
+    min-height: 0;
+}
+
+.code-panel-header {
+    background-color: var(--bg-tertiary);
+    padding: 0.4rem 0.75rem;
+    border-bottom: 1px solid var(--border-color);
+    font-weight: 600;
+    font-size: 0.85rem;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    flex-shrink: 0;
+    white-space: nowrap;
+}
+
+.code-panel-body {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    background-color: var(--bg-secondary);
+}
+
+/* Monaco editor container — fill space, no padding */
+.code-editor-body {
+    padding: 0 !important;
+    overflow: hidden !important;
+}
+
+/* Placeholder styling for empty panels */
+.code-panel-placeholder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+}
+
+/* Info column markdown: remove max-width, reduce padding for narrow column */
+.code-panel-body .markdown-body {
+    max-width: none;
+    padding: 0.75rem 1rem;
+    margin: 0;
+    background: transparent;
+    font-size: 0.9rem;
+}
+
+.code-panel-body .markdown-body h1 { font-size: 1.3rem; }
+.code-panel-body .markdown-body h2 { font-size: 1.15rem; }
+.code-panel-body .markdown-body h3 { font-size: 1.05rem; }
+.code-panel-body .markdown-body pre {
+    padding: 0.5rem 0.75rem;
+    font-size: 0.8rem;
+}
 </style>
 {% endblock %}
 
@@ -231,7 +338,7 @@
         </div>
 
         <!-- Main Content Area -->
-        <div class="col-md-10 content-area" id="contentArea">
+        <div class="col-md-10 content-area{% if current_episode.type == 'code' %} content-area-code{% endif %}" id="contentArea">
             {% if current_episode %}
                 <!-- Episode Header -->
                 <div class="d-flex justify-content-between align-items-start mb-4">
@@ -466,6 +573,7 @@ document.getElementById('sidebarToggle').addEventListener('click', function(e) {
     e.stopPropagation();
 
     const sidebar = document.getElementById('sidebar');
+    const contentArea = document.getElementById('contentArea');
     const toggleBtn = document.getElementById('sidebarToggle');
     const toggleIcon = document.getElementById('toggleIcon');
 
@@ -475,10 +583,61 @@ document.getElementById('sidebarToggle').addEventListener('click', function(e) {
     if (sidebar.classList.contains('collapsed')) {
         toggleIcon.classList.remove('bi-chevron-left');
         toggleIcon.classList.add('bi-chevron-right');
+        // Hide sidebar from grid & expand content area
+        sidebar.classList.add('d-none');
+        contentArea.classList.remove('col-md-10');
+        contentArea.classList.add('col-md-12');
     } else {
         toggleIcon.classList.remove('bi-chevron-right');
         toggleIcon.classList.add('bi-chevron-left');
+        // Restore sidebar & default content area width
+        sidebar.classList.remove('d-none');
+        contentArea.classList.remove('col-md-12');
+        contentArea.classList.add('col-md-10');
     }
 });
 </script>
+
+{% if current_episode.type == 'code' %}
+<!-- Monaco Editor (local, loaded after marked.js to avoid AMD conflict) -->
+{% load static %}
+<script src="{% static 'vs/loader.js' %}"></script>
+<script>
+(function() {
+    require.config({
+        paths: { vs: '{% static "vs" %}' }
+    });
+    require(['vs/editor/editor.main'], function() {
+        var container = document.getElementById('monaco-container');
+        if (!container) return;
+
+        // Read current theme from the website
+        var htmlEl = document.documentElement;
+        var currentTheme = htmlEl.getAttribute('data-theme') || 'light';
+        var monacoTheme = currentTheme === 'dark' ? 'vs-dark' : 'vs';
+
+        var editor = monaco.editor.create(container, {
+            value: '# Write your Python code here\n',
+            language: 'python',
+            theme: monacoTheme,
+            automaticLayout: true,
+            minimap: { enabled: false },
+            fontSize: 14,
+            lineNumbers: 'on',
+            scrollBeyondLastLine: false,
+            wordWrap: 'on',
+            padding: { top: 12 }
+        });
+
+        // Watch website theme changes and sync Monaco
+        var observer = new MutationObserver(function() {
+            var newTheme = htmlEl.getAttribute('data-theme') || 'light';
+            var newMonacoTheme = newTheme === 'dark' ? 'vs-dark' : 'vs';
+            monaco.editor.setTheme(newMonacoTheme);
+        });
+        observer.observe(htmlEl, { attributes: true, attributeFilter: ['data-theme'] });
+    });
+})();
+</script>
+{% endif %}
 {% endblock %}

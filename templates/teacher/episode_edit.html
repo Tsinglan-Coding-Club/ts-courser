@@ -242,6 +242,37 @@
             </div>
         </div>
 
+        <!-- Code Layout Config (code type only) -->
+        <div class="card mb-4" id="codeLayoutCard">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-layout-three-columns"></i> Code Layout Options</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="showInteractive"
+                                   name="show_interactive" {% if episode.show_interactive %}checked{% endif %}>
+                            <label class="form-check-label" for="showInteractive">
+                                <i class="bi bi-display"></i> Show Interactive Area
+                            </label>
+                            <div class="form-text">Display an interactive visualization panel in the code editor.</div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="showReference"
+                                   name="show_reference" {% if episode.show_reference %}checked{% endif %}>
+                            <label class="form-check-label" for="showReference">
+                                <i class="bi bi-book"></i> Show Reference Area
+                            </label>
+                            <div class="form-text">Display a reference materials panel in the code editor.</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- PDF Uploads -->
         <div class="card mb-4" id="pdfFilesCard">
             <div class="card-header">
@@ -321,14 +352,14 @@ const TYPE_CARD_VISIBILITY = {
         cards: ['episodeInfoCard', 'infoContentCard'],
     },
     code: {
-        cards: ['episodeInfoCard', 'infoContentCard'],
+        cards: ['episodeInfoCard', 'infoContentCard', 'codeLayoutCard'],
     },
     paper: {
         cards: ['episodeInfoCard', 'pdfFilesCard'],
     },
 };
 
-const ALL_TYPE_RELEVANT_CARDS = ['episodeInfoCard', 'infoContentCard', 'pdfFilesCard'];
+const ALL_TYPE_RELEVANT_CARDS = ['episodeInfoCard', 'infoContentCard', 'pdfFilesCard', 'codeLayoutCard'];
 
 // Configure marked.js
 marked.setOptions({

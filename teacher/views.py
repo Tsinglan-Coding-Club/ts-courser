@@ -199,6 +199,10 @@ def episode_edit(request, episode_id):
             else:
                 messages.error(request, 'Invalid PDF file for answers.')
 
+        # Code episode layout toggles
+        episode.show_interactive = request.POST.get('show_interactive') == 'on'
+        episode.show_reference = request.POST.get('show_reference') == 'on'
+
         episode.save()
         messages.success(request, f'Episode "{episode.title}" updated successfully!')
         return redirect('teacher:course_edit', course_id=episode.section.course.id)

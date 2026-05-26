@@ -1,57 +1,86 @@
-{# Tabs and content for episode type: code #}
+{# LeetCode-style grid layout for episode type: code #}
+{# Columns flex-ratio:   has_ref → 1:1:1:2 (4col)  |  no_ref → 1:1:2 (3col) #}
+{# Col-2 height:         has_int → split top/bottom |  no_int → console fills #}
 {% load course_filters %}
 
-<div class="card">
-    <div class="card-header">
-        <ul class="nav nav-tabs card-header-tabs" id="episodeTabs" role="tablist">
-            <li class="nav-item" role="presentation">
-                <button class="nav-link active" id="info-tab" data-bs-toggle="tab" data-bs-target="#info" type="button" role="tab">
-                    <i class="bi bi-info-circle"></i> Info
-                </button>
-            </li>
-            {% if current_episode.content_pdf %}
-                <li class="nav-item" role="presentation">
-                    <button class="nav-link" id="material-tab" data-bs-toggle="tab" data-bs-target="#material" type="button" role="tab">
-                        <i class="bi bi-file-pdf"></i> Material
-                    </button>
-                </li>
-            {% endif %}
-            {# TODO: Add code editor tab when ready #}
-        </ul>
-    </div>
-    <div class="card-body">
-        <div class="tab-content" id="episodeTabContent">
-            <!-- Info Tab -->
-            <div class="tab-pane fade show active" id="info" role="tabpanel">
+{% with show_ref=current_episode.show_reference show_int=current_episode.show_interactive %}
+{% with col1=show_ref|yesno:'code-col-1of5,code-col-1of4' col2=show_ref|yesno:'code-col-2of5,code-col-2of4' %}
+
+<div class="code-playground">
+    <!-- Column 1: Info — problem description (markdown) -->
+    <div class="code-col code-col-info {{ col1 }}">
+        <div class="code-panel code-panel-fill">
+            <div class="code-panel-header">
+                <i class="bi bi-file-text"></i> Info
+            </div>
+            <div class="code-panel-body">
                 {% if current_episode.info_page_content %}
                     <div id="markdown-content" class="markdown-body"></div>
                 {% else %}
-                    <div class="alert alert-info">
-                        <i class="bi bi-info-circle"></i> No info page content available for this episode.
+                    <div class="text-muted p-3">
+                        <i class="bi bi-info-circle"></i> No description available.
                     </div>
                 {% endif %}
             </div>
+        </div>
+    </div>
 
-            <!-- Material Tab -->
-            {% if current_episode.content_pdf %}
-                <div class="tab-pane fade" id="material" role="tabpanel">
-                    <div class="text-center mb-3">
-                        <a href="{{ current_episode.content_pdf.url }}" target="_blank" class="btn btn-primary">
-                            <i class="bi bi-download"></i> Download PDF
-                        </a>
-                        <button class="btn btn-secondary" id="prevPage">
-                            <i class="bi bi-arrow-left"></i> Previous
-                        </button>
-                        <span class="mx-2">
-                            Page <span id="pageNum"></span> of <span id="pageCount"></span>
-                        </span>
-                        <button class="btn btn-secondary" id="nextPage">
-                            Next <i class="bi bi-arrow-right"></i>
-                        </button>
-                    </div>
-                    <canvas id="pdf-canvas" class="border"></canvas>
+    <!-- Column 2: Interactive (top) + Console (bottom), or Console only -->
+    <div class="code-col code-col-interactive {{ col1 }}">
+        {% if show_int %}
+            <div class="code-panel code-panel-top">
+                <div class="code-panel-header">
+                    <i class="bi bi-display"></i> Interactive
                 </div>
-            {% endif %}
+                <div class="code-panel-body code-panel-placeholder">
+                    <span class="text-muted">Interactive area — coming soon</span>
+                </div>
+            </div>
+            <div class="code-panel code-panel-bottom">
+                <div class="code-panel-header">
+                    <i class="bi bi-terminal"></i> Console
+                </div>
+                <div class="code-panel-body code-panel-placeholder">
+                    <span class="text-muted">Console output — coming soon</span>
+                </div>
+            </div>
+        {% else %}
+            <div class="code-panel code-panel-fill">
+                <div class="code-panel-header">
+                    <i class="bi bi-terminal"></i> Console
+                </div>
+                <div class="code-panel-body code-panel-placeholder">
+                    <span class="text-muted">Console output — coming soon</span>
+                </div>
+            </div>
+        {% endif %}
+    </div>
+
+    <!-- Column 3: Reference Area (only when enabled) -->
+    {% if show_ref %}
+    <div class="code-col code-col-reference {{ col1 }}">
+        <div class="code-panel code-panel-fill">
+            <div class="code-panel-header">
+                <i class="bi bi-book"></i> Reference
+            </div>
+            <div class="code-panel-body code-panel-placeholder">
+                <span class="text-muted">Reference materials — coming soon</span>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Column last: Code Editor (flex:2) -->
+    <div class="code-col code-col-editor {{ col2 }}">
+        <div class="code-panel code-panel-fill">
+            <div class="code-panel-header d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-code-slash"></i> Code Editor</span>
+                <span class="badge bg-secondary">Python</span>
+            </div>
+            <div class="code-panel-body code-editor-body" id="monaco-container"></div>
         </div>
     </div>
 </div>
+
+{% endwith %}
+{% endwith %}
