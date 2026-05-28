@@ -53,7 +53,8 @@ uv.lock
 node_modules/
 package-lock.json
 
-
+#other
+reference/
 
 # Migrations (optional - uncomment if you want to ignore migrations)
 # */migrations/*.py
