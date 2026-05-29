@@ -112,6 +112,16 @@
     margin-left: 0;
     color: var(--text-secondary);
 }
+
+.type-toggle-group {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.type-toggle-btn {
+    min-width: 120px;
+}
 </style>
 {% endblock %}
 
@@ -132,33 +142,46 @@
 
         <div class="card mb-4">
             <div class="card-header">
+                <h5 class="mb-0">Episode Type</h5>
+            </div>
+            <div class="card-body">
+                <input type="hidden" id="selectedType" name="type" value="{{ episode.type }}">
+                <div class="type-toggle-group" id="typeToggleGroup">
+                    {% for type_value, type_label in type_options %}
+                        <button
+                            type="button"
+                            class="btn {% if episode.type == type_value %}btn-primary{% else %}btn-outline-primary{% endif %} type-toggle-btn episode-type-btn"
+                            data-type="{{ type_value }}"
+                            aria-pressed="{% if episode.type == type_value %}true{% else %}false{% endif %}"
+                        >
+                            {{ type_label }}
+                        </button>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
+        <div class="card mb-4" id="episodeInfoCard">
+            <div class="card-header">
                 <h5 class="mb-0">Episode Information</h5>
             </div>
             <div class="card-body">
                 <div class="row">
-                    <div class="col-md-6 mb-3">
+                    <div class="col-md-8 mb-3">
                         <label for="title" class="form-label">Title *</label>
                         <input type="text" class="form-control" id="title" name="title" value="{{ episode.title }}" required>
                     </div>
 
-                    <div class="col-md-3 mb-3">
-                        <label for="type" class="form-label">Type *</label>
-                        <select class="form-select" id="type" name="type">
-                            <option value="material" {% if episode.type == 'material' %}selected{% endif %}>Material</option>
-                            <option value="quiz" {% if episode.type == 'quiz' %}selected{% endif %}>Quiz</option>
-                        </select>
-                    </div>
-
-                    <div class="col-md-3 mb-3">
+                    <div class="col-md-4 mb-3">
                         <label for="order" class="form-label">Order</label>
-                        <input type="number" class="form-control" id="order" name="order" value="{{ episode.order }}">
+                        <input type="number" class="form-control" id="order" name="order" value="{{ episode.order }}" required>
                     </div>
                 </div>
             </div>
         </div>
 
         <!-- Markdown Content Editor -->
-        <div class="card mb-4">
+        <div class="card mb-4" id="infoContentCard">
             <div class="card-header">
                 <h5 class="mb-0"><i class="bi bi-file-text"></i> Info Page Content (Markdown)</h5>
             </div>
@@ -219,8 +242,39 @@
             </div>
         </div>
 
+        <!-- Code Layout Config (code type only) -->
+        <div class="card mb-4" id="codeLayoutCard">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-layout-three-columns"></i> Code Layout Options</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="showInteractive"
+                                   name="show_interactive" {% if episode.show_interactive %}checked{% endif %}>
+                            <label class="form-check-label" for="showInteractive">
+                                <i class="bi bi-display"></i> Show Interactive Area
+                            </label>
+                            <div class="form-text">Display an interactive visualization panel in the code editor.</div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="showReference"
+                                   name="show_reference" {% if episode.show_reference %}checked{% endif %}>
+                            <label class="form-check-label" for="showReference">
+                                <i class="bi bi-book"></i> Show Reference Area
+                            </label>
+                            <div class="form-text">Display a reference materials panel in the code editor.</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- PDF Uploads -->
-        <div class="card mb-4">
+        <div class="card mb-4" id="pdfFilesCard">
             <div class="card-header">
                 <h5 class="mb-0"><i class="bi bi-file-pdf"></i> PDF Files</h5>
             </div>
@@ -240,7 +294,7 @@
                     </div>
 
                     <div class="col-md-6 mb-3">
-                        <label for="answer_pdf" class="form-label">Answer PDF (for quizzes)</label>
+                        <label for="answer_pdf" class="form-label">Answer PDF (for quiz &amp; paper)</label>
                         {% if episode.answer_pdf %}
                             <div class="mb-2">
                                 <a href="{{ episode.answer_pdf.url }}" target="_blank" class="btn btn-sm btn-outline-success">
@@ -280,6 +334,32 @@
 const mdEditor = document.getElementById('mdEditor');
 const mdPreview = document.getElementById('mdPreview');
 const imageUploadInput = document.getElementById('imageUploadInput');
+const selectedTypeInput = document.getElementById('selectedType');
+const typeToggleButtons = document.querySelectorAll('.episode-type-btn');
+const episodeInfoCard = document.getElementById('episodeInfoCard');
+const infoContentCard = document.getElementById('infoContentCard');
+const pdfFilesCard = document.getElementById('pdfFilesCard');
+const contentPdfInput = document.getElementById('content_pdf');
+const answerPdfInput = document.getElementById('answer_pdf');
+
+// Declarative UI visibility map for each episode type.
+// Add future types here to control which cards they render.
+const TYPE_CARD_VISIBILITY = {
+    material: {
+        cards: ['episodeInfoCard', 'infoContentCard', 'pdfFilesCard'],
+    },
+    quiz: {
+        cards: ['episodeInfoCard', 'infoContentCard'],
+    },
+    code: {
+        cards: ['episodeInfoCard', 'infoContentCard', 'codeLayoutCard'],
+    },
+    paper: {
+        cards: ['episodeInfoCard', 'pdfFilesCard'],
+    },
+};
+
+const ALL_TYPE_RELEVANT_CARDS = ['episodeInfoCard', 'infoContentCard', 'pdfFilesCard', 'codeLayoutCard'];
 
 // Configure marked.js
 marked.setOptions({
@@ -302,6 +382,56 @@ updatePreview();
 
 // Listen to editor changes
 mdEditor.addEventListener('input', updatePreview);
+
+function updateCardsForEpisodeType(selectedType) {
+    const config = TYPE_CARD_VISIBILITY[selectedType] || TYPE_CARD_VISIBILITY.material;
+    const visibleCards = new Set(config.cards || []);
+    const pdfInputsEnabled = visibleCards.has('pdfFilesCard');
+
+    ALL_TYPE_RELEVANT_CARDS.forEach(cardId => {
+        const card = document.getElementById(cardId);
+        if (card) {
+            card.style.display = visibleCards.has(cardId) ? '' : 'none';
+        }
+    });
+
+    if (contentPdfInput) {
+        contentPdfInput.disabled = !pdfInputsEnabled;
+        if (!pdfInputsEnabled) contentPdfInput.value = '';
+    }
+
+    if (answerPdfInput) {
+        answerPdfInput.disabled = !pdfInputsEnabled;
+        if (!pdfInputsEnabled) answerPdfInput.value = '';
+    }
+}
+
+// Toggle actions for episode type selection
+function setEpisodeType(selectedType) {
+    selectedTypeInput.value = selectedType;
+
+    typeToggleButtons.forEach(button => {
+        const isActive = button.dataset.type === selectedType;
+        button.classList.toggle('btn-primary', isActive);
+        button.classList.toggle('btn-outline-primary', !isActive);
+        button.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+    });
+
+    updateCardsForEpisodeType(selectedType);
+}
+
+typeToggleButtons.forEach(button => {
+    button.addEventListener('click', () => {
+        setEpisodeType(button.dataset.type);
+    });
+});
+
+// Ensure a valid initial active state on first render
+if (selectedTypeInput && selectedTypeInput.value) {
+    setEpisodeType(selectedTypeInput.value);
+} else if (typeToggleButtons.length > 0) {
+    setEpisodeType(typeToggleButtons[0].dataset.type);
+}
 
 // Toolbar actions
 const toolbarButtons = document.querySelectorAll('.md-toolbar-btn');
@@ -413,7 +543,7 @@ imageUploadInput.addEventListener('change', async function(e) {
         if (data.code === 0 && data.data.succMap) {
             const imageUrl = Object.values(data.data.succMap)[0];
 
-            // Insert image markdown
+            // Insert image Markdown
             const start = mdEditor.selectionStart;
             const beforeText = mdEditor.value.substring(0, start);
             const afterText = mdEditor.value.substring(start);

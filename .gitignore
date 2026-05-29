@@ -49,6 +49,13 @@ local_settings.py
 .uv/
 uv.lock
 
+# Node
+node_modules/
+package-lock.json
+
+#other
+reference/
+
 # Migrations (optional - uncomment if you want to ignore migrations)
 # */migrations/*.py
 # !*/migrations/__init__.py

@@ -1,0 +1,28 @@
+{
+  "name": "ts-courser",
+  "version": "1.0.0",
+  "description": "![alt text](docs/image.png)",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "dependencies": {
+    "monaco-editor": "^0.45.0",
+    "pyodide": "^0.26.4"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Tsinglan-Coding-Club/ts-courser.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/Tsinglan-Coding-Club/ts-courser/issues"
+  },
+  "homepage": "https://github.com/Tsinglan-Coding-Club/ts-courser#readme"
+}

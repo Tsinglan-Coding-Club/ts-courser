@@ -4,6 +4,7 @@
 {% block title %}{{ course.title }} - Learning{% endblock %}
 
 {% block extra_css %}
+{% load static %}
 <!-- PDF.js -->
 <style>
 .sidebar {
@@ -25,6 +26,10 @@
     padding: 2rem;
     transition: margin-left 0.3s ease;
     background-color: var(--bg-primary);
+}
+
+.content-area-code {
+    padding: 0.75rem;
 }
 
 .sidebar-toggle {
@@ -83,6 +88,14 @@
 }
 
 #pdf-canvas {
+    border: 1px solid var(--border-color);
+    max-width: 100%;
+    margin: 0 auto;
+    display: block;
+    background-color: white;
+}
+
+#answer-pdf-canvas {
     border: 1px solid var(--border-color);
     max-width: 100%;
     margin: 0 auto;
@@ -155,7 +168,113 @@
     color: var(--text-primary);
     border-color: var(--border-color);
 }
+
+/* ---- Code Playground: LeetCode-style 5-column grid ---- */
+.code-playground {
+    display: flex;
+    height: calc(100vh - 56px - 5.5rem);
+    border: 1px solid var(--border-color);
+    border-radius: 0.5rem;
+    overflow: hidden;
+    background-color: var(--bg-secondary);
+}
+
+.code-col {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    border-right: 1px solid var(--border-color);
+}
+
+.code-col:last-child {
+    border-right: none;
+}
+
+/* Column widths — ratio-based classes */
+.code-col-1of5 { flex: 1; }   /* ⅕ in 4-col layout */
+.code-col-2of5 { flex: 2; }   /* ⅖ in 4-col layout */
+.code-col-1of4 { flex: 1; }   /* ¼ in 3-col layout */
+.code-col-2of4 { flex: 2; }   /* ½ in 3-col layout */
+
+/* Panel: header + body */
+.code-panel {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+/* Col-1: top & bottom panels split height equally */
+.code-panel-top,
+.code-panel-bottom {
+    flex: 1;
+    min-height: 0;
+}
+
+.code-panel-top {
+    border-bottom: 1px solid var(--border-color);
+}
+
+/* Col-2/3/4: full-height panel */
+.code-panel-fill {
+    flex: 1;
+    min-height: 0;
+}
+
+.code-panel-header {
+    background-color: var(--bg-tertiary);
+    padding: 0.4rem 0.75rem;
+    border-bottom: 1px solid var(--border-color);
+    font-weight: 600;
+    font-size: 0.85rem;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    flex-shrink: 0;
+    white-space: nowrap;
+}
+
+.code-panel-body {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    background-color: var(--bg-secondary);
+}
+
+/* Monaco editor container — fill space, no padding */
+.code-editor-body {
+    padding: 0 !important;
+    overflow: hidden !important;
+}
+
+/* Placeholder styling for empty panels */
+.code-panel-placeholder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+}
+
+/* Info column markdown: remove max-width, reduce padding for narrow column */
+.code-panel-body .markdown-body {
+    max-width: none;
+    padding: 0.75rem 1rem;
+    margin: 0;
+    background: transparent;
+    font-size: 0.9rem;
+}
+
+.code-panel-body .markdown-body h1 { font-size: 1.3rem; }
+.code-panel-body .markdown-body h2 { font-size: 1.15rem; }
+.code-panel-body .markdown-body h3 { font-size: 1.05rem; }
+.code-panel-body .markdown-body pre {
+    padding: 0.5rem 0.75rem;
+    font-size: 0.8rem;
+}
 </style>
+{% if current_episode.type == 'code' %}
+<link rel="stylesheet" href="{% static 'css/console.css' %}">
+{% endif %}
 {% endblock %}
 
 {% block content %}
@@ -200,11 +319,9 @@
                                                data-episode-id="{{ episode.id }}">
                                                 <div class="d-flex justify-content-between align-items-center">
                                                     <span>
-                                                        {% if episode.type == 'material' %}
-                                                            <i class="bi bi-file-text"></i>
-                                                        {% else %}
-                                                            <i class="bi bi-question-circle"></i>
-                                                        {% endif %}
+                                                        {% with type_cfg=episode.type|episode_type_config %}
+                                                            <i class="bi {{ type_cfg.icon }}"></i>
+                                                        {% endwith %}
                                                         {{ episode.title }}
                                                     </span>
                                                     {% if read_status_dict|get_item:episode.id %}
@@ -225,32 +342,41 @@
         </div>
 
         <!-- Main Content Area -->
-        <div class="col-md-10 content-area" id="contentArea">
+        <div class="col-md-10 content-area{% if current_episode.type == 'code' %} content-area-code{% endif %}" id="contentArea">
             {% if current_episode %}
                 <!-- Episode Header -->
                 <div class="d-flex justify-content-between align-items-start mb-4">
                     <div>
                         <h2>{{ current_episode.title }}</h2>
                         <p class="text-muted">
-                            {% if current_episode.type == 'material' %}
-                                <span class="badge bg-primary">Material</span>
-                            {% else %}
-                                <span class="badge bg-success">Quiz</span>
-                            {% endif %}
+                            {% with type_cfg=current_episode.type|episode_type_config %}
+                                <span class="badge {{ type_cfg.badge }}">{{ type_cfg.label }}</span>
+                            {% endwith %}
                             {{ current_episode.section.title }}
                         </p>
                     </div>
 
                     <div class="btn-group">
-                        <button type="button" class="btn btn-outline-primary" id="markReadBtn"
-                                data-episode-id="{{ current_episode.id }}"
-                                data-is-read="{{ current_read_status.is_read|yesno:'true,false' }}">
-                            {% if current_read_status.is_read %}
-                                <i class="bi bi-check-circle-fill"></i> Mark as Unread
-                            {% else %}
-                                <i class="bi bi-circle"></i> Mark as Read
-                            {% endif %}
-                        </button>
+                        {% if current_episode.type == 'code' %}
+                            <!-- Run + Save buttons for code episodes -->
+                            <button type="button" class="btn btn-success" id="runBtn" disabled>
+                                <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                                <i class="bi bi-play-fill"></i> Run
+                            </button>
+                            <button type="button" class="btn btn-outline-secondary" id="saveBtn">
+                                <i class="bi bi-floppy"></i> Save
+                            </button>
+                        {% else %}
+                            <button type="button" class="btn btn-outline-primary" id="markReadBtn"
+                                    data-episode-id="{{ current_episode.id }}"
+                                    data-is-read="{{ current_read_status.is_read|yesno:'true,false' }}">
+                                {% if current_read_status.is_read %}
+                                    <i class="bi bi-check-circle-fill"></i> Mark as Unread
+                                {% else %}
+                                    <i class="bi bi-circle"></i> Mark as Read
+                                {% endif %}
+                            </button>
+                        {% endif %}
 
                         {% if is_teacher %}
                             <a href="{% url 'teacher:episode_edit' current_episode.id %}" class="btn btn-warning">
@@ -260,79 +386,19 @@
                     </div>
                 </div>
 
-                <!-- Episode Content Tabs -->
-                <div class="card">
-                    <div class="card-header">
-                        <ul class="nav nav-tabs card-header-tabs" id="episodeTabs" role="tablist">
-                            <li class="nav-item" role="presentation">
-                                <button class="nav-link active" id="info-tab" data-bs-toggle="tab" data-bs-target="#info" type="button" role="tab">
-                                    <i class="bi bi-info-circle"></i> Info
-                                </button>
-                            </li>
-                            {% if current_episode.content_pdf %}
-                                <li class="nav-item" role="presentation">
-                                    <button class="nav-link" id="material-tab" data-bs-toggle="tab" data-bs-target="#material" type="button" role="tab">
-                                        <i class="bi bi-file-pdf"></i> Material
-                                    </button>
-                                </li>
-                            {% endif %}
-                            {% if current_episode.answer_pdf and current_episode.type == 'quiz' %}
-                                <li class="nav-item" role="presentation">
-                                    <button class="nav-link" id="answer-tab" data-bs-toggle="tab" data-bs-target="#answer" type="button" role="tab">
-                                        <i class="bi bi-check-circle"></i> Answer
-                                    </button>
-                                </li>
-                            {% endif %}
-                        </ul>
-                    </div>
-                    <div class="card-body">
-                        <div class="tab-content" id="episodeTabContent">
-                            <!-- Info Tab -->
-                            <div class="tab-pane fade show active" id="info" role="tabpanel">
-                                {% if current_episode.info_page_content %}
-                                    <div id="markdown-content" class="markdown-body"></div>
-                                {% else %}
-                                    <div class="alert alert-info">
-                                        <i class="bi bi-info-circle"></i> No info page content available for this episode.
-                                    </div>
-                                {% endif %}
-                            </div>
-
-                            <!-- Material Tab -->
-                            {% if current_episode.content_pdf %}
-                                <div class="tab-pane fade" id="material" role="tabpanel">
-                                    <div class="text-center mb-3">
-                                        <a href="{{ current_episode.content_pdf.url }}" target="_blank" class="btn btn-primary">
-                                            <i class="bi bi-download"></i> Download PDF
-                                        </a>
-                                        <button class="btn btn-secondary" id="prevPage">
-                                            <i class="bi bi-arrow-left"></i> Previous
-                                        </button>
-                                        <span class="mx-2">
-                                            Page <span id="pageNum"></span> of <span id="pageCount"></span>
-                                        </span>
-                                        <button class="btn btn-secondary" id="nextPage">
-                                            Next <i class="bi bi-arrow-right"></i>
-                                        </button>
-                                    </div>
-                                    <canvas id="pdf-canvas" class="border"></canvas>
-                                </div>
-                            {% endif %}
-
-                            <!-- Answer Tab -->
-                            {% if current_episode.answer_pdf and current_episode.type == 'quiz' %}
-                                <div class="tab-pane fade" id="answer" role="tabpanel">
-                                    <div class="alert alert-success">
-                                        <i class="bi bi-check-circle"></i> Answer key is available for download.
-                                    </div>
-                                    <a href="{{ current_episode.answer_pdf.url }}" target="_blank" class="btn btn-success btn-lg">
-                                        <i class="bi bi-download"></i> Download Answer Key
-                                    </a>
-                                </div>
-                            {% endif %}
-                        </div>
-                    </div>
-                </div>
+                <!-- Episode Content — type-specific tabs & content -->
+                {% if current_episode.type == 'material' %}
+                    {% include 'courses/episodes/_tabs_material.html' %}
+                {% elif current_episode.type == 'quiz' %}
+                    {% include 'courses/episodes/_tabs_quiz.html' %}
+                {% elif current_episode.type == 'code' %}
+                    {% include 'courses/episodes/_tabs_code.html' %}
+                {% elif current_episode.type == 'paper' %}
+                    {% include 'courses/episodes/_tabs_paper.html' %}
+                {% else %}
+                    {# Fallback for unknown types: render info + generic content #}
+                    {% include 'courses/episodes/_tabs_material.html' %}
+                {% endif %}
 
                 {% if not current_episode.info_page_content and not current_episode.content_pdf and not current_episode.answer_pdf %}
                     <div class="alert alert-warning mt-3">
@@ -351,6 +417,7 @@
 {% endblock %}
 
 {% block extra_js %}
+{% load static %}
 <!-- Marked.js for markdown -->
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <!-- PDF.js -->
@@ -363,7 +430,10 @@ const csrftoken = document.querySelector('[name=csrfmiddlewaretoken]').value;
 // Markdown rendering
 {% if current_episode.info_page_content %}
 const markdownContent = `{{ current_episode.info_page_content|escapejs }}`;
-document.getElementById('markdown-content').innerHTML = marked.parse(markdownContent);
+const markdownEl = document.getElementById('markdown-content'); //当markdown不需要渲染的时候跳过
+if (markdownEl) {
+    markdownEl.innerHTML = marked.parse(markdownContent);
+}
 {% endif %}
 
 // Mark as read/unread functionality
@@ -461,12 +531,65 @@ pdfjsLib.getDocument('{{ current_episode.content_pdf.url }}').promise.then(funct
 });
 {% endif %}
 
+// Answer PDF.js rendering
+{% if current_episode.answer_pdf %}
+let answerPdfDoc = null;
+let answerPageNum = 1;
+let answerPageRendering = false;
+let answerPageNumPending = null;
+const answerScale = 1.5;
+const answerCanvas = document.getElementById('answer-pdf-canvas');
+const answerCtx = answerCanvas.getContext('2d');
+
+function renderAnswerPage(num) {
+    answerPageRendering = true;
+    answerPdfDoc.getPage(num).then(function(page) {
+        const viewport = page.getViewport({scale: answerScale});
+        answerCanvas.height = viewport.height;
+        answerCanvas.width = viewport.width;
+        const renderContext = { canvasContext: answerCtx, viewport: viewport };
+        const renderTask = page.render(renderContext);
+        renderTask.promise.then(function() {
+            answerPageRendering = false;
+            if (answerPageNumPending !== null) {
+                renderAnswerPage(answerPageNumPending);
+                answerPageNumPending = null;
+            }
+        });
+    });
+    document.getElementById('answer-pageNum').textContent = num;
+}
+
+function queueAnswerRenderPage(num) {
+    if (answerPageRendering) { answerPageNumPending = num; }
+    else { renderAnswerPage(num); }
+}
+
+document.getElementById('answer-prevPage').addEventListener('click', function() {
+    if (answerPageNum <= 1) return;
+    answerPageNum--;
+    queueAnswerRenderPage(answerPageNum);
+});
+document.getElementById('answer-nextPage').addEventListener('click', function() {
+    if (answerPageNum >= answerPdfDoc.numPages) return;
+    answerPageNum++;
+    queueAnswerRenderPage(answerPageNum);
+});
+
+pdfjsLib.getDocument('{{ current_episode.answer_pdf.url }}').promise.then(function(pdf) {
+    answerPdfDoc = pdf;
+    document.getElementById('answer-pageCount').textContent = pdf.numPages;
+    renderAnswerPage(1);
+});
+{% endif %}
+
 // Sidebar toggle functionality
 document.getElementById('sidebarToggle').addEventListener('click', function(e) {
     e.preventDefault();
     e.stopPropagation();
 
     const sidebar = document.getElementById('sidebar');
+    const contentArea = document.getElementById('contentArea');
     const toggleBtn = document.getElementById('sidebarToggle');
     const toggleIcon = document.getElementById('toggleIcon');
 
@@ -476,10 +599,239 @@ document.getElementById('sidebarToggle').addEventListener('click', function(e) {
     if (sidebar.classList.contains('collapsed')) {
         toggleIcon.classList.remove('bi-chevron-left');
         toggleIcon.classList.add('bi-chevron-right');
+        // Hide sidebar from grid & expand content area
+        sidebar.classList.add('d-none');
+        contentArea.classList.remove('col-md-10');
+        contentArea.classList.add('col-md-12');
     } else {
         toggleIcon.classList.remove('bi-chevron-right');
         toggleIcon.classList.add('bi-chevron-left');
+        // Restore sidebar & default content area width
+        sidebar.classList.remove('d-none');
+        contentArea.classList.remove('col-md-12');
+        contentArea.classList.add('col-md-10');
     }
 });
 </script>
+
+{% if current_episode.type == 'code' %}
+<!-- Console panel (must load before Pyodide module script) -->
+<script src="{% static 'js/console.js' %}"></script>
+<!-- Monaco Editor (local) -->
+<script src="{% static 'vs/loader.js' %}"></script>
+<!-- Pyodide Interpreter (Web Worker architecture) -->
+<script type="module">
+import PyodideInterpreter from '{% static "js/pyodide-interpreter.js" %}';
+
+// ---- Console Panel ----
+const consoleEl = document.getElementById('console-container');
+const consolePanel = new ConsolePanel(consoleEl);
+
+// ---- Monaco Editor (wait for AMD loader) ----
+let monacoEditor = null;
+
+function initMonaco() {
+    return new Promise((resolve) => {
+        // Suppress Monaco's web worker warning — Python editing
+        // doesn't need TypeScript/HTML language workers.
+        self.MonacoEnvironment = {
+            getWorker: function () {
+                const blob = new Blob(
+                    ['self.onmessage = function(e) { self.postMessage({}); }'],
+                    { type: 'text/javascript' }
+                );
+                const url = URL.createObjectURL(blob);
+                const worker = new Worker(url);
+                URL.revokeObjectURL(url); // release the blob URL immediately
+                return worker;
+            }
+        };
+
+        require.config({
+            paths: { vs: '{% static "vs" %}' }
+        });
+        require(['vs/editor/editor.main'], function() {
+            var container = document.getElementById('monaco-container');
+            if (!container) { resolve(null); return; }
+
+            var htmlEl = document.documentElement;
+            var currentTheme = htmlEl.getAttribute('data-theme') || 'light';
+            var monacoTheme = currentTheme === 'dark' ? 'vs-dark' : 'vs';
+
+            // Restore saved code from localStorage
+            const savedCode = localStorage.getItem('tscourser_code_{{ current_episode.id }}');
+            const initialValue = savedCode || '# Write your Python code here\n';
+
+            var editor = monaco.editor.create(container, {
+                value: initialValue,
+                language: 'python',
+                theme: monacoTheme,
+                automaticLayout: true,
+                minimap: { enabled: false },
+                fontSize: 14,
+                lineNumbers: 'on',
+                scrollBeyondLastLine: false,
+                wordWrap: 'on',
+                padding: { top: 12 }
+            });
+
+            monacoEditor = editor;
+            window.__monacoEditor = editor;
+
+            // Theme sync
+            var observer = new MutationObserver(function() {
+                var newTheme = htmlEl.getAttribute('data-theme') || 'light';
+                var newMonacoTheme = newTheme === 'dark' ? 'vs-dark' : 'vs';
+                monaco.editor.setTheme(newMonacoTheme);
+            });
+            observer.observe(htmlEl, { attributes: true, attributeFilter: ['data-theme'] });
+
+            resolve(editor);
+        });
+    });
+}
+
+// ---- Buttons ----
+const runBtn = document.getElementById('runBtn');
+const saveBtn = document.getElementById('saveBtn');
+
+let _hardStopTimer = null;
+
+function setRunEnabled(enabled) {
+    runBtn.disabled = !enabled;
+    runSpinner.classList.toggle('d-none', enabled);
+}
+
+function setButtonToRun() {
+    runBtn.classList.remove('btn-danger');
+    runBtn.classList.add('btn-success');
+    runBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1 d-none" id="runSpinner" role="status"></span><i class="bi bi-play-fill"></i> Run';
+    setRunEnabled(true);
+}
+
+function setButtonToStop() {
+    runBtn.classList.remove('btn-success');
+    runBtn.classList.add('btn-danger');
+    runBtn.innerHTML = '<i class="bi bi-stop-fill"></i> Stop';
+    runBtn.disabled = false;
+    if (_hardStopTimer) clearTimeout(_hardStopTimer);
+}
+
+
+// ---- Save helper ----
+function _saveCode() {
+    if (!monacoEditor) return;
+    const code = monacoEditor.getValue();
+    localStorage.setItem('tscourser_code_{{ current_episode.id }}', code);
+}
+
+// ---- Run/Stop Handler ----
+runBtn.addEventListener('click', async () => {
+    if (!monacoEditor || !PyodideInterpreter.isReady) return;
+
+    // --- STOP ---
+    if (PyodideInterpreter.isRunning) {
+        PyodideInterpreter.stop();
+        consolePanel.writeln('', 'system');
+        consolePanel.writeln('Stopping execution...', 'system');
+        // Hard-stop fallback: if worker doesn't respond in 3s, terminate
+        _hardStopTimer = setTimeout(async () => {
+            if (PyodideInterpreter.isRunning) {
+                consolePanel.writeln('Force-stopping...', 'system');
+                await PyodideInterpreter.hardStop();
+                setButtonToRun();
+                consolePanel.writeln('Python ' + PyodideInterpreter.version + ' — Restarted.', 'system');
+            }
+        }, 3000);
+        return;
+    }
+
+    // --- RUN ---
+    const code = monacoEditor.getValue();
+    if (!code.trim()) {
+        consolePanel.writeln('(no code to run)', 'system');
+        return;
+    }
+
+    _saveCode();
+    setButtonToStop();
+    consolePanel.writeln('', 'system');
+
+    try {
+        const response = await PyodideInterpreter.runCode(code);
+        if (_hardStopTimer) { clearTimeout(_hardStopTimer); _hardStopTimer = null; }
+
+        if (response.interrupted) {
+            consolePanel.writeln('Execution interrupted.', 'system');
+        } else if (response.error) {
+            consolePanel.writeln(response.error, 'stderr');
+        }
+    } catch (err) {
+        if (_hardStopTimer) { clearTimeout(_hardStopTimer); _hardStopTimer = null; }
+        consolePanel.writeln('Execution error: ' + err.message, 'stderr');
+    }
+
+    setButtonToRun();
+});
+
+// ---- Save Handler ----
+saveBtn.addEventListener('click', () => {
+    _saveCode();
+    // Flash feedback
+    const icon = saveBtn.querySelector('i');
+    const origClass = icon.className;
+    icon.className = 'bi bi-check';
+    saveBtn.classList.add('btn-success');
+    saveBtn.classList.remove('btn-outline-secondary');
+    setTimeout(() => {
+        icon.className = origClass;
+        saveBtn.classList.remove('btn-success');
+        saveBtn.classList.add('btn-outline-secondary');
+    }, 1200);
+});
+
+// ---- Auto-save every 60 seconds (code episodes only) ----
+const _autoSaveInterval = setInterval(_saveCode, 60000);
+addEventListener('beforeunload', () => clearInterval(_autoSaveInterval));
+
+// ---- Init Sequence ----
+async function init() {
+    consolePanel.writeln('Starting Python environment...', 'system');
+
+    try {
+        // Register example API (verifies the pipeline)
+        PyodideInterpreter.registerAPI('print_message');
+
+        PyodideInterpreter.onOutput = (type, text) => {
+            consolePanel.write(text, type);
+        };
+
+        PyodideInterpreter.onError = (error) => {
+            consolePanel.writeln('Failed to load Python interpreter: ' + error.message, 'stderr');
+            consolePanel.writeln('Please refresh the page or try a different browser.', 'system');
+            setButtonToRun();
+            runBtn.disabled = true;
+        };
+
+        await PyodideInterpreter.init();
+
+        consolePanel.writeln('Python ' + PyodideInterpreter.version + ' — Ready.', 'system');
+        setButtonToRun();
+    } catch (error) {
+        consolePanel.writeln('Failed to initialize Python environment.', 'stderr');
+        consolePanel.writeln(error.message, 'stderr');
+        setButtonToRun();
+        runBtn.disabled = true;
+    }
+}
+
+// Kick off initialization (Monaco and Pyodide in parallel)
+initMonaco().then(() => {
+    // Monaco is ready — Pyodide may still be loading
+}).catch(() => {
+    clearInterval(_autoSaveInterval);
+});
+init();
+</script>
+{% endif %}
 {% endblock %}

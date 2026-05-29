@@ -176,8 +176,13 @@ def episode_edit(request, episode_id):
     if request.method == 'POST':
         episode.title = request.POST.get('title', episode.title)
         episode.type = request.POST.get('type', episode.type)
-        episode.order = int(request.POST.get('order', episode.order))
+        episode.order = request.POST.get('order', episode.order)
         episode.info_page_content = request.POST.get('info_page_content', '')
+
+        if episode.order:
+            episode.order = int(episode.order)
+        else:
+            messages.error(request, 'Episode not found.')
 
         # Handle PDF uploads with validation
         if 'content_pdf' in request.FILES:
@@ -194,6 +199,10 @@ def episode_edit(request, episode_id):
             else:
                 messages.error(request, 'Invalid PDF file for answers.')
 
+        # Code episode layout toggles
+        episode.show_interactive = request.POST.get('show_interactive') == 'on'
+        episode.show_reference = request.POST.get('show_reference') == 'on'
+
         episode.save()
         messages.success(request, f'Episode "{episode.title}" updated successfully!')
         return redirect('teacher:course_edit', course_id=episode.section.course.id)
@@ -201,6 +210,7 @@ def episode_edit(request, episode_id):
     context = {
         'episode': episode,
         'course': episode.section.course,
+        'type_options': Episode.TYPE_CHOICES,
     }
     return render(request, 'teacher/episode_edit.html', context)
 

@@ -1,0 +1,76 @@
+{# LeetCode-style grid layout for episode type: code #}
+{# Columns flex-ratio:   has_ref → 1:1:1:2 (4col)  |  no_ref → 1:1:2 (3col) #}
+{# Col-2 height:         has_int → split top/bottom |  no_int → console fills #}
+{% load course_filters %}
+
+{% with show_ref=current_episode.show_reference show_int=current_episode.show_interactive %}
+{% with col1=show_ref|yesno:'code-col-1of5,code-col-1of4' col2=show_ref|yesno:'code-col-2of5,code-col-2of4' %}
+
+<div class="code-playground">
+    <!-- Column 1: Info — problem description (markdown) -->
+    <div class="code-col code-col-info {{ col1 }}">
+        <div class="code-panel code-panel-fill">
+            <div class="code-panel-header">
+                <i class="bi bi-file-text"></i> Info
+            </div>
+            <div class="code-panel-body">
+                {% if current_episode.info_page_content %}
+                    <div id="markdown-content" class="markdown-body"></div>
+                {% else %}
+                    <div class="text-muted p-3">
+                        <i class="bi bi-info-circle"></i> No description available.
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Column 2: Interactive (top) + Console (bottom), or Console only -->
+    <div class="code-col code-col-interactive {{ col1 }}">
+        {% if show_int %}
+            <div class="code-panel code-panel-top">
+                <div class="code-panel-header">
+                    <i class="bi bi-display"></i> Interactive
+                </div>
+                <div class="code-panel-body code-panel-placeholder">
+                    <span class="text-muted">Interactive area — coming soon</span>
+                </div>
+            </div>
+            <div class="code-panel code-panel-bottom">
+                <div class="code-panel-body code-console-container" id="console-container"></div>
+            </div>
+        {% else %}
+            <div class="code-panel code-panel-fill">
+                <div class="code-panel-body code-console-container" id="console-container"></div>
+            </div>
+        {% endif %}
+    </div>
+
+    <!-- Column 3: Reference Area (only when enabled) -->
+    {% if show_ref %}
+    <div class="code-col code-col-reference {{ col1 }}">
+        <div class="code-panel code-panel-fill">
+            <div class="code-panel-header">
+                <i class="bi bi-book"></i> Reference
+            </div>
+            <div class="code-panel-body code-panel-placeholder">
+                <span class="text-muted">Reference materials — coming soon</span>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Column last: Code Editor (flex:2) -->
+    <div class="code-col code-col-editor {{ col2 }}">
+        <div class="code-panel code-panel-fill">
+            <div class="code-panel-header d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-code-slash"></i> Code Editor</span>
+                <span class="badge bg-secondary">Python</span>
+            </div>
+            <div class="code-panel-body code-editor-body" id="monaco-container"></div>
+        </div>
+    </div>
+</div>
+
+{% endwith %}
+{% endwith %}
