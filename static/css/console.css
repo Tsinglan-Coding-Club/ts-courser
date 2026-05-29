@@ -1,0 +1,177 @@
+/**
+ * console.css — Terminal-Style Console Panel Styles
+ *
+ * Dark theme, monospace font, scrollable output area.
+ * Designed for the ConsolePanel class in console.js.
+ */
+
+/* ---- Console Panel Container ---- */
+.console-panel {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    background-color: #1e1e1e;
+    border-radius: 4px;
+    overflow: hidden;
+    font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', Consolas, 'Courier New', monospace;
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+/* ---- Header ---- */
+.console-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4px 8px;
+    background-color: #2d2d2d;
+    border-bottom: 1px solid #3a3a3a;
+    flex-shrink: 0;
+    user-select: none;
+}
+
+.console-title {
+    color: #cccccc;
+    font-size: 12px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.console-actions {
+    display: flex;
+    gap: 2px;
+}
+
+.console-btn {
+    background: transparent;
+    border: none;
+    color: #999999;
+    padding: 2px 6px;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 13px;
+    transition: background-color 0.15s, color 0.15s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 24px;
+}
+
+.console-btn:hover {
+    background-color: #404040;
+    color: #e0e0e0;
+}
+
+.console-btn:active {
+    background-color: #505050;
+}
+
+/* ---- Output Area ---- */
+.console-output {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 8px 12px;
+    background-color: #1e1e1e;
+    color: #d4d4d4;
+    white-space: pre-wrap;
+    word-break: break-all;
+    scroll-behavior: smooth;
+}
+
+/* ---- Output Lines ---- */
+.console-line {
+    white-space: pre-wrap;
+    word-break: break-all;
+    min-height: 1.5em;
+}
+
+/* stdout: default light gray-green */
+.console-line.console-stdout {
+    color: #d4d4d4;
+}
+
+/* stderr: red */
+.console-line.console-stderr {
+    color: #f44747;
+}
+
+/* system messages: muted gray */
+.console-line.console-system {
+    color: #808080;
+    font-style: italic;
+}
+
+/* user input echo: bright green */
+.console-line.console-input {
+    color: #4ec9b0;
+    font-weight: bold;
+}
+
+/* Inline spans (for prompt+input on same line) */
+.console-inline.console-input {
+    color: #4ec9b0;
+    font-weight: bold;
+}
+
+/* ---- ANSI Colors ---- */
+.ansi-black  { color: #000000; }
+.ansi-red    { color: #cd3131; }
+.ansi-green  { color: #0dbc79; }
+.ansi-yellow { color: #e5e510; }
+.ansi-blue   { color: #2472c8; }
+.ansi-magenta { color: #bc3fbc; }
+.ansi-cyan   { color: #11a8cd; }
+.ansi-white  { color: #e5e5e5; }
+
+.ansi-bright-black  { color: #666666; }
+.ansi-bright-red    { color: #f44747; }
+.ansi-bright-green  { color: #16c60c; }
+.ansi-bright-yellow { color: #f9f1a5; }
+.ansi-bright-blue   { color: #3b8eea; }
+.ansi-bright-magenta { color: #d670d6; }
+.ansi-bright-cyan   { color: #29adff; }
+.ansi-bright-white  { color: #e5e5e5; }
+
+.ansi-bold { font-weight: bold; }
+
+/* ---- Scrollbar Styling (dark theme) ---- */
+.console-output::-webkit-scrollbar {
+    width: 8px;
+}
+
+.console-output::-webkit-scrollbar-track {
+    background: #1e1e1e;
+}
+
+.console-output::-webkit-scrollbar-thumb {
+    background-color: #424242;
+    border-radius: 4px;
+    border: 2px solid #1e1e1e;
+}
+
+.console-output::-webkit-scrollbar-thumb:hover {
+    background-color: #555555;
+}
+
+/* Firefox scrollbar */
+.console-output {
+    scrollbar-width: thin;
+    scrollbar-color: #424242 #1e1e1e;
+}
+
+/* ---- Integration with code-panel-body ---- */
+.code-console-container {
+    padding: 0 !important;
+    overflow: hidden !important;
+    background-color: #1e1e1e !important;
+}
+
+/* Override Bootstrap background in console area */
+.code-console-container .console-panel,
+.code-console-container .console-output {
+    background-color: #1e1e1e;
+}

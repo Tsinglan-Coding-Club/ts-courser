@@ -4,6 +4,7 @@
 {% block title %}{{ course.title }} - Learning{% endblock %}
 
 {% block extra_css %}
+{% load static %}
 <!-- PDF.js -->
 <style>
 .sidebar {
@@ -271,6 +272,9 @@
     font-size: 0.8rem;
 }
 </style>
+{% if current_episode.type == 'code' %}
+<link rel="stylesheet" href="{% static 'css/console.css' %}">
+{% endif %}
 {% endblock %}
 
 {% block content %}
@@ -353,15 +357,26 @@
                     </div>
 
                     <div class="btn-group">
-                        <button type="button" class="btn btn-outline-primary" id="markReadBtn"
-                                data-episode-id="{{ current_episode.id }}"
-                                data-is-read="{{ current_read_status.is_read|yesno:'true,false' }}">
-                            {% if current_read_status.is_read %}
-                                <i class="bi bi-check-circle-fill"></i> Mark as Unread
-                            {% else %}
-                                <i class="bi bi-circle"></i> Mark as Read
-                            {% endif %}
-                        </button>
+                        {% if current_episode.type == 'code' %}
+                            <!-- Run + Save buttons for code episodes -->
+                            <button type="button" class="btn btn-success" id="runBtn" disabled>
+                                <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                                <i class="bi bi-play-fill"></i> Run
+                            </button>
+                            <button type="button" class="btn btn-outline-secondary" id="saveBtn">
+                                <i class="bi bi-floppy"></i> Save
+                            </button>
+                        {% else %}
+                            <button type="button" class="btn btn-outline-primary" id="markReadBtn"
+                                    data-episode-id="{{ current_episode.id }}"
+                                    data-is-read="{{ current_read_status.is_read|yesno:'true,false' }}">
+                                {% if current_read_status.is_read %}
+                                    <i class="bi bi-check-circle-fill"></i> Mark as Unread
+                                {% else %}
+                                    <i class="bi bi-circle"></i> Mark as Read
+                                {% endif %}
+                            </button>
+                        {% endif %}
 
                         {% if is_teacher %}
                             <a href="{% url 'teacher:episode_edit' current_episode.id %}" class="btn btn-warning">
@@ -402,6 +417,7 @@
 {% endblock %}
 
 {% block extra_js %}
+{% load static %}
 <!-- Marked.js for markdown -->
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <!-- PDF.js -->
@@ -599,45 +615,221 @@ document.getElementById('sidebarToggle').addEventListener('click', function(e) {
 </script>
 
 {% if current_episode.type == 'code' %}
-<!-- Monaco Editor (local, loaded after marked.js to avoid AMD conflict) -->
-{% load static %}
+<!-- Console panel (must load before Pyodide module script) -->
+<script src="{% static 'js/console.js' %}"></script>
+<!-- Monaco Editor (local) -->
 <script src="{% static 'vs/loader.js' %}"></script>
-<script>
-(function() {
-    require.config({
-        paths: { vs: '{% static "vs" %}' }
-    });
-    require(['vs/editor/editor.main'], function() {
-        var container = document.getElementById('monaco-container');
-        if (!container) return;
+<!-- Pyodide Interpreter (Web Worker architecture) -->
+<script type="module">
+import PyodideInterpreter from '{% static "js/pyodide-interpreter.js" %}';
 
-        // Read current theme from the website
-        var htmlEl = document.documentElement;
-        var currentTheme = htmlEl.getAttribute('data-theme') || 'light';
-        var monacoTheme = currentTheme === 'dark' ? 'vs-dark' : 'vs';
+// ---- Console Panel ----
+const consoleEl = document.getElementById('console-container');
+const consolePanel = new ConsolePanel(consoleEl);
 
-        var editor = monaco.editor.create(container, {
-            value: '# Write your Python code here\n',
-            language: 'python',
-            theme: monacoTheme,
-            automaticLayout: true,
-            minimap: { enabled: false },
-            fontSize: 14,
-            lineNumbers: 'on',
-            scrollBeyondLastLine: false,
-            wordWrap: 'on',
-            padding: { top: 12 }
+// ---- Monaco Editor (wait for AMD loader) ----
+let monacoEditor = null;
+
+function initMonaco() {
+    return new Promise((resolve) => {
+        // Suppress Monaco's web worker warning — Python editing
+        // doesn't need TypeScript/HTML language workers.
+        self.MonacoEnvironment = {
+            getWorker: function () {
+                const blob = new Blob(
+                    ['self.onmessage = function(e) { self.postMessage({}); }'],
+                    { type: 'text/javascript' }
+                );
+                const url = URL.createObjectURL(blob);
+                const worker = new Worker(url);
+                URL.revokeObjectURL(url); // release the blob URL immediately
+                return worker;
+            }
+        };
+
+        require.config({
+            paths: { vs: '{% static "vs" %}' }
         });
+        require(['vs/editor/editor.main'], function() {
+            var container = document.getElementById('monaco-container');
+            if (!container) { resolve(null); return; }
 
-        // Watch website theme changes and sync Monaco
-        var observer = new MutationObserver(function() {
-            var newTheme = htmlEl.getAttribute('data-theme') || 'light';
-            var newMonacoTheme = newTheme === 'dark' ? 'vs-dark' : 'vs';
-            monaco.editor.setTheme(newMonacoTheme);
+            var htmlEl = document.documentElement;
+            var currentTheme = htmlEl.getAttribute('data-theme') || 'light';
+            var monacoTheme = currentTheme === 'dark' ? 'vs-dark' : 'vs';
+
+            // Restore saved code from localStorage
+            const savedCode = localStorage.getItem('tscourser_code_{{ current_episode.id }}');
+            const initialValue = savedCode || '# Write your Python code here\n';
+
+            var editor = monaco.editor.create(container, {
+                value: initialValue,
+                language: 'python',
+                theme: monacoTheme,
+                automaticLayout: true,
+                minimap: { enabled: false },
+                fontSize: 14,
+                lineNumbers: 'on',
+                scrollBeyondLastLine: false,
+                wordWrap: 'on',
+                padding: { top: 12 }
+            });
+
+            monacoEditor = editor;
+            window.__monacoEditor = editor;
+
+            // Theme sync
+            var observer = new MutationObserver(function() {
+                var newTheme = htmlEl.getAttribute('data-theme') || 'light';
+                var newMonacoTheme = newTheme === 'dark' ? 'vs-dark' : 'vs';
+                monaco.editor.setTheme(newMonacoTheme);
+            });
+            observer.observe(htmlEl, { attributes: true, attributeFilter: ['data-theme'] });
+
+            resolve(editor);
         });
-        observer.observe(htmlEl, { attributes: true, attributeFilter: ['data-theme'] });
     });
-})();
+}
+
+// ---- Buttons ----
+const runBtn = document.getElementById('runBtn');
+const saveBtn = document.getElementById('saveBtn');
+
+let _hardStopTimer = null;
+
+function setRunEnabled(enabled) {
+    runBtn.disabled = !enabled;
+    runSpinner.classList.toggle('d-none', enabled);
+}
+
+function setButtonToRun() {
+    runBtn.classList.remove('btn-danger');
+    runBtn.classList.add('btn-success');
+    runBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1 d-none" id="runSpinner" role="status"></span><i class="bi bi-play-fill"></i> Run';
+    setRunEnabled(true);
+}
+
+function setButtonToStop() {
+    runBtn.classList.remove('btn-success');
+    runBtn.classList.add('btn-danger');
+    runBtn.innerHTML = '<i class="bi bi-stop-fill"></i> Stop';
+    runBtn.disabled = false;
+    if (_hardStopTimer) clearTimeout(_hardStopTimer);
+}
+
+
+// ---- Save helper ----
+function _saveCode() {
+    if (!monacoEditor) return;
+    const code = monacoEditor.getValue();
+    localStorage.setItem('tscourser_code_{{ current_episode.id }}', code);
+}
+
+// ---- Run/Stop Handler ----
+runBtn.addEventListener('click', async () => {
+    if (!monacoEditor || !PyodideInterpreter.isReady) return;
+
+    // --- STOP ---
+    if (PyodideInterpreter.isRunning) {
+        PyodideInterpreter.stop();
+        consolePanel.writeln('', 'system');
+        consolePanel.writeln('Stopping execution...', 'system');
+        // Hard-stop fallback: if worker doesn't respond in 3s, terminate
+        _hardStopTimer = setTimeout(async () => {
+            if (PyodideInterpreter.isRunning) {
+                consolePanel.writeln('Force-stopping...', 'system');
+                await PyodideInterpreter.hardStop();
+                setButtonToRun();
+                consolePanel.writeln('Python ' + PyodideInterpreter.version + ' — Restarted.', 'system');
+            }
+        }, 3000);
+        return;
+    }
+
+    // --- RUN ---
+    const code = monacoEditor.getValue();
+    if (!code.trim()) {
+        consolePanel.writeln('(no code to run)', 'system');
+        return;
+    }
+
+    _saveCode();
+    setButtonToStop();
+    consolePanel.writeln('', 'system');
+
+    try {
+        const response = await PyodideInterpreter.runCode(code);
+        if (_hardStopTimer) { clearTimeout(_hardStopTimer); _hardStopTimer = null; }
+
+        if (response.interrupted) {
+            consolePanel.writeln('Execution interrupted.', 'system');
+        } else if (response.error) {
+            consolePanel.writeln(response.error, 'stderr');
+        }
+    } catch (err) {
+        if (_hardStopTimer) { clearTimeout(_hardStopTimer); _hardStopTimer = null; }
+        consolePanel.writeln('Execution error: ' + err.message, 'stderr');
+    }
+
+    setButtonToRun();
+});
+
+// ---- Save Handler ----
+saveBtn.addEventListener('click', () => {
+    _saveCode();
+    // Flash feedback
+    const icon = saveBtn.querySelector('i');
+    const origClass = icon.className;
+    icon.className = 'bi bi-check';
+    saveBtn.classList.add('btn-success');
+    saveBtn.classList.remove('btn-outline-secondary');
+    setTimeout(() => {
+        icon.className = origClass;
+        saveBtn.classList.remove('btn-success');
+        saveBtn.classList.add('btn-outline-secondary');
+    }, 1200);
+});
+
+// ---- Auto-save every 60 seconds (code episodes only) ----
+const _autoSaveInterval = setInterval(_saveCode, 60000);
+addEventListener('beforeunload', () => clearInterval(_autoSaveInterval));
+
+// ---- Init Sequence ----
+async function init() {
+    consolePanel.writeln('Starting Python environment...', 'system');
+
+    try {
+        // Register example API (verifies the pipeline)
+        PyodideInterpreter.registerAPI('print_message');
+
+        PyodideInterpreter.onOutput = (type, text) => {
+            consolePanel.write(text, type);
+        };
+
+        PyodideInterpreter.onError = (error) => {
+            consolePanel.writeln('Failed to load Python interpreter: ' + error.message, 'stderr');
+            consolePanel.writeln('Please refresh the page or try a different browser.', 'system');
+            setButtonToRun();
+            runBtn.disabled = true;
+        };
+
+        await PyodideInterpreter.init();
+
+        consolePanel.writeln('Python ' + PyodideInterpreter.version + ' — Ready.', 'system');
+        setButtonToRun();
+    } catch (error) {
+        consolePanel.writeln('Failed to initialize Python environment.', 'stderr');
+        consolePanel.writeln(error.message, 'stderr');
+        setButtonToRun();
+        runBtn.disabled = true;
+    }
+}
+
+// Kick off initialization (Monaco and Pyodide in parallel)
+initMonaco().then(() => {
+    // Monaco is ready — Pyodide may still be loading
+});
+init();
 </script>
 {% endif %}
 {% endblock %}
