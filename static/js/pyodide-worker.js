@@ -136,8 +136,7 @@ async function _runPython(pyodide, id, python, context, apis) {
     try {
         await pyodide.loadPackagesFromImports(python);
     } catch (e) {
-        // Package loading failure is non-fatal; the script may still run
-        // if the imports aren't actually needed or are already loaded
+        _stderrBuffer += `[Package load warning] ${e.message || e}\n`;
     }
 
     // Build the globals dict: context data + custom API functions
@@ -200,6 +199,8 @@ function _buildGlobals(pyodide, context, apis) {
         const wrapper = createApiWrapper(pyodide, apiName);
         if (wrapper) {
             globals.set(apiName, wrapper);
+        } else {
+            _stderrBuffer += `[API warning] Unknown API "${apiName}" — not registered in worker-apis.js\n`;
         }
     }
 

@@ -138,13 +138,6 @@ class ConsolePanel {
     // ---- Internal ----
 
     _appendLine(text, type) {
-        // Trim old lines if over limit
-        while (this._lineCount >= this._maxLines) {
-            const firstChild = this._outputEl.firstChild;
-            if (firstChild) firstChild.remove();
-            this._lineCount--;
-        }
-
         const lineEl = document.createElement('div');
         lineEl.className = `console-line console-${type}`;
 
@@ -160,6 +153,13 @@ class ConsolePanel {
 
         this._outputEl.appendChild(lineEl);
         this._lineCount++;
+
+        // Trim old lines if over limit (handles both steady-state and burst writes)
+        while (this._lineCount > this._maxLines) {
+            const firstChild = this._outputEl.firstChild;
+            if (firstChild) firstChild.remove();
+            this._lineCount--;
+        }
 
         // Auto-scroll to bottom
         this._scrollToBottom();

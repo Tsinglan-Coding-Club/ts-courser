@@ -107,7 +107,13 @@ const PyodideInterpreter = {
         this._initPromise = null;
         this._running = false;
         // Reinitialize immediately so the user doesn't have to wait
-        await this.init();
+        try {
+            await this.init();
+        } catch (error) {
+            // Re-initialization failed. onError has already been called
+            // by _doInit(). The interpreter remains in not-ready state.
+            // Callers can safely use hardStop() without try/catch.
+        }
     },
 
     /**

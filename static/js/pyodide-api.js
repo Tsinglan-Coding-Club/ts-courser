@@ -170,25 +170,7 @@ export function requestResponse(worker, msg) {
     const { promise, resolve, reject } = _deferred();
     const id = _getId();
 
-    // Set a timeout to avoid hanging indefinitely (30 seconds)
-    const timeout = setTimeout(() => {
-        if (_pendingRequests.has(id)) {
-            _pendingRequests.delete(id);
-            reject(new Error('Worker request timed out after 30s'));
-        }
-    }, 30000);
-
-    // Wrap resolve/reject to clear timeout
-    const wrappedResolve = (data) => {
-        clearTimeout(timeout);
-        resolve(data);
-    };
-    const wrappedReject = (err) => {
-        clearTimeout(timeout);
-        reject(err);
-    };
-
-    _pendingRequests.set(id, { resolve: wrappedResolve, reject: wrappedReject });
+    _pendingRequests.set(id, { resolve, reject });
     worker.postMessage({ id, ...msg });
     return promise;
 }

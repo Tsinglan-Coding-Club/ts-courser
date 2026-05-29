@@ -29,6 +29,10 @@ application = get_wsgi_application()
 #   HttpResponse object. Unlike patching __call__ (which has complex WSGI
 #   interaction), modifying the returned HttpResponse is guaranteed to work.
 #
+# WARNING: This patch depends on Django's internal StaticFilesHandler.serve()
+#   signature (tested with Django 5.2). If Django changes this method in a
+#   future version, this patch may silently break. Verify after upgrades.
+#
 #   In production, use nginx/caddy to set these headers instead.
 # ===========================================================================
 

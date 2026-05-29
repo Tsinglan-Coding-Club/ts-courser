@@ -61,7 +61,13 @@ def mark_episode(request):
 @login_required
 @require_POST
 def vditor_upload(request):
-    """Handle file uploads from Vditor markdown editor."""
+    """
+    Handle file uploads from Vditor markdown editor.
+
+    NOTE: This endpoint uses {'code': 0, 'data': {...}} response format
+    instead of the project-standard {'success': True} because Vditor
+    requires this specific JSON schema for its upload handler.
+    """
     if 'file[]' not in request.FILES:
         return JsonResponse({'code': 1, 'msg': 'No file provided'})
 

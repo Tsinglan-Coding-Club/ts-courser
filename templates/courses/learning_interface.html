@@ -828,6 +828,8 @@ async function init() {
 // Kick off initialization (Monaco and Pyodide in parallel)
 initMonaco().then(() => {
     // Monaco is ready — Pyodide may still be loading
+}).catch(() => {
+    clearInterval(_autoSaveInterval);
 });
 init();
 </script>
