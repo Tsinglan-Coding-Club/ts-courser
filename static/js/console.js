@@ -27,6 +27,7 @@ class ConsolePanel {
         this._maxLines = 2000;
         this._lineCount = 0;
         this._isDestroyed = false;
+        this._needsNewLine = true;
 
         this._buildDOM();
         this._bindEvents();
@@ -74,13 +75,12 @@ class ConsolePanel {
     // ---- Output Methods ----
 
     /**
-     * Append text to the console.
+     * Append text using a cursor model.
      *
-     * Pyodide's stdout is line-buffered: each callback delivers one complete
-     * line of output (the trailing \n is consumed as a flush delimiter and
-     * never passed to the handler). writeln() manually appends \n for system
-     * messages. Both cases are handled uniformly: split by \n, render each
-     * non-trailing segment as a <div> line.
+     * _needsNewLine tracks whether output is at the start of a fresh line.
+     * Text is split by \n: each segment advances the cursor to a new line.
+     * When _needsNewLine=false, the next segment is appended inline — this
+     * supports print("x", end="") where multiple writes appear on one line.
      *
      * @param {string} text - The text to write
      * @param {'stdout'|'stderr'|'system'} type - Output type for styling
@@ -90,16 +90,36 @@ class ConsolePanel {
         if (text === undefined || text === null) return;
 
         const str = String(text);
+        if (str.length === 0) return;
+
         const lines = str.split('\n');
+        console.warn('[DBG:write] type=' + type + ' input=' + JSON.stringify(str) + ' needsNew=' + this._needsNewLine);
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
 
-        // A trailing empty segment means the input ended with \n
-        // (e.g. from writeln). Don't render it — it's just a terminator.
-        // But a single empty segment (write("")) should render as a blank line.
-        const hasTrailingNL = lines.length > 1 && lines[lines.length - 1] === '';
-        const end = hasTrailingNL ? lines.length - 1 : lines.length;
+            // Trailing empty segment = \n terminator: advance cursor, stop
+            if (i === lines.length - 1 && line === '') {
+                console.warn('[DBG:write]   trailing-empty → needsNew=true');
+                this._needsNewLine = true;
+                break;
+            }
 
-        for (let i = 0; i < end; i++) {
-            this._appendLine(lines[i], type);
+            // First segment + cursor not at line start → inline (end="" case)
+            if (i === 0 && !this._needsNewLine) {
+                if (line !== '') {
+                    console.warn('[DBG:write]   i=' + i + ' INLINE  \"' + line + '\"');
+                    this._appendInline(line, type);
+                } else {
+                    // Data starts with \n while mid-line: just advance cursor
+                    console.warn('[DBG:write]   i=' + i + ' MID-NL-SKIP (\\n when needsNew=false, no render)');
+                    this._needsNewLine = true;
+                    continue;
+                }
+            } else {
+                console.warn('[DBG:write]   i=' + i + ' NEWLINE \"' + line + '\" (lineWasEmpty=' + (line==='') + ')');
+                this._appendLine(line, type);
+            }
+            this._needsNewLine = false;
         }
     }
 
@@ -119,6 +139,7 @@ class ConsolePanel {
         if (this._isDestroyed) return;
         this._outputEl.innerHTML = '';
         this._lineCount = 0;
+        this._needsNewLine = true;
     }
 
     /**
@@ -159,6 +180,19 @@ class ConsolePanel {
         }
 
         // Auto-scroll to bottom
+        this._scrollToBottom();
+    }
+
+    _appendInline(text, type) {
+        const lastLine = this._outputEl.lastChild;
+        if (!lastLine || !lastLine.classList.contains('console-line')) {
+            this._appendLine(text, type);
+            return;
+        }
+        const span = document.createElement('span');
+        span.className = `console-inline console-${type}`;
+        span.textContent = text;
+        lastLine.appendChild(span);
         this._scrollToBottom();
     }
 

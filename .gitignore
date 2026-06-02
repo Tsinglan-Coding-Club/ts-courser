@@ -51,6 +51,9 @@ uv.lock
 
 # Node
 node_modules/
+
+# Pyodide runtime (copied from node_modules)
+static/pyodide/
 package-lock.json
 
 #other

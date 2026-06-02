@@ -10,7 +10,7 @@
  * Reference: Pyodide docs — "Using Pyodide in a web worker"
  */
 
-import { loadPyodide } from '/static/pyodide.mjs';
+import { loadPyodide } from '/static/pyodide/pyodide.mjs?v=3';
 import { createApiWrapper, initStdin, stdinWithPrompt, getDiagnostics } from '/static/js/worker-apis.js';
 
 // ---------------------------------------------------------------------------
@@ -27,19 +27,29 @@ let _stdoutBuffer = '';
 let _stderrBuffer = '';
 let _stdinEnabled = false;
 let _interruptBuf = null;
+// Named stdout/stderr writers for batched output.
+// Per Pyodide docs: batched is called when \n is written (line will END
+// with \n) OR when stdout is flushed (line will NOT end with \n).
+// This naturally supports both print("x") and print("x", end="").
+const _stdoutWrite = (text) => {
+    _stdoutBuffer += text;
+    // Diagnostic: send to main thread (bypasses worker console isolation)
+    self.postMessage({ type: '_dbg_stdout', text: text });
+    console.warn('[DBG:1:worker] stdout batched len=' + text.length + ' text=' + JSON.stringify(text));
+    self.postMessage({ type: 'stdout', text });
+};
+const _stderrWrite = (text) => {
+    _stderrBuffer += text;
+    self.postMessage({ type: '_dbg_stderr', text: text });
+    console.warn('[DBG:1:worker] stderr batched len=' + text.length + ' text=' + JSON.stringify(text));
+    self.postMessage({ type: 'stderr', text });
+};
 
 let pyodideReady = (async () => {
     console.log('[pyodide-worker] Loading Pyodide...');
     const pyodide = await loadPyodide({
-        indexURL: '/static/',
-        stdout: (text) => {
-            _stdoutBuffer += text;
-            self.postMessage({ type: 'stdout', text });
-        },
-        stderr: (text) => {
-            _stderrBuffer += text;
-            self.postMessage({ type: 'stderr', text });
-        },
+        indexURL: '/static/pyodide/',
+        env: { PYTHONUNBUFFERED: '1' },
     });
     console.log('[pyodide-worker] Pyodide loaded. Version:', pyodide.version);
 
@@ -62,6 +72,31 @@ builtins.input = _custom_input
         _stdinEnabled = false;
         console.warn('[pyodide-worker] stdin disabled. Python input() will raise an error.');
     }
+
+    // Use Pyodide's write handler — receives raw Uint8Array bytes from
+    // Emscripten C layer, including \n (ASCII 10). No buffering: every
+    // Python write() triggers this immediately, even print("x", end="").
+    pyodide.setStdout({
+        write: (buffer) => {
+            const text = new TextDecoder().decode(buffer);
+            _stdoutBuffer += text;
+            console.warn('[DBG:1:worker] stdout write len=' + buffer.length + ' text=' + JSON.stringify(text));
+            self.postMessage({ type: 'stdout', text });
+            return buffer.length;
+        },
+        isatty: false,
+    });
+    pyodide.setStderr({
+        write: (buffer) => {
+            const text = new TextDecoder().decode(buffer);
+            _stderrBuffer += text;
+            console.warn('[DBG:1:worker] stderr write len=' + buffer.length + ' text=' + JSON.stringify(text));
+            self.postMessage({ type: 'stderr', text });
+            return buffer.length;
+        },
+        isatty: false,
+    });
+    console.log('[pyodide-worker] Write stdout/stderr enabled via setStdout({write}).');
 
     // Set up interrupt buffer for KeyboardInterrupt (Stop button)
     // Uses 1-byte SharedArrayBuffer — write 2 to trigger SIGINT

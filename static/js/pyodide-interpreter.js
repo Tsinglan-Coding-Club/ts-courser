@@ -45,6 +45,7 @@ const PyodideInterpreter = {
         // Wire up real-time stdout/stderr streaming (once)
         if (!this._streamWired) {
             onStreamOutput((type, text) => {
+                console.log('[DBG:3:interp] fwd ' + type + ' len=' + text.length + ' raw=' + JSON.stringify(text));
                 if (this.onOutput) {
                     this.onOutput(type, text);
                 }

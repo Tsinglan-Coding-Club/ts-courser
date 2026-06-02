@@ -32,7 +32,7 @@ function _deferred() {
  */
 export function getWorker() {
     if (!_worker) {
-        _worker = new Worker('/static/js/pyodide-worker.js', { type: 'module' });
+        _worker = new Worker('/static/js/pyodide-worker.js?v=3', { type: 'module' });
         _setupWorkerListeners(_worker);
     }
     return _worker;
@@ -45,6 +45,12 @@ export function getWorker() {
 function _setupWorkerListeners(worker) {
     worker.addEventListener('message', (event) => {
         const data = event.data;
+
+        // --- Diagnostic: catch _dbg messages from worker ---
+        if (data.type === '_dbg_stdout' || data.type === '_dbg_stderr') {
+            console.warn('[DBG:X:api] ' + data.type + ' CALLED, text=' + JSON.stringify(data.text));
+            return;
+        }
 
         // --- stdin request (SharedArrayBuffer-based) ---
         if (data.type === 'stdin-init') {
@@ -65,6 +71,7 @@ function _setupWorkerListeners(worker) {
 
         // --- Real-time stdout/stderr streaming ---
         if (data.type === 'stdout' || data.type === 'stderr') {
+            console.log('[DBG:2:api] recv ' + data.type + ' len=' + data.text.length + ' raw=' + JSON.stringify(data.text));
             if (_onStreamOutput) {
                 _onStreamOutput(data.type, data.text);
             }
