@@ -27,7 +27,6 @@ class ConsolePanel {
         this._maxLines = 2000;
         this._lineCount = 0;
         this._isDestroyed = false;
-        this._needsNewLine = true;
 
         this._buildDOM();
         this._bindEvents();
@@ -76,6 +75,13 @@ class ConsolePanel {
 
     /**
      * Append text to the console.
+     *
+     * Pyodide's stdout is line-buffered: each callback delivers one complete
+     * line of output (the trailing \n is consumed as a flush delimiter and
+     * never passed to the handler). writeln() manually appends \n for system
+     * messages. Both cases are handled uniformly: split by \n, render each
+     * non-trailing segment as a <div> line.
+     *
      * @param {string} text - The text to write
      * @param {'stdout'|'stderr'|'system'} type - Output type for styling
      */
@@ -84,25 +90,16 @@ class ConsolePanel {
         if (text === undefined || text === null) return;
 
         const str = String(text);
-        if (str.length === 0) return;
-
         const lines = str.split('\n');
-        for (let i = 0; i < lines.length; i++) {
-            const line = lines[i];
 
-            // Trailing empty = newline termination
-            if (i === lines.length - 1 && line === '') {
-                this._needsNewLine = true;
-                break;
-            }
+        // A trailing empty segment means the input ended with \n
+        // (e.g. from writeln). Don't render it — it's just a terminator.
+        // But a single empty segment (write("")) should render as a blank line.
+        const hasTrailingNL = lines.length > 1 && lines[lines.length - 1] === '';
+        const end = hasTrailingNL ? lines.length - 1 : lines.length;
 
-            if (i === 0 && !this._needsNewLine) {
-                // Continue on the previous line (inline span)
-                if (line !== '') this._appendInline(line, type);
-            } else {
-                this._appendLine(line, type);
-            }
-            this._needsNewLine = false;
+        for (let i = 0; i < end; i++) {
+            this._appendLine(lines[i], type);
         }
     }
 
@@ -162,20 +159,6 @@ class ConsolePanel {
         }
 
         // Auto-scroll to bottom
-        this._scrollToBottom();
-    }
-
-    _appendInline(text, type) {
-        const lastLine = this._outputEl.lastChild;
-        if (!lastLine || !lastLine.classList.contains('console-line')) {
-            // Fallback: create a new line (shouldn't normally happen)
-            this._appendLine(text, type);
-            return;
-        }
-        const span = document.createElement('span');
-        span.className = `console-inline console-${type}`;
-        span.textContent = text;
-        lastLine.appendChild(span);
         this._scrollToBottom();
     }
 
