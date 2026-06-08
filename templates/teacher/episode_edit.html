@@ -569,6 +569,9 @@
             <a href="{% url 'courses:learning_interface_episode' course.id episode.id %}" class="btn btn-info" target="_blank">
                 <i class="bi bi-eye"></i> Preview
             </a>
+            <button type="button" class="btn btn-outline-danger ms-auto" onclick="confirmDeleteEpisode({{ episode.id }}, '{{ episode.title|escapejs }}')">
+                <i class="bi bi-trash"></i> Delete Episode
+            </button>
         </div>
     </form>
 </div>
@@ -577,6 +580,18 @@
 {% block extra_js %}
 <!-- Marked.js for Markdown rendering -->
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script>
+function confirmDeleteEpisode(id, name) {
+    if (confirm('Are you sure you want to delete "' + name + '"?\\n\\nThis action cannot be undone. All content and files for this episode will be permanently removed.')) {
+        const form = document.getElementById('episodeDeleteForm');
+        form.action = form.action.replace('99999', id);
+        form.submit();
+    }
+}
+</script>
+<form id="episodeDeleteForm" method="post" action="{% url 'teacher:episode_delete' 99999 %}" style="display: none;">
+    {% csrf_token %}
+</form>
 
 <!-- Quiz Editor -->
 <script src="{% static 'js/quiz-editor.js' %}"></script>

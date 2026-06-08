@@ -6,6 +6,7 @@ from django.core.files.storage import default_storage
 from django.conf import settings
 from .models import UserProgress, EpisodeReadStatus, CourseEnrollment
 from courses.models import Episode, Course
+from ts_courser.utils import compress_image
 import uuid
 import os
 import magic
@@ -90,6 +91,9 @@ def vditor_upload(request):
                 continue
         except Exception:
             continue
+
+        # Compress images larger than 1MB before saving
+        uploaded_file = compress_image(uploaded_file)
 
         # Generate unique filename
         ext = os.path.splitext(uploaded_file.name)[1]

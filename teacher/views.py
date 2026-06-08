@@ -5,25 +5,25 @@ from django.core.exceptions import PermissionDenied
 from django.http import JsonResponse
 from django.db import models
 from courses.models import Course, Section, Episode, Tag
+from .decorators import (
+    teacher_required,
+    require_course_ownership,
+    require_episode_ownership,
+    check_section_ownership,
+)
 import magic
 import os
 
-
-def teacher_required(view_func):
-    """Decorator to check if user is a verified teacher."""
-    def wrapper(request, *args, **kwargs):
-        if not request.user.is_authenticated:
-            return redirect('accounts:login')
-        if not request.user.is_teacher and not request.user.is_admin:
-            raise PermissionDenied("Only verified teachers can access this page.")
-        return view_func(request, *args, **kwargs)
-    return wrapper
+from ts_courser.utils import compress_image
 
 
 @teacher_required
 def course_list(request):
-    """List all courses for teacher management."""
-    courses = Course.objects.all().prefetch_related('tags', 'creator')
+    """List courses for teacher management. Teachers see only their own; admins see all."""
+    if request.user.is_admin:
+        courses = Course.objects.all().prefetch_related('tags', 'creator')
+    else:
+        courses = Course.objects.filter(creator=request.user).prefetch_related('tags', 'creator')
     return render(request, 'teacher/course_list.html', {'courses': courses})
 
 
@@ -47,9 +47,9 @@ def course_create(request):
             is_published=is_published
         )
 
-        # Handle thumbnail upload
+        # Handle thumbnail upload (compress if > 1MB)
         if 'thumbnail' in request.FILES:
-            course.thumbnail = request.FILES['thumbnail']
+            course.thumbnail = compress_image(request.FILES['thumbnail'])
             course.save()
 
         # Add tags
@@ -64,9 +64,10 @@ def course_create(request):
 
 
 @teacher_required
+@require_course_ownership
 def course_edit(request, course_id):
-    """Edit an existing course."""
-    course = get_object_or_404(Course, id=course_id)
+    """Edit an existing course. Only the creator (or admin) can edit."""
+    course = request.course  # Injected by require_course_ownership
 
     if request.method == 'POST':
         course.title = request.POST.get('title', course.title)
@@ -74,9 +75,9 @@ def course_edit(request, course_id):
         course.is_published = request.POST.get('is_published') == 'on'
         tag_ids = request.POST.getlist('tags')
 
-        # Handle thumbnail upload
+        # Handle thumbnail upload (compress if > 1MB)
         if 'thumbnail' in request.FILES:
-            course.thumbnail = request.FILES['thumbnail']
+            course.thumbnail = compress_image(request.FILES['thumbnail'])
 
         course.save()
 
@@ -106,7 +107,7 @@ def course_edit(request, course_id):
 
 @teacher_required
 def section_create(request):
-    """Create a new section."""
+    """Create a new section. Only the course owner (or admin) can add sections."""
     if request.method == 'POST':
         course_id = request.POST.get('course_id')
         title = request.POST.get('title')
@@ -116,6 +117,10 @@ def section_create(request):
             return redirect('teacher:course_list')
 
         course = get_object_or_404(Course, id=course_id)
+
+        # Ownership check: only the course creator or admin can add sections
+        if not request.user.is_admin and course.creator != request.user:
+            raise PermissionDenied("You can only add sections to your own courses.")
 
         # Auto-calculate order (max + 1)
         max_order = Section.objects.filter(course=course).aggregate(
@@ -137,7 +142,7 @@ def section_create(request):
 
 @teacher_required
 def episode_create(request):
-    """Create a new episode."""
+    """Create a new episode. Only the parent course owner (or admin) can add episodes."""
     if request.method == 'POST':
         section_id = request.POST.get('section_id')
         title = request.POST.get('title')
@@ -147,7 +152,8 @@ def episode_create(request):
             messages.error(request, 'Section and title are required.')
             return redirect('teacher:course_list')
 
-        section = get_object_or_404(Section, id=section_id)
+        # Ownership check: trace back to parent course
+        section, course = check_section_ownership(request, section_id)
 
         # Auto-calculate order (max + 1)
         max_order = Episode.objects.filter(section=section).aggregate(
@@ -169,9 +175,11 @@ def episode_create(request):
 
 
 @teacher_required
+@require_episode_ownership
 def episode_edit(request, episode_id):
     """Edit an episode with markdown editor and file uploads."""
-    episode = get_object_or_404(Episode, id=episode_id)
+    episode = request.episode  # Injected by require_episode_ownership
+    course = request.course
 
     if request.method == 'POST':
         episode.title = request.POST.get('title', episode.title)
@@ -205,11 +213,11 @@ def episode_edit(request, episode_id):
 
         episode.save()
         messages.success(request, f'Episode "{episode.title}" updated successfully!')
-        return redirect('teacher:course_edit', course_id=episode.section.course.id)
+        return redirect('teacher:course_edit', course_id=course.id)
 
     context = {
         'episode': episode,
-        'course': episode.section.course,
+        'course': course,
         'type_options': Episode.TYPE_CHOICES,
     }
     return render(request, 'teacher/episode_edit.html', context)
@@ -243,17 +251,37 @@ def tag_create(request):
 
 @teacher_required
 def section_reorder(request):
-    """Reorder sections via AJAX."""
+    """Reorder sections via AJAX. Only the course owner (or admin) can reorder."""
     if request.method == 'POST':
         try:
             import json
             data = json.loads(request.body)
             section_orders = data.get('section_orders', [])
 
-            for item in section_orders:
-                section_id = item.get('id')
-                new_order = item.get('order')
-                section = Section.objects.get(id=section_id)
+            if not section_orders:
+                return JsonResponse({'success': False, 'error': 'No sections provided'})
+
+            # Verify ownership: all sections must belong to the same course owned by user
+            section_ids = [item.get('id') for item in section_orders]
+            sections = Section.objects.filter(id__in=section_ids).select_related('course')
+
+            if len(sections) != len(section_ids):
+                return JsonResponse({'success': False, 'error': 'Some sections not found'})
+
+            # All sections must belong to the same course
+            course_ids = set(s.course_id for s in sections)
+            if len(course_ids) != 1:
+                return JsonResponse({'success': False, 'error': 'Sections must belong to the same course'})
+
+            course = sections[0].course
+            if not request.user.is_admin and course.creator != request.user:
+                return JsonResponse({'success': False, 'error': 'Permission denied'})
+
+            for section in sections:
+                new_order = next(
+                    (item['order'] for item in section_orders if item['id'] == section.id),
+                    section.order
+                )
                 section.order = new_order
                 section.save()
 
@@ -266,17 +294,39 @@ def section_reorder(request):
 
 @teacher_required
 def episode_reorder(request):
-    """Reorder episodes via AJAX."""
+    """Reorder episodes via AJAX. Only the parent course owner (or admin) can reorder."""
     if request.method == 'POST':
         try:
             import json
             data = json.loads(request.body)
             episode_orders = data.get('episode_orders', [])
 
-            for item in episode_orders:
-                episode_id = item.get('id')
-                new_order = item.get('order')
-                episode = Episode.objects.get(id=episode_id)
+            if not episode_orders:
+                return JsonResponse({'success': False, 'error': 'No episodes provided'})
+
+            # Verify ownership: all episodes must belong to the same course owned by user
+            episode_ids = [item.get('id') for item in episode_orders]
+            episodes = Episode.objects.filter(id__in=episode_ids).select_related(
+                'section__course'
+            )
+
+            if len(episodes) != len(episode_ids):
+                return JsonResponse({'success': False, 'error': 'Some episodes not found'})
+
+            # All episodes must belong to the same course
+            course_ids = set(e.section.course_id for e in episodes)
+            if len(course_ids) != 1:
+                return JsonResponse({'success': False, 'error': 'Episodes must belong to the same course'})
+
+            course = episodes[0].section.course
+            if not request.user.is_admin and course.creator != request.user:
+                return JsonResponse({'success': False, 'error': 'Permission denied'})
+
+            for episode in episodes:
+                new_order = next(
+                    (item['order'] for item in episode_orders if item['id'] == episode.id),
+                    episode.order
+                )
                 episode.order = new_order
                 episode.save()
 
@@ -287,10 +337,65 @@ def episode_reorder(request):
     return JsonResponse({'success': False, 'error': 'Invalid request'})
 
 
+# ========== Delete Views ==========
+
+@teacher_required
+def course_delete(request, course_id):
+    """Delete a course. Only the creator (or admin) can delete."""
+    course = get_object_or_404(Course, id=course_id)
+
+    if not request.user.is_admin and course.creator != request.user:
+        raise PermissionDenied("You can only delete your own courses.")
+
+    if request.method == 'POST':
+        course_title = course.title
+        course.delete()
+        messages.success(request, f'Course "{course_title}" deleted successfully!')
+        return redirect('teacher:course_list')
+
+    return redirect('teacher:course_edit', course_id=course_id)
+
+
+@teacher_required
+def section_delete(request, section_id):
+    """Delete a section. Only the parent course owner (or admin) can delete."""
+    section, course = check_section_ownership(request, section_id)
+
+    if request.method == 'POST':
+        section_title = section.title
+        section.delete()
+        messages.success(request, f'Section "{section_title}" deleted successfully!')
+        return redirect('teacher:course_edit', course_id=course.id)
+
+    return redirect('teacher:course_edit', course_id=course.id)
+
+
+@teacher_required
+def episode_delete(request, episode_id):
+    """Delete an episode. Only the parent course owner (or admin) can delete."""
+    episode = get_object_or_404(
+        Episode.objects.select_related('section__course'),
+        id=episode_id
+    )
+    course = episode.section.course
+
+    if not request.user.is_admin and course.creator != request.user:
+        raise PermissionDenied("You can only delete your own content.")
+
+    if request.method == 'POST':
+        episode_title = episode.title
+        section = episode.section
+        episode.delete()
+        messages.success(request, f'Episode "{episode_title}" deleted successfully!')
+        return redirect('teacher:course_edit', course_id=course.id)
+
+    return redirect('teacher:course_edit', course_id=course.id)
+
+
 def validate_pdf(pdf_file):
     """Validate uploaded PDF file."""
-    # Size check (50MB limit)
-    if pdf_file.size > 50 * 1024 * 1024:
+    # Size check (15MB limit)
+    if pdf_file.size > 15 * 1024 * 1024:
         return False
 
     # MIME type check
