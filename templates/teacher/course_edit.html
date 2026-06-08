@@ -206,6 +206,9 @@
                         <a href="{% url 'courses:learning_interface' course.id %}" class="btn btn-outline-primary btn-sm" target="_blank">
                             <i class="bi bi-eye"></i> Preview Course
                         </a>
+                        <button class="btn btn-outline-danger btn-sm" onclick="confirmDelete('course', {{ course.id }}, '{{ course.title|escapejs }}')">
+                            <i class="bi bi-trash"></i> Delete Course
+                        </button>
                     </div>
                 </div>
             </div>
@@ -230,6 +233,9 @@
                             <span class="badge bg-secondary ms-2">{{ section.episodes.all|length }} episodes</span>
                         </div>
                         <div>
+                            <button class="btn btn-sm btn-outline-danger me-1" onclick="event.stopPropagation(); confirmDelete('section', {{ section.id }}, '{{ section.title|escapejs }}')" title="Delete section">
+                                <i class="bi bi-trash"></i>
+                            </button>
                             <button class="btn btn-sm btn-primary" onclick="event.stopPropagation(); addEpisode({{ section.id }})">
                                 <i class="bi bi-plus"></i> Add Episode
                             </button>
@@ -267,9 +273,14 @@
                                             {% endif %}
                                         </span>
                                     </div>
-                                    <a href="{% url 'teacher:episode_edit' episode.id %}" class="btn btn-sm btn-outline-primary">
-                                        <i class="bi bi-pencil"></i> Edit
-                                    </a>
+                                    <div class="d-flex gap-1">
+                                        <button class="btn btn-sm btn-outline-danger" onclick="event.stopPropagation(); confirmDelete('episode', {{ episode.id }}, '{{ episode.title|escapejs }}')" title="Delete episode">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                        <a href="{% url 'teacher:episode_edit' episode.id %}" class="btn btn-sm btn-outline-primary">
+                                            <i class="bi bi-pencil"></i> Edit
+                                        </a>
+                                    </div>
                                 </div>
                             {% empty %}
                                 <div class="list-group-item text-muted text-center py-4">
@@ -325,12 +336,54 @@
     <input type="hidden" name="type" value="material">
 </form>
 
+<!-- Delete Confirmation Modal -->
+<div class="modal fade" id="deleteConfirmModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-exclamation-triangle text-danger"></i> Confirm Delete</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to delete <strong id="deleteItemName"></strong>?</p>
+                <p class="text-danger mb-0"><small>This action cannot be undone. All associated content will be permanently removed.</small></p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <form id="deleteForm" method="post" style="display: inline;">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-danger">
+                        <i class="bi bi-trash"></i> Delete
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script>
 const csrftoken = document.querySelector('[name=csrfmiddlewaretoken]').value;
 
 function addEpisode(sectionId) {
     document.getElementById('episodeSectionId').value = sectionId;
     document.getElementById('addEpisodeForm').submit();
+}
+
+function confirmDelete(type, id, name) {
+    const modal = new bootstrap.Modal(document.getElementById('deleteConfirmModal'));
+    document.getElementById('deleteItemName').textContent = name;
+
+    let deleteUrl;
+    if (type === 'course') {
+        deleteUrl = '{% url "teacher:course_delete" 99999 %}'.replace('99999', id);
+    } else if (type === 'section') {
+        deleteUrl = '{% url "teacher:section_delete" 99999 %}'.replace('99999', id);
+    } else if (type === 'episode') {
+        deleteUrl = '{% url "teacher:episode_delete" 99999 %}'.replace('99999', id);
+    }
+
+    document.getElementById('deleteForm').action = deleteUrl;
+    modal.show();
 }
 
 // Update chevron icon when collapsing/expanding

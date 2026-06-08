@@ -10,6 +10,7 @@ from django.utils import timezone
 from datetime import timedelta
 from .models import User
 from courses.models import Tag
+from ts_courser.utils import compress_image
 import os
 import random
 import string
@@ -209,7 +210,7 @@ def profile_edit(request):
         user.display_name = request.POST.get('display_name', '').strip()
         user.bio = request.POST.get('bio', '').strip()
 
-        # Handle avatar upload
+        # Handle avatar upload (compress if > 1MB)
         if 'avatar' in request.FILES:
             avatar_file = request.FILES['avatar']
 
@@ -223,6 +224,9 @@ def profile_edit(request):
             if avatar_file.content_type not in allowed_types:
                 messages.error(request, 'Avatar must be a valid image file (JPEG, PNG, GIF, or WebP).')
                 return redirect('accounts:profile_edit')
+
+            # Compress large images with Pillow before saving
+            avatar_file = compress_image(avatar_file)
 
             # Delete old avatar if exists
             if user.avatar:
