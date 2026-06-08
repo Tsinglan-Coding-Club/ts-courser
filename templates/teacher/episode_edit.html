@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load static %}
 
 {% block title %}Edit {{ episode.title }} - Teacher{% endblock %}
 
@@ -42,7 +43,7 @@
 
 .md-editor-panels {
     display: flex;
-    height: 500px;
+    height: 700px;
 }
 
 .md-editor-panel {
@@ -121,6 +122,192 @@
 
 .type-toggle-btn {
     min-width: 120px;
+}
+
+/* Quiz Editor Styles */
+.quiz-empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: var(--text-secondary);
+    text-align: center;
+    padding: 2rem;
+}
+
+.quiz-empty-state p {
+    margin-top: 0.75rem;
+    font-size: 0.9rem;
+}
+
+.quiz-question-card {
+    border: 1px solid var(--border-color);
+    border-radius: 0.5rem;
+    margin-bottom: 1rem;
+    background: var(--bg-primary);
+    overflow: hidden;
+}
+
+.quiz-question-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    background: var(--bg-tertiary);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.quiz-question-drag-handle {
+    flex-shrink: 0;
+    cursor: grab;
+    color: var(--text-secondary);
+    font-size: 1.1rem;
+    user-select: none;
+}
+
+.quiz-question-drag-handle:active {
+    cursor: grabbing;
+}
+
+.quiz-question-card.quiz-question-dragging {
+    opacity: 0.4;
+}
+
+.quiz-question-card.quiz-question-drag-over {
+    outline: 2px dashed var(--primary-color);
+    outline-offset: -2px;
+}
+
+.quiz-type-badge {
+    font-size: 0.7rem;
+    font-weight: 700;
+    padding: 0.15rem 0.45rem;
+    border-radius: 0.25rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.quiz-type-mcq {
+    background: #d1fae5;
+    color: #065f46;
+}
+
+.quiz-type-frq {
+    background: #dbeafe;
+    color: #1e40af;
+}
+
+.quiz-question-number {
+    font-weight: 600;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    flex: 1;
+}
+
+.quiz-header-actions {
+    display: flex;
+    gap: 0.25rem;
+}
+
+.quiz-header-actions .btn {
+    font-size: 0.75rem;
+    padding: 0.1rem 0.4rem;
+}
+
+.quiz-question-body {
+    padding: 0.75rem;
+}
+
+.quiz-question-input {
+    font-weight: 500;
+    margin-bottom: 0.5rem;
+    resize: none;
+    overflow: hidden;
+    min-height: 58px;
+}
+
+.quiz-choices-area {
+    padding-left: 0.5rem;
+}
+
+.quiz-choice-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.4rem;
+    padding: 0.3rem 0.4rem;
+    border-radius: 0.25rem;
+    border: 1px solid transparent;
+    transition: border-color 0.15s;
+}
+
+.quiz-choice-row:hover {
+    border-color: var(--border-color);
+}
+
+.quiz-choice-row:has(.quiz-choice-radio:checked) {
+    background: rgba(34, 197, 94, 0.06);
+    border-color: rgba(34, 197, 94, 0.3);
+}
+
+.quiz-choice-radio {
+    flex-shrink: 0;
+    cursor: pointer;
+    accent-color: #22c55e;
+}
+
+.quiz-choice-input {
+    flex: 1;
+}
+
+.quiz-choice-delete {
+    flex-shrink: 0;
+    font-size: 0.75rem;
+    padding: 0.1rem 0.35rem;
+}
+
+.quiz-choice-drag-handle {
+    flex-shrink: 0;
+    cursor: grab;
+    color: var(--text-secondary);
+    font-size: 1rem;
+    padding: 0 0.15rem;
+    user-select: none;
+}
+
+.quiz-choice-drag-handle:active {
+    cursor: grabbing;
+}
+
+.quiz-choice-row.quiz-choice-dragging {
+    opacity: 0.4;
+}
+
+.quiz-choice-row.quiz-choice-drag-over {
+    border-color: var(--primary-color) !important;
+    background: rgba(var(--primary-rgb, 13, 110, 253), 0.05);
+}
+
+.quiz-add-choice-btn {
+    margin-top: 0.25rem;
+    font-size: 0.8rem;
+}
+
+.quiz-frq-placeholder {
+    border: 2px dashed var(--border-color);
+    border-radius: 0.25rem;
+    padding: 1.5rem;
+    text-align: center;
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+}
+
+.quiz-frq-placeholder i {
+    display: block;
+    font-size: 1.5rem;
+    margin-bottom: 0.4rem;
+    opacity: 0.5;
 }
 </style>
 {% endblock %}
@@ -228,7 +415,7 @@
                     <div class="md-editor-panels">
                         <div class="md-editor-panel">
                             <div class="md-panel-header">Markdown</div>
-                            <textarea class="md-textarea" id="mdEditor" name="info_page_content">{{ episode.info_page_content }}</textarea>
+                            <textarea class="md-textarea" id="mdEditor" name="info_page_content">{{ episode.info_page_content|default_if_none:'' }}</textarea>
                         </div>
                         <div class="md-editor-panel">
                             <div class="md-panel-header">Preview</div>
@@ -239,6 +426,68 @@
 
                 <!-- Hidden file input for image upload -->
                 <input type="file" id="imageUploadInput" accept="image/*" style="display: none;">
+            </div>
+        </div>
+
+        <!-- Quiz Editor (quiz type only) -->
+        <div class="card mb-4" id="quizEditorCard">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-patch-question"></i> Quiz Editor</h5>
+            </div>
+            <div class="card-body p-0">
+                <div class="md-editor-container">
+                    <!-- Quiz Toolbar: formatting + Add Question buttons -->
+                    <div class="md-toolbar" id="quizToolbar">
+                        <button type="button" class="md-toolbar-btn quiz-md-btn" data-action="bold" title="Bold">
+                            <i class="bi bi-type-bold"></i>
+                        </button>
+                        <button type="button" class="md-toolbar-btn quiz-md-btn" data-action="italic" title="Italic">
+                            <i class="bi bi-type-italic"></i>
+                        </button>
+                        <button type="button" class="md-toolbar-btn quiz-md-btn" data-action="strikethrough" title="Strikethrough">
+                            <i class="bi bi-type-strikethrough"></i>
+                        </button>
+                        <div class="md-toolbar-separator"></div>
+                        <button type="button" class="md-toolbar-btn quiz-md-btn" data-action="ul" title="Bulleted List">
+                            <i class="bi bi-list-ul"></i>
+                        </button>
+                        <button type="button" class="md-toolbar-btn quiz-md-btn" data-action="ol" title="Numbered List">
+                            <i class="bi bi-list-ol"></i>
+                        </button>
+                        <div class="md-toolbar-separator"></div>
+                        <button type="button" class="md-toolbar-btn quiz-md-btn" data-action="link" title="Link">
+                            <i class="bi bi-link-45deg"></i>
+                        </button>
+                        <button type="button" class="md-toolbar-btn quiz-md-btn" data-action="image" title="Image">
+                            <i class="bi bi-image"></i>
+                        </button>
+                        <button type="button" class="md-toolbar-btn quiz-md-btn" data-action="code" title="Code Block">
+                            <i class="bi bi-code-square"></i>
+                        </button>
+                        <div class="md-toolbar-separator"></div>
+                        <button type="button" class="md-toolbar-btn" id="quizAddMcqBtn" title="Add Multiple Choice Question">
+                            <i class="bi bi-plus-circle"></i> Add MCQ
+                        </button>
+                        <button type="button" class="md-toolbar-btn" id="quizAddFrqBtn" title="Add Free Response Question">
+                            <i class="bi bi-plus-circle"></i> Add FRQ
+                        </button>
+                    </div>
+
+                    <!-- Editor Panels: Source (left) + Preview (right) -->
+                    <div class="md-editor-panels">
+                        <div class="md-editor-panel">
+                            <div class="md-panel-header">Markdown Source</div>
+                            <textarea class="md-textarea" id="quizSourceEditor" placeholder="## Question&#10;Supports **markdown** and `code`&#10;>+ Correct answer&#10;> Wrong answer&#10;&#10;## Free response question&#10;> "></textarea>
+                        </div>
+                        <div class="md-editor-panel">
+                            <div class="md-panel-header">Questions Preview</div>
+                            <div class="md-preview" id="quizPreview"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Hidden file input for image upload -->
+                <input type="file" id="quizImageUploadInput" accept="image/*" style="display: none;">
             </div>
         </div>
 
@@ -329,6 +578,9 @@
 <!-- Marked.js for Markdown rendering -->
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 
+<!-- Quiz Editor -->
+<script src="{% static 'js/quiz-editor.js' %}"></script>
+
 <script>
 // Markdown Editor
 const mdEditor = document.getElementById('mdEditor');
@@ -349,7 +601,7 @@ const TYPE_CARD_VISIBILITY = {
         cards: ['episodeInfoCard', 'infoContentCard', 'pdfFilesCard'],
     },
     quiz: {
-        cards: ['episodeInfoCard', 'infoContentCard'],
+        cards: ['episodeInfoCard', 'quizEditorCard'],
     },
     code: {
         cards: ['episodeInfoCard', 'infoContentCard', 'codeLayoutCard'],
@@ -359,7 +611,7 @@ const TYPE_CARD_VISIBILITY = {
     },
 };
 
-const ALL_TYPE_RELEVANT_CARDS = ['episodeInfoCard', 'infoContentCard', 'pdfFilesCard', 'codeLayoutCard'];
+const ALL_TYPE_RELEVANT_CARDS = ['episodeInfoCard', 'infoContentCard', 'pdfFilesCard', 'codeLayoutCard', 'quizEditorCard'];
 
 // Configure marked.js
 marked.setOptions({
@@ -433,8 +685,8 @@ if (selectedTypeInput && selectedTypeInput.value) {
     setEpisodeType(typeToggleButtons[0].dataset.type);
 }
 
-// Toolbar actions
-const toolbarButtons = document.querySelectorAll('.md-toolbar-btn');
+// Toolbar actions (general markdown editor only)
+const toolbarButtons = document.querySelectorAll('#infoContentCard .md-toolbar-btn');
 
 toolbarButtons.forEach(btn => {
     btn.addEventListener('click', function() {
@@ -566,5 +818,211 @@ imageUploadInput.addEventListener('change', async function(e) {
     // Reset input
     imageUploadInput.value = '';
 });
+
+// ====================================================================
+// Quiz Editor Integration
+// ====================================================================
+
+const quizEditorCard = document.getElementById('quizEditorCard');
+const quizSourceEditor = document.getElementById('quizSourceEditor');
+const quizPreview = document.getElementById('quizPreview');
+
+let quizEditorInstance = null;
+let currentEpisodeType = selectedTypeInput ? selectedTypeInput.value : 'material';
+
+// Initialize the quiz editor (called when switching to quiz type)
+function initQuizEditorInstance() {
+    if (quizEditorInstance) return; // already initialized
+
+    quizEditorInstance = QuizEditor.initQuizEditor({
+        sourceId: 'quizSourceEditor',
+        previewId: 'quizPreview',
+        addMcqBtnId: 'quizAddMcqBtn',
+        addFrqBtnId: 'quizAddFrqBtn'
+    });
+
+    // If there's existing quiz content in mdEditor, load it
+    const mdContent = mdEditor.value.trim();
+    const effectiveContent = (mdContent === 'None' || mdContent === '') ? '' : mdContent;
+    if (effectiveContent && !quizSourceEditor.value.trim()) {
+        quizSourceEditor.value = effectiveContent;
+        quizEditorInstance.refresh();
+    }
+}
+
+// Sync quiz source → mdEditor (canonical field for form submission)
+function syncQuizToMdEditor() {
+    if (quizSourceEditor && mdEditor) {
+        mdEditor.value = quizSourceEditor.value;
+    }
+}
+
+// Quiz markdown toolbar (formatting buttons for question text)
+const quizImageUploadInput = document.getElementById('quizImageUploadInput');
+const quizMdButtons = document.querySelectorAll('#quizToolbar .quiz-md-btn');
+
+quizMdButtons.forEach(btn => {
+    btn.addEventListener('click', function() {
+        const action = this.getAttribute('data-action');
+        const start = quizSourceEditor.selectionStart;
+        const end = quizSourceEditor.selectionEnd;
+        const selectedText = quizSourceEditor.value.substring(start, end);
+        const beforeText = quizSourceEditor.value.substring(0, start);
+        const afterText = quizSourceEditor.value.substring(end);
+
+        let replacement = '';
+        let cursorOffset = 0;
+
+        switch(action) {
+            case 'bold':
+                replacement = `**${selectedText || 'bold text'}**`;
+                cursorOffset = selectedText ? 0 : -2;
+                break;
+            case 'italic':
+                replacement = `*${selectedText || 'italic text'}*`;
+                cursorOffset = selectedText ? 0 : -1;
+                break;
+            case 'strikethrough':
+                replacement = `~~${selectedText || 'strikethrough text'}~~`;
+                cursorOffset = selectedText ? 0 : -2;
+                break;
+            case 'ul':
+                replacement = `- ${selectedText || 'List item'}`;
+                cursorOffset = selectedText ? 0 : 0;
+                break;
+            case 'ol':
+                replacement = `1. ${selectedText || 'List item'}`;
+                cursorOffset = selectedText ? 0 : 0;
+                break;
+            case 'link':
+                const qUrl = prompt('Enter URL:', 'https://');
+                if (qUrl) {
+                    replacement = `[${selectedText || 'link text'}](${qUrl})`;
+                    cursorOffset = selectedText ? 0 : -qUrl.length - 3;
+                }
+                break;
+            case 'image':
+                quizImageUploadInput.click();
+                return;
+            case 'code':
+                replacement = '```\n' + (selectedText || 'code') + '\n```';
+                cursorOffset = selectedText ? 0 : -4;
+                break;
+        }
+
+        quizSourceEditor.value = beforeText + replacement + afterText;
+        const newCursorPos = start + replacement.length + cursorOffset;
+        quizSourceEditor.setSelectionRange(newCursorPos, newCursorPos);
+        quizSourceEditor.focus();
+        quizSourceEditor.dispatchEvent(new Event('input'));
+    });
+});
+
+// Quiz image upload handler
+quizImageUploadInput.addEventListener('change', async function(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    if (file.size > 10 * 1024 * 1024) {
+        alert('Image size must be less than 10MB');
+        return;
+    }
+    if (!file.type.startsWith('image/')) {
+        alert('Please select an image file');
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append('file[]', file);
+
+    try {
+        const response = await fetch('{% url "progress:vditor_upload" %}', {
+            method: 'POST',
+            headers: { 'X-CSRFToken': '{{ csrf_token }}' },
+            body: formData
+        });
+        const data = await response.json();
+        if (data.code === 0 && data.data.succMap) {
+            const imageUrl = Object.values(data.data.succMap)[0];
+            const start = quizSourceEditor.selectionStart;
+            const beforeText = quizSourceEditor.value.substring(0, start);
+            const afterText = quizSourceEditor.value.substring(start);
+            const imageMarkdown = `![Image](${imageUrl})`;
+            quizSourceEditor.value = beforeText + imageMarkdown + afterText;
+            const newPos = start + imageMarkdown.length;
+            quizSourceEditor.setSelectionRange(newPos, newPos);
+            quizSourceEditor.focus();
+            quizSourceEditor.dispatchEvent(new Event('input'));
+        } else {
+            alert('Image upload failed');
+        }
+    } catch (error) {
+        console.error('Upload error:', error);
+        alert('Image upload failed');
+    }
+    quizImageUploadInput.value = '';
+});
+
+// ---- Type switching: sync content between quiz editor and mdEditor ----
+
+// Override setEpisodeType to handle quiz ↔ other type content sync
+const _originalSetEpisodeType = setEpisodeType;
+setEpisodeType = function(selectedType) {
+    const prevType = currentEpisodeType;
+
+    // Before switching AWAY from quiz: sync quiz source → mdEditor
+    if (prevType === 'quiz' && selectedType !== 'quiz') {
+        syncQuizToMdEditor();
+    }
+
+    // Before switching TO quiz: sync mdEditor → quiz source
+    if (prevType !== 'quiz' && selectedType === 'quiz') {
+        const mdContent = mdEditor.value.trim();
+        const effectiveContent = (mdContent === 'None' || mdContent === '') ? '' : mdContent;
+        if (effectiveContent && !quizSourceEditor.value.trim()) {
+            quizSourceEditor.value = effectiveContent;
+        }
+        if (!quizSourceEditor.value.trim()) {
+            quizSourceEditor.value = effectiveContent;
+        }
+    }
+
+    currentEpisodeType = selectedType;
+    _originalSetEpisodeType(selectedType);
+
+    // After showing quiz card: init editor if not already
+    if (selectedType === 'quiz') {
+        if (!quizEditorInstance) {
+            initQuizEditorInstance();
+        } else {
+            // Refresh preview in case content changed
+            quizEditorInstance.refresh();
+        }
+    }
+};
+
+// Form submission: ensure quiz content is synced to mdEditor
+const episodeForm = document.getElementById('episodeForm');
+episodeForm.addEventListener('submit', function() {
+    if (currentEpisodeType === 'quiz') {
+        syncQuizToMdEditor();
+    }
+});
+
+// Initial load: if current episode is quiz type, init the quiz editor
+if (selectedTypeInput && selectedTypeInput.value === 'quiz') {
+    // Load existing quiz content from the canonical mdEditor field
+    const mdContent = mdEditor.value.trim();
+    const effectiveContent = (mdContent === 'None' || mdContent === '') ? '' : mdContent;
+    if (effectiveContent) {
+        quizSourceEditor.value = effectiveContent;
+    }
+    currentEpisodeType = 'quiz';
+}
+
+// Initialize quiz editor on first load if episode is quiz type
+if (currentEpisodeType === 'quiz') {
+    initQuizEditorInstance();
+}
 </script>
 {% endblock %}
