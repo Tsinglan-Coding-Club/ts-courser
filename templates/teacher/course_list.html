@@ -117,6 +117,9 @@
                         </td>
                         <td>{{ course.created_at|date:"Y-m-d" }}</td>
                         <td class="text-end">
+                            <a href="{% url 'teacher:course_manage' course.id %}" class="btn btn-sm btn-outline-info">
+                                <i class="bi bi-people"></i>
+                            </a>
                             <a href="{% url 'teacher:course_edit' course.id %}" class="btn btn-sm btn-primary">
                                 <i class="bi bi-pencil"></i> Edit
                             </a>

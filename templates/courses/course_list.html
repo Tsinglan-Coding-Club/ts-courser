@@ -71,9 +71,15 @@
                     </div>
 
                     <div class="card-footer bg-transparent">
-                        <a href="{% url 'courses:course_overview' course.id %}" class="btn btn-primary w-100">
-                            <i class="bi bi-eye"></i> View Course
-                        </a>
+                        {% if course.id in enrolled_course_ids %}
+                            <a href="{% url 'courses:course_dashboard' course.id %}" class="btn btn-success w-100">
+                                <i class="bi bi-play-circle"></i> Enter Course
+                            </a>
+                        {% else %}
+                            <a href="{% url 'courses:course_overview' course.id %}" class="btn btn-primary w-100">
+                                <i class="bi bi-eye"></i> View Course
+                            </a>
+                        {% endif %}
                     </div>
                 </div>
             </div>

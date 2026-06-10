@@ -1,5 +1,6 @@
 {% extends 'base.html' %}
 {% load static %}
+{% load course_filters %}
 
 {% block title %}Edit {{ episode.title }} - Teacher{% endblock %}
 
@@ -114,14 +115,20 @@
     color: var(--text-secondary);
 }
 
-.type-toggle-group {
-    display: flex;
-    gap: 0.5rem;
-    flex-wrap: wrap;
+#typeToggleGroup .btn-outline-primary {
+    color: var(--primary-color);
+    border-color: var(--primary-color);
 }
 
-.type-toggle-btn {
-    min-width: 120px;
+#typeToggleGroup .btn-outline-primary:hover {
+    background-color: var(--primary-pale);
+    color: var(--primary-color);
+}
+
+#typeToggleGroup .btn-check:checked + .btn-outline-primary {
+    background-color: var(--primary-color);
+    border-color: var(--primary-color);
+    color: white;
 }
 
 /* Quiz Editor Styles */
@@ -362,17 +369,18 @@
                 <h5 class="mb-0">Episode Type</h5>
             </div>
             <div class="card-body">
-                <input type="hidden" id="selectedType" name="type" value="{{ episode.type }}">
-                <div class="type-toggle-group" id="typeToggleGroup">
+                <div class="btn-group w-100" role="group" id="typeToggleGroup">
                     {% for type_value, type_label in type_options %}
-                        <button
-                            type="button"
-                            class="btn {% if episode.type == type_value %}btn-primary{% else %}btn-outline-primary{% endif %} type-toggle-btn episode-type-btn"
-                            data-type="{{ type_value }}"
-                            aria-pressed="{% if episode.type == type_value %}true{% else %}false{% endif %}"
-                        >
+                        <input type="radio" class="btn-check" name="type" id="type{{ type_value }}"
+                               value="{{ type_value }}" {% if episode.type == type_value %}checked{% endif %}>
+                        <label class="btn btn-outline-primary episode-type-btn" for="type{{ type_value }}"
+                               data-type="{{ type_value }}">
+                            {% if type_value == 'material' %}<i class="bi bi-file-text"></i>{% endif %}
+                            {% if type_value == 'quiz' %}<i class="bi bi-patch-question"></i>{% endif %}
+                            {% if type_value == 'code' %}<i class="bi bi-code-slash"></i>{% endif %}
+                            {% if type_value == 'paper' %}<i class="bi bi-file-earmark-text"></i>{% endif %}
                             {{ type_label }}
-                        </button>
+                        </label>
                     {% endfor %}
                 </div>
             </div>
@@ -527,6 +535,37 @@
             </div>
         </div>
 
+        <!-- Quiz Config (quiz type only) -->
+        <div class="card mb-4" id="quizConfigCard">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-sliders"></i> Quiz Options</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="quizRequireAll"
+                                   name="quiz_require_all" {% if episode.quiz_require_all %}checked{% endif %}>
+                            <label class="form-check-label" for="quizRequireAll">
+                                <i class="bi bi-check-all"></i> Require all questions answered
+                            </label>
+                            <div class="form-text">Students must answer every question before they can submit.</div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="quizShowResults"
+                                   name="quiz_show_results" {% if episode.quiz_show_results %}checked{% endif %}>
+                            <label class="form-check-label" for="quizShowResults">
+                                <i class="bi bi-eye"></i> Show results immediately
+                            </label>
+                            <div class="form-text">Reveal correct answers right after submission (FRQ always requires manual grading).</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- Code Layout Config (code type only) -->
         <div class="card mb-4" id="codeLayoutCard">
             <div class="card-header">
@@ -570,11 +609,27 @@
                         {% if episode.content_pdf %}
                             <div class="mb-2">
                                 <a href="{{ episode.content_pdf.url }}" target="_blank" class="btn btn-sm btn-outline-primary">
-                                    <i class="bi bi-eye"></i> View Current PDF
+                                    <i class="bi bi-eye"></i> View
                                 </a>
                             </div>
                         {% endif %}
-                        <input type="file" class="form-control" id="content_pdf" name="content_pdf" accept=".pdf">
+                        <div class="input-group">
+                            <button type="button" class="btn btn-outline-secondary file-trigger-btn"
+                                    data-target="content_pdf">
+                                <i class="bi bi-upload"></i> Choose File
+                            </button>
+                            <span class="form-control file-name-display text-truncate" id="content_pdf_name"
+                                  {% if episode.content_pdf %}data-current="{{ episode.content_pdf.name|basename }}"{% endif %}>
+                                {% if episode.content_pdf %}
+                                    <i class="bi bi-file-pdf me-1"></i>{{ episode.content_pdf.name|basename }}
+                                {% else %}
+                                    No file chosen
+                                {% endif %}
+                            </span>
+                            <input type="file" class="d-none file-input-hidden" id="content_pdf"
+                                   name="content_pdf" accept=".pdf"
+                                   data-display="content_pdf_name">
+                        </div>
                         <small class="form-text text-muted">Max size: 50MB</small>
                     </div>
 
@@ -583,11 +638,27 @@
                         {% if episode.answer_pdf %}
                             <div class="mb-2">
                                 <a href="{{ episode.answer_pdf.url }}" target="_blank" class="btn btn-sm btn-outline-success">
-                                    <i class="bi bi-eye"></i> View Current Answer PDF
+                                    <i class="bi bi-eye"></i> View
                                 </a>
                             </div>
                         {% endif %}
-                        <input type="file" class="form-control" id="answer_pdf" name="answer_pdf" accept=".pdf">
+                        <div class="input-group">
+                            <button type="button" class="btn btn-outline-secondary file-trigger-btn"
+                                    data-target="answer_pdf">
+                                <i class="bi bi-upload"></i> Choose File
+                            </button>
+                            <span class="form-control file-name-display text-truncate" id="answer_pdf_name"
+                                  {% if episode.answer_pdf %}data-current="{{ episode.answer_pdf.name|basename }}"{% endif %}>
+                                {% if episode.answer_pdf %}
+                                    <i class="bi bi-file-pdf me-1"></i>{{ episode.answer_pdf.name|basename }}
+                                {% else %}
+                                    No file chosen
+                                {% endif %}
+                            </span>
+                            <input type="file" class="d-none file-input-hidden" id="answer_pdf"
+                                   name="answer_pdf" accept=".pdf"
+                                   data-display="answer_pdf_name">
+                        </div>
                         <small class="form-text text-muted">Max size: 50MB</small>
                     </div>
                 </div>
@@ -637,13 +708,18 @@ function confirmDeleteEpisode(id, name) {
 const mdEditor = document.getElementById('mdEditor');
 const mdPreview = document.getElementById('mdPreview');
 const imageUploadInput = document.getElementById('imageUploadInput');
-const selectedTypeInput = document.getElementById('selectedType');
-const typeToggleButtons = document.querySelectorAll('.episode-type-btn');
+const typeRadioButtons = document.querySelectorAll('input[name="type"]');
+const typeToggleLabels = document.querySelectorAll('.episode-type-btn');
 const episodeInfoCard = document.getElementById('episodeInfoCard');
 const infoContentCard = document.getElementById('infoContentCard');
 const pdfFilesCard = document.getElementById('pdfFilesCard');
 const contentPdfInput = document.getElementById('content_pdf');
 const answerPdfInput = document.getElementById('answer_pdf');
+
+function getSelectedType() {
+    const checked = document.querySelector('input[name="type"]:checked');
+    return checked ? checked.value : 'material';
+}
 
 // Declarative UI visibility map for each episode type.
 // Add future types here to control which cards they render.
@@ -652,7 +728,7 @@ const TYPE_CARD_VISIBILITY = {
         cards: ['episodeInfoCard', 'infoContentCard', 'pdfFilesCard'],
     },
     quiz: {
-        cards: ['episodeInfoCard', 'quizEditorCard'],
+        cards: ['episodeInfoCard', 'quizEditorCard', 'quizConfigCard'],
     },
     code: {
         cards: ['episodeInfoCard', 'infoContentCard', 'codeLayoutCard'],
@@ -662,7 +738,7 @@ const TYPE_CARD_VISIBILITY = {
     },
 };
 
-const ALL_TYPE_RELEVANT_CARDS = ['episodeInfoCard', 'infoContentCard', 'pdfFilesCard', 'codeLayoutCard', 'quizEditorCard'];
+const ALL_TYPE_RELEVANT_CARDS = ['episodeInfoCard', 'infoContentCard', 'pdfFilesCard', 'codeLayoutCard', 'quizEditorCard', 'quizConfigCard'];
 
 // Configure marked.js
 marked.setOptions({
@@ -686,6 +762,32 @@ updatePreview();
 // Listen to editor changes
 mdEditor.addEventListener('input', updatePreview);
 
+// ---- Custom file inputs (replace "No file chosen" with filename) ----
+document.querySelectorAll('.file-trigger-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        const targetId = btn.getAttribute('data-target');
+        const fileInput = document.getElementById(targetId);
+        if (fileInput) fileInput.click();
+    });
+});
+
+document.querySelectorAll('.file-input-hidden').forEach(input => {
+    input.addEventListener('change', function() {
+        const displayId = this.getAttribute('data-display');
+        const display = document.getElementById(displayId);
+        if (!display) return;
+        if (this.files.length > 0) {
+            display.innerHTML = '<i class="bi bi-file-pdf me-1"></i>' + this.files[0].name;
+            display.removeAttribute('data-current');
+        } else {
+            const current = display.getAttribute('data-current');
+            display.innerHTML = current
+                ? '<i class="bi bi-file-pdf me-1"></i>' + current
+                : 'No file chosen';
+        }
+    });
+});
+
 function updateCardsForEpisodeType(selectedType) {
     const config = TYPE_CARD_VISIBILITY[selectedType] || TYPE_CARD_VISIBILITY.material;
     const visibleCards = new Set(config.cards || []);
@@ -698,42 +800,41 @@ function updateCardsForEpisodeType(selectedType) {
         }
     });
 
-    if (contentPdfInput) {
-        contentPdfInput.disabled = !pdfInputsEnabled;
-        if (!pdfInputsEnabled) contentPdfInput.value = '';
-    }
-
-    if (answerPdfInput) {
-        answerPdfInput.disabled = !pdfInputsEnabled;
-        if (!pdfInputsEnabled) answerPdfInput.value = '';
-    }
+    // Toggle hidden file inputs + their trigger buttons + display spans
+    ['content_pdf', 'answer_pdf'].forEach(id => {
+        const input = document.getElementById(id);
+        const trigger = document.querySelector(`.file-trigger-btn[data-target="${id}"]`);
+        const display = document.getElementById(id + '_name');
+        if (input) {
+            input.disabled = !pdfInputsEnabled;
+            if (!pdfInputsEnabled) input.value = '';
+        }
+        if (trigger) trigger.disabled = !pdfInputsEnabled;
+        if (display && !pdfInputsEnabled) {
+            const current = display.getAttribute('data-current');
+            display.innerHTML = current
+                ? '<i class="bi bi-file-pdf me-1"></i>' + current
+                : 'No file chosen';
+        }
+    });
 }
 
-// Toggle actions for episode type selection
+// ---- Type switching: sync content between quiz editor and mdEditor ----
+// (radio inputs + CSS handle the visual button state; JS handles card visibility)
 function setEpisodeType(selectedType) {
-    selectedTypeInput.value = selectedType;
-
-    typeToggleButtons.forEach(button => {
-        const isActive = button.dataset.type === selectedType;
-        button.classList.toggle('btn-primary', isActive);
-        button.classList.toggle('btn-outline-primary', !isActive);
-        button.setAttribute('aria-pressed', isActive ? 'true' : 'false');
-    });
-
     updateCardsForEpisodeType(selectedType);
 }
 
-typeToggleButtons.forEach(button => {
-    button.addEventListener('click', () => {
-        setEpisodeType(button.dataset.type);
+typeRadioButtons.forEach(radio => {
+    radio.addEventListener('change', () => {
+        setEpisodeType(radio.value);
     });
 });
 
-// Ensure a valid initial active state on first render
-if (selectedTypeInput && selectedTypeInput.value) {
-    setEpisodeType(selectedTypeInput.value);
-} else if (typeToggleButtons.length > 0) {
-    setEpisodeType(typeToggleButtons[0].dataset.type);
+// Ensure initial card visibility on first render
+const initialType = getSelectedType();
+if (initialType) {
+    updateCardsForEpisodeType(initialType);
 }
 
 // Toolbar actions (general markdown editor only)
@@ -879,7 +980,7 @@ const quizSourceEditor = document.getElementById('quizSourceEditor');
 const quizPreview = document.getElementById('quizPreview');
 
 let quizEditorInstance = null;
-let currentEpisodeType = selectedTypeInput ? selectedTypeInput.value : 'material';
+let currentEpisodeType = getSelectedType() || 'material';
 
 // Initialize the quiz editor (called when switching to quiz type)
 function initQuizEditorInstance() {
@@ -1063,7 +1164,7 @@ episodeForm.addEventListener('submit', function() {
 });
 
 // Initial load: if current episode is quiz type, init the quiz editor
-if (selectedTypeInput && selectedTypeInput.value === 'quiz') {
+if (getSelectedType() === 'quiz') {
     // Load existing quiz content from the canonical mdEditor field
     const mdContent = mdEditor.value.trim();
     const effectiveContent = (mdContent === 'None' || mdContent === '') ? '' : mdContent;

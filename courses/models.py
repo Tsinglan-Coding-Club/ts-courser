@@ -1,5 +1,6 @@
 from django.db import models
 from django.conf import settings
+import secrets
 import uuid
 import os
 
@@ -28,6 +29,11 @@ class Course(models.Model):
     """
     Main course model containing sections and episodes.
     """
+    ENROLLMENT_MODES = [
+        ('open', 'Open to all'),
+        ('code', 'Require code'),
+    ]
+
     title = models.CharField(max_length=200)
     description = models.TextField()
     thumbnail = models.ImageField(
@@ -42,11 +48,46 @@ class Course(models.Model):
     )
     tags = models.ManyToManyField(Tag, related_name='courses', blank=True)
     is_published = models.BooleanField(default=False)
+
+    # Enrollment control
+    enrollment_mode = models.CharField(
+        max_length=10, choices=ENROLLMENT_MODES, default='code',
+        help_text='How students join this course'
+    )
+    course_code = models.CharField(
+        max_length=8, blank=True, unique=True, null=True,
+        help_text='8-character code for students to enroll (auto-generated)'
+    )
+    enrollment_open = models.BooleanField(
+        default=True,
+        help_text='Whether new enrollments are currently accepted'
+    )
+    auto_release_results = models.BooleanField(
+        default=False,
+        help_text='Automatically release quiz results to students after submission'
+    )
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
         return self.title
+
+    def _generate_code(self):
+        """Generate an 8-char code for course enrollment."""
+        return secrets.token_hex(4).upper()
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        # Generate course code if code-mode and no code yet
+        if self.enrollment_mode == 'code' and not self.course_code:
+            self.course_code = self._generate_code()
+            super().save(update_fields=['course_code'])
+
+    def regenerate_code(self):
+        """Force-regenerate the course code."""
+        self.course_code = self._generate_code()
+        self.save(update_fields=['course_code'])
 
     class Meta:
         ordering = ['-created_at']
@@ -122,7 +163,17 @@ class Episode(models.Model):
         upload_to=answer_pdf_path,
         null=True,
         blank=True,
-        help_text='Answer PDF (for quiz and paper types)'
+        help_text='Answer PDF (for paper type)'
+    )
+
+    # Quiz configuration toggles
+    quiz_require_all = models.BooleanField(
+        default=True,
+        help_text='Require all questions to be answered before submission'
+    )
+    quiz_show_results = models.BooleanField(
+        default=False,
+        help_text='Show results immediately after submission (FRQ excluded)'
     )
 
     # Code episode layout toggles

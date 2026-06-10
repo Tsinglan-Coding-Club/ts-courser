@@ -93,6 +93,10 @@
 .drag-handle:hover {
     color: var(--primary-color);
 }
+
+.btn-group > .btn {
+    flex: 1;
+}
 </style>
 {% endblock %}
 
@@ -135,18 +139,19 @@
             </div>
 
             <!-- Course Basic Info (Collapsible) -->
-            <div class="card mb-3">
-                <div class="card-header collapsible-header" data-bs-toggle="collapse" data-bs-target="#courseInfoCollapse">
-                    <h6 class="mb-0">
-                        <i class="bi bi-gear"></i> Course Settings
-                        <i class="bi bi-chevron-down float-end"></i>
-                    </h6>
-                </div>
-                <div id="courseInfoCollapse" class="collapse show">
-                    <div class="card-body">
-                        <form method="post" enctype="multipart/form-data" id="courseInfoForm">
-                            {% csrf_token %}
+            <form method="post" enctype="multipart/form-data" id="courseInfoForm">
+                {% csrf_token %}
 
+                <!-- Card 1: Course Information -->
+                <div class="card mb-3">
+                    <div class="card-header collapsible-header" data-bs-toggle="collapse" data-bs-target="#courseInfoCollapse">
+                        <h6 class="mb-0">
+                            <i class="bi bi-info-circle"></i> Course Information
+                            <i class="bi bi-chevron-down float-end"></i>
+                        </h6>
+                    </div>
+                    <div id="courseInfoCollapse" class="collapse show">
+                        <div class="card-body">
                             <div class="mb-3">
                                 <label for="title" class="form-label">Title</label>
                                 <input type="text" class="form-control form-control-sm" id="title" name="title" value="{{ course.title }}" required>
@@ -181,44 +186,108 @@
                                 {% endfor %}
                             </div>
 
-                            <div class="mb-3 form-check">
-                                <input type="checkbox" class="form-check-input" id="is_published" name="is_published"
-                                       {% if course.is_published %}checked{% endif %}>
-                                <label class="form-check-label" for="is_published">Published</label>
+                            <button type="submit" class="btn btn-primary btn-sm w-100">
+                                <i class="bi bi-check-circle"></i> Save Course Info
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Card 2: Enrollment Settings -->
+                <div class="card mb-3">
+                    <div class="card-header collapsible-header" data-bs-toggle="collapse" data-bs-target="#enrollmentCollapse">
+                        <h6 class="mb-0">
+                            <i class="bi bi-shield-lock"></i> Enrollment Settings
+                            <i class="bi bi-chevron-down float-end"></i>
+                        </h6>
+                    </div>
+                    <div id="enrollmentCollapse" class="collapse show">
+                        <div class="card-body">
+                            <div class="mb-3">
+                                <label class="form-label small mb-2">Course Visibility</label>
+                                <div class="btn-group w-100" role="group">
+                                    <input type="radio" class="btn-check" name="is_published" id="pubYes"
+                                           value="on" {% if course.is_published %}checked{% endif %}>
+                                    <label class="btn btn-sm btn-outline-success" for="pubYes">
+                                        <i class="bi bi-globe"></i> Published
+                                    </label>
+                                    <input type="radio" class="btn-check" name="is_published" id="pubNo"
+                                           value="" {% if not course.is_published %}checked{% endif %}>
+                                    <label class="btn btn-sm btn-outline-secondary" for="pubNo">
+                                        <i class="bi bi-eye-slash"></i> Draft
+                                    </label>
+                                </div>
+                            </div>
+
+                            <div class="mb-2">
+                                <label class="form-label small mb-1">Enrollment Mode</label>
+                                <div class="btn-group w-100" role="group" id="enrollmentModeGroup">
+                                    <input type="radio" class="btn-check" name="enrollment_mode" id="emCode"
+                                           value="code" {% if course.enrollment_mode == 'code' %}checked{% endif %}>
+                                    <label class="btn btn-sm btn-outline-warning" for="emCode">
+                                        <i class="bi bi-key"></i> Require Code
+                                    </label>
+                                    <input type="radio" class="btn-check" name="enrollment_mode" id="emOpen"
+                                           value="open" {% if course.enrollment_mode == 'open' %}checked{% endif %}>
+                                    <label class="btn btn-sm btn-outline-success" for="emOpen">
+                                        <i class="bi bi-unlock"></i> Open to All
+                                    </label>
+                                </div>
+                            </div>
+
+                            <div class="mb-2" id="courseCodeSection" {% if course.enrollment_mode == 'open' %}style="display:none;"{% endif %}>
+                                <label class="form-label small mb-1">Course Code</label>
+                                <div class="input-group input-group-sm">
+                                    <input type="text" class="form-control font-monospace" id="courseCodeDisplay"
+                                           value="{{ course.course_code|default:'(not generated)' }}" readonly>
+                                    <button type="button" class="btn btn-outline-secondary" id="regenerateCodeBtn"
+                                            title="Generate new code">
+                                        <i class="bi bi-arrow-repeat"></i>
+                                    </button>
+                                </div>
+                                <input type="hidden" name="regenerate_code" id="regenerateCodeInput" value="0">
+                                <div class="form-text">Share this code with students to let them enroll.</div>
+                            </div>
+
+                            <div class="mb-2 form-check">
+                                <input type="checkbox" class="form-check-input" id="enrollment_open" name="enrollment_open"
+                                       {% if course.enrollment_open %}checked{% endif %}>
+                                <label class="form-check-label small" for="enrollment_open">Accept new enrollments</label>
+                            </div>
+
+                            <div class="mb-2 form-check">
+                                <input type="checkbox" class="form-check-input" id="auto_release_results" name="auto_release_results"
+                                       {% if course.auto_release_results %}checked{% endif %}>
+                                <label class="form-check-label small" for="auto_release_results">
+                                    Auto-release quiz results
+                                </label>
+                                <div class="form-text">Immediately show scores after submission (FRQ always requires manual grading).</div>
                             </div>
 
                             <button type="submit" class="btn btn-primary btn-sm w-100">
-                                <i class="bi bi-check-circle"></i> Save Changes
+                                <i class="bi bi-check-circle"></i> Save Enrollment
                             </button>
-                        </form>
+                        </div>
                     </div>
                 </div>
-            </div>
-
-            <!-- Quick Actions -->
-            <div class="card">
-                <div class="card-body">
-                    <h6 class="card-title">Quick Actions</h6>
-                    <div class="d-grid gap-2">
-                        <button class="btn btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#addSectionModal">
-                            <i class="bi bi-plus-circle"></i> Add Section
-                        </button>
-                        <a href="{% url 'courses:learning_interface' course.id %}" class="btn btn-outline-primary btn-sm" target="_blank">
-                            <i class="bi bi-eye"></i> Preview Course
-                        </a>
-                        <button class="btn btn-outline-danger btn-sm" onclick="confirmDelete('course', {{ course.id }}, '{{ course.title|escapejs }}')">
-                            <i class="bi bi-trash"></i> Delete Course
-                        </button>
-                    </div>
-                </div>
-            </div>
+            </form>
         </div>
 
         <!-- Right Main Area: Sections & Episodes -->
         <div class="col-md-9">
             <div class="d-flex justify-content-between align-items-center mb-3">
                 <h3><i class="bi bi-pencil"></i> Sections & Episodes</h3>
-                <span class="text-muted"><i class="bi bi-grip-vertical"></i> Drag to reorder</span>
+                <div class="d-flex gap-2">
+                    <button class="btn btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#addSectionModal">
+                        <i class="bi bi-plus-circle"></i> Add Section
+                    </button>
+                    <a href="{% url 'courses:learning_interface' course.id %}" class="btn btn-outline-primary btn-sm" target="_blank">
+                        <i class="bi bi-eye"></i> Preview
+                    </a>
+                    <button class="btn btn-outline-danger btn-sm" onclick="confirmDelete('course', {{ course.id }}, '{{ course.title|escapejs }}')">
+                        <i class="bi bi-trash"></i> Delete
+                    </button>
+                </div>
             </div>
 
             <div id="sectionsContainer">
@@ -564,6 +633,32 @@ async function saveEpisodeOrder(sectionId) {
     } catch (error) {
         console.error('Error saving episode order:', error);
     }
+}
+// ---- Enrollment Settings ----
+const emRadios = document.querySelectorAll('input[name="enrollment_mode"]');
+const courseCodeSection = document.getElementById('courseCodeSection');
+const regenerateCodeBtn = document.getElementById('regenerateCodeBtn');
+const regenerateCodeInput = document.getElementById('regenerateCodeInput');
+
+function toggleCodeSection() {
+    const selected = document.querySelector('input[name="enrollment_mode"]:checked');
+    if (courseCodeSection) {
+        courseCodeSection.style.display = (selected && selected.value === 'code') ? '' : 'none';
+    }
+}
+
+if (emRadios.length && courseCodeSection) {
+    emRadios.forEach(r => r.addEventListener('change', toggleCodeSection));
+}
+
+if (regenerateCodeBtn && regenerateCodeInput) {
+    regenerateCodeBtn.addEventListener('click', function() {
+        if (confirm('Generate a new course code? The old code will no longer work.')) {
+            regenerateCodeInput.value = '1';
+            // Submit the form
+            this.closest('form').submit();
+        }
+    });
 }
 </script>
 {% endblock %}

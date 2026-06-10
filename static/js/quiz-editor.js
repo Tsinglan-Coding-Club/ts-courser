@@ -140,6 +140,8 @@ function parseQuiz(markdown) {
 
             // Check patterns in order:
             // empty >, MCQ correct (>+), MRQ correct (>*), SRT (>N), wrong (>)
+            const frqRefMatch = line.match(/^>= (.+)$/);
+            const frqRefEmpty = line.match(/^>=\s*$/);
             const emptyMatch = line.match(/^>\s*$/);
             const mcqCorrectMatch = line.match(/^>\+ (.+)$/);
             const mcqCorrectEmpty = line.match(/^>\+ \s*$/);
@@ -192,8 +194,23 @@ function parseQuiz(markdown) {
                     text: wrongMatch[1].trim(),
                     isCorrect: false
                 });
+            } else if (frqRefMatch) {
+                // FRQ with reference answer: >= answer text
+                choices.push({
+                    id: nextChoiceId(),
+                    text: frqRefMatch[1].trim(),
+                    isCorrect: false,
+                    _isFRQRef: true
+                });
+            } else if (frqRefEmpty) {
+                choices.push({
+                    id: nextChoiceId(),
+                    text: '',
+                    isCorrect: false,
+                    _isFRQRef: true
+                });
             } else if (emptyMatch) {
-                // Empty > line — will be treated as FRQ indicator below
+                // Legacy empty > line — treated as FRQ without reference
                 choices.push({
                     id: nextChoiceId(),
                     text: '',
@@ -204,11 +221,13 @@ function parseQuiz(markdown) {
 
         // Determine type:
         // - No choice lines at all → FRQ
-        // - Single empty choice line → FRQ
+        // - Single empty choice line (`> `) → FRQ (legacy)
+        // - `>= text` → FRQ with reference answer
         // - >* marker present → MRQ
         // - Otherwise → MCQ
         const isFRQ = choices.length === 0 ||
-                      (choices.length === 1 && choices[0].text === '');
+                      (choices.length === 1 && choices[0].text === '') ||
+                      (choices.length === 1 && choices[0]._isFRQRef === true);
 
         // Auto-mark first choice as correct if none marked and choices exist
         if (!isFRQ && !hasCorrectMarker && choices.length > 0) {
@@ -229,11 +248,18 @@ function parseQuiz(markdown) {
         // Sanitize: skip questions where the text is literally "None" (Django null artifact)
         if (questionText === 'None') continue;
 
+        // Extract reference answer for FRQ
+        let refAnswer = '';
+        if (isFRQ && choices.length === 1 && choices[0]._isFRQRef) {
+            refAnswer = choices[0].text || '';
+        }
+
         questions.push({
             id: nextQuestionId(),
             type: qType,
             question: questionText,
-            choices: isFRQ ? [] : choices
+            choices: isFRQ ? [] : choices,
+            refAnswer: refAnswer
         });
     }
 
@@ -262,7 +288,11 @@ function serializeQuiz(questions) {
         }
 
         if (q.type === 'frq') {
-            lines.push('> ');
+            if (q.refAnswer && q.refAnswer.trim()) {
+                lines.push('>= ' + q.refAnswer.trim());
+            } else {
+                lines.push('> ');
+            }
         } else if (q.type === 'srt') {
             const choices = q.choices || [];
             for (const c of choices) {
@@ -493,11 +523,24 @@ function initQuizEditor(config) {
             addChoiceBtn.addEventListener('click', () => addChoice(qIndex));
             choicesArea.appendChild(addChoiceBtn);
         } else {
-            // FRQ placeholder
-            const frqPlaceholder = document.createElement('div');
-            frqPlaceholder.className = 'quiz-frq-placeholder';
-            frqPlaceholder.innerHTML = '<i class="bi bi-pencil-square"></i> Free response — student will type answer here';
-            choicesArea.appendChild(frqPlaceholder);
+            // FRQ reference answer input
+            const refGroup = document.createElement('div');
+            refGroup.className = 'mb-2';
+            const refLabel = document.createElement('label');
+            refLabel.className = 'form-label small fw-bold';
+            refLabel.textContent = 'Reference Answer (>=)';
+            refGroup.appendChild(refLabel);
+            const refInput = document.createElement('textarea');
+            refInput.className = 'form-control form-control-sm';
+            refInput.rows = 2;
+            refInput.value = q.refAnswer || '';
+            refInput.placeholder = 'Enter the reference answer shown to students after submission…';
+            refInput.addEventListener('input', () => {
+                currentQuestions[qIndex].refAnswer = refInput.value;
+                syncPreviewToSource();
+            });
+            refGroup.appendChild(refInput);
+            choicesArea.appendChild(refGroup);
         }
 
         body.appendChild(choicesArea);
@@ -711,7 +754,8 @@ function initQuizEditor(config) {
             id: nextQuestionId(),
             type: 'frq',
             question: '',
-            choices: []
+            choices: [],
+            refAnswer: ''
         };
         currentQuestions.push(newQ);
         syncPreviewToSource();
@@ -749,8 +793,16 @@ function initQuizEditor(config) {
         q.type = newType;
 
         if (!newCfg.hasChoices) {
-            // Switching to FRQ: clear choices
+            // Switching to FRQ: clear choices, init refAnswer
             q.choices = [];
+            if (q.refAnswer === undefined) q.refAnswer = '';
+        } else if (oldType === 'frq') {
+            // Switching from FRQ: clear refAnswer, create default choices
+            q.refAnswer = undefined;
+            q.choices = [
+                { id: nextChoiceId(), text: '', isCorrect: true },
+                { id: nextChoiceId(), text: '', isCorrect: false }
+            ];
         } else if (q.type === 'srt' || oldType === 'srt') {
             // Switching to/from SRT: rebuild choices with appropriate defaults
             const count = q.choices.length > 0 ? q.choices.length : 2;
