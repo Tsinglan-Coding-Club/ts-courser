@@ -193,9 +193,19 @@
     color: #065f46;
 }
 
+.quiz-type-mrq {
+    background: #fef3c7;
+    color: #92400e;
+}
+
 .quiz-type-frq {
     background: #dbeafe;
     color: #1e40af;
+}
+
+.quiz-type-srt {
+    background: #ede9fe;
+    color: #5b21b6;
 }
 
 .quiz-question-number {
@@ -213,6 +223,11 @@
 .quiz-header-actions .btn {
     font-size: 0.75rem;
     padding: 0.1rem 0.4rem;
+}
+
+.quiz-type-group .btn {
+    font-size: 0.7rem;
+    padding: 0.15rem 0.45rem;
 }
 
 .quiz-question-body {
@@ -257,6 +272,14 @@
     accent-color: #22c55e;
 }
 
+.quiz-choice-checkbox {
+    flex-shrink: 0;
+    cursor: pointer;
+    accent-color: #22c55e;
+    width: 16px;
+    height: 16px;
+}
+
 .quiz-choice-input {
     flex: 1;
 }
@@ -292,6 +315,13 @@
 .quiz-add-choice-btn {
     margin-top: 0.25rem;
     font-size: 0.8rem;
+}
+
+.quiz-sort-pos-input {
+    flex-shrink: 0;
+    width: 52px;
+    font-size: 0.85rem;
+    text-align: center;
 }
 
 .quiz-frq-placeholder {
@@ -465,8 +495,14 @@
                             <i class="bi bi-code-square"></i>
                         </button>
                         <div class="md-toolbar-separator"></div>
-                        <button type="button" class="md-toolbar-btn" id="quizAddMcqBtn" title="Add Multiple Choice Question">
+                        <button type="button" class="md-toolbar-btn" id="quizAddMcqBtn" title="Add Single-Choice Question">
                             <i class="bi bi-plus-circle"></i> Add MCQ
+                        </button>
+                        <button type="button" class="md-toolbar-btn" id="quizAddMrqBtn" title="Add Multi-Response Question">
+                            <i class="bi bi-plus-circle"></i> Add MRQ
+                        </button>
+                        <button type="button" class="md-toolbar-btn" id="quizAddSrtBtn" title="Add Sorting Question">
+                            <i class="bi bi-plus-circle"></i> Add SRT
                         </button>
                         <button type="button" class="md-toolbar-btn" id="quizAddFrqBtn" title="Add Free Response Question">
                             <i class="bi bi-plus-circle"></i> Add FRQ
@@ -853,6 +889,8 @@ function initQuizEditorInstance() {
         sourceId: 'quizSourceEditor',
         previewId: 'quizPreview',
         addMcqBtnId: 'quizAddMcqBtn',
+        addMrqBtnId: 'quizAddMrqBtn',
+        addSrtBtnId: 'quizAddSrtBtn',
         addFrqBtnId: 'quizAddFrqBtn'
     });
 

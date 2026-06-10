@@ -6,7 +6,7 @@
  * Questions are separated by `## ` (h2) at line start. Question text can span
  * multiple lines (everything before the first `>` choice line).
  *
- * ### MCQ (Multiple Choice Question)
+ * ### MCQ (Multiple Choice Question — single correct)
  * ```
  * ## What is 2+2?
  * Here is some **explanation** with `code`.
@@ -15,9 +15,19 @@
  * > 5
  * ```
  * - `## ` starts a new question (h2 delimiter)
- * - `>+` marks the correct answer
+ * - `>+` marks the single correct answer
  * - `>` marks wrong answers
  * - Question text: all lines between `## ` and first `>` line
+ *
+ * ### MRQ (Multi-Response Question — multiple correct)
+ * ```
+ * ## Which are prime numbers?
+ * >* 2
+ * >* 3
+ * > 4
+ * >* 5
+ * ```
+ * - `>*` marks correct answers (multiple allowed)
  *
  * ### FRQ (Free Response Question)
  * ```
@@ -27,12 +37,36 @@
  * ```
  * - Exactly one `>` with no content = FRQ
  *
+ * ### SRT (Sorting Question)
+ * ```
+ * ## Sort by size, smallest first
+ * >1 Seed
+ * >3 Watermelon
+ * >2 Apple
+ * >4 Pumpkin
+ * ```
+ * - `>N text` — N = correct sort position (1-based), text = option label
+ * - The order in the markdown is the initial display order for the quiz taker
+ *
  * ## API
  *
- * - parseQuiz(markdown)  → [{id, type, question, choices: [{id, text, isCorrect}]}]
+ * - parseQuiz(markdown)  → [{id, type, question, choices: [{id, text, isCorrect, sortPosition}]}]
  * - serializeQuiz(data)  → markdown string
  * - initQuizEditor(config) → attaches editor to DOM elements
  */
+
+// ============================================================================
+// 0. Type Configuration — extend this to add new question types
+// ============================================================================
+
+const QUESTION_TYPES = {
+    mcq: { label: 'MCQ', badgeClass: 'quiz-type-mcq', hasChoices: true, isSorting: false },
+    mrq: { label: 'MRQ', badgeClass: 'quiz-type-mrq', hasChoices: true, isSorting: false },
+    frq: { label: 'FRQ', badgeClass: 'quiz-type-frq', hasChoices: false, isSorting: false },
+    srt: { label: 'SRT', badgeClass: 'quiz-type-srt', hasChoices: true, isSorting: true },
+};
+
+const ALL_TYPES = Object.keys(QUESTION_TYPES);
 
 // ============================================================================
 // 1. Parser & Serializer (pure functions, no DOM dependency)
@@ -98,30 +132,60 @@ function parseQuiz(markdown) {
 
         const choices = [];
         let hasCorrectMarker = false;
+        let hasMrqMarker = false;
+        let hasSortMarker = false;
 
         for (let j = 0; j < choiceLines.length; j++) {
             const line = choiceLines[j];
 
-            // Check patterns in order: empty >, correct with text, correct empty, wrong
+            // Check patterns in order:
+            // empty >, MCQ correct (>+), MRQ correct (>*), SRT (>N), wrong (>)
             const emptyMatch = line.match(/^>\s*$/);
-            const correctMatch = line.match(/^>\+ (.+)$/);
-            const correctEmpty = line.match(/^>\+ \s*$/);
-            const wrongMatch = line.match(/^> (?!\+)(.+)$/);
+            const mcqCorrectMatch = line.match(/^>\+ (.+)$/);
+            const mcqCorrectEmpty = line.match(/^>\+ \s*$/);
+            const mrqCorrectMatch = line.match(/^>\* (.+)$/);
+            const mrqCorrectEmpty = line.match(/^>\* \s*$/);
+            const sortMatch = line.match(/^>(\d+)(?:\s+(.+))?$/);
+            const wrongMatch = line.match(/^> (?!\+)(?!\*)(.+)$/);
 
-            if (correctMatch) {
+            if (mcqCorrectMatch) {
                 choices.push({
                     id: nextChoiceId(),
-                    text: correctMatch[1].trim(),
+                    text: mcqCorrectMatch[1].trim(),
                     isCorrect: true
                 });
                 hasCorrectMarker = true;
-            } else if (correctEmpty) {
+            } else if (mcqCorrectEmpty) {
                 choices.push({
                     id: nextChoiceId(),
                     text: '',
                     isCorrect: true
                 });
                 hasCorrectMarker = true;
+            } else if (mrqCorrectMatch) {
+                choices.push({
+                    id: nextChoiceId(),
+                    text: mrqCorrectMatch[1].trim(),
+                    isCorrect: true
+                });
+                hasMrqMarker = true;
+                hasCorrectMarker = true;
+            } else if (mrqCorrectEmpty) {
+                choices.push({
+                    id: nextChoiceId(),
+                    text: '',
+                    isCorrect: true
+                });
+                hasMrqMarker = true;
+                hasCorrectMarker = true;
+            } else if (sortMatch) {
+                choices.push({
+                    id: nextChoiceId(),
+                    text: sortMatch[2] ? sortMatch[2].trim() : '',
+                    isCorrect: false,
+                    sortPosition: parseInt(sortMatch[1], 10)
+                });
+                hasSortMarker = true;
             } else if (wrongMatch) {
                 choices.push({
                     id: nextChoiceId(),
@@ -141,13 +205,25 @@ function parseQuiz(markdown) {
         // Determine type:
         // - No choice lines at all → FRQ
         // - Single empty choice line → FRQ
-        // - Multiple choices with content → MCQ
+        // - >* marker present → MRQ
+        // - Otherwise → MCQ
         const isFRQ = choices.length === 0 ||
                       (choices.length === 1 && choices[0].text === '');
 
-        // Auto-mark first choice as correct for MCQ if none marked and choices exist
+        // Auto-mark first choice as correct if none marked and choices exist
         if (!isFRQ && !hasCorrectMarker && choices.length > 0) {
             choices[0].isCorrect = true;
+        }
+
+        let qType;
+        if (isFRQ) {
+            qType = 'frq';
+        } else if (hasSortMarker) {
+            qType = 'srt';
+        } else if (hasMrqMarker) {
+            qType = 'mrq';
+        } else {
+            qType = 'mcq';
         }
 
         // Sanitize: skip questions where the text is literally "None" (Django null artifact)
@@ -155,7 +231,7 @@ function parseQuiz(markdown) {
 
         questions.push({
             id: nextQuestionId(),
-            type: isFRQ ? 'frq' : 'mcq',
+            type: qType,
             question: questionText,
             choices: isFRQ ? [] : choices
         });
@@ -187,16 +263,26 @@ function serializeQuiz(questions) {
 
         if (q.type === 'frq') {
             lines.push('> ');
-        } else if (q.type === 'mcq') {
+        } else if (q.type === 'srt') {
             const choices = q.choices || [];
+            for (const c of choices) {
+                const pos = c.sortPosition || 0;
+                if (c.text) {
+                    lines.push('>' + pos + ' ' + c.text.trim());
+                } else {
+                    lines.push('>' + pos);
+                }
+            }
+        } else if (q.type === 'mcq' || q.type === 'mrq') {
+            const choices = q.choices || [];
+            const prefix = q.type === 'mrq' ? '>*' : '>+';
             if (choices.length === 0) {
-                // MCQ with no choices — add two empty defaults
-                lines.push('>+ ');
+                lines.push(prefix + ' ');
                 lines.push('> ');
             } else {
                 for (const c of choices) {
                     if (c.isCorrect) {
-                        lines.push('>+ ' + c.text.trim());
+                        lines.push(prefix + ' ' + c.text.trim());
                     } else {
                         lines.push('> ' + c.text.trim());
                     }
@@ -227,7 +313,7 @@ function initQuizEditor(config) {
     const sourceEl = document.getElementById(config.sourceId);
     const previewEl = document.getElementById(config.previewId);
     const addMcqBtn = config.addMcqBtnId ? document.getElementById(config.addMcqBtnId) : null;
-    const addFrqBtn = config.addFrqBtnId ? document.getElementById(config.addFrqBtnId) : null;
+    const addFrqBtn = config.addFrqBtnId ? document.getElementById(config.addFrqBtnId) : null;    const addSrtBtn = config.addSrtBtnId ? document.getElementById(config.addSrtBtnId) : null;    const addMrqBtn = config.addMrqBtnId ? document.getElementById(config.addMrqBtnId) : null;
 
     if (!sourceEl || !previewEl) {
         console.warn('Quiz editor: source or preview element not found');
@@ -322,9 +408,10 @@ function initQuizEditor(config) {
         dragHandle.innerHTML = '<i class="bi bi-grip-vertical"></i>';
         dragHandle.title = 'Drag to reorder';
 
+        const typeCfg = QUESTION_TYPES[q.type] || QUESTION_TYPES.mcq;
         const typeBadge = document.createElement('span');
-        typeBadge.className = 'quiz-type-badge ' + (q.type === 'mcq' ? 'quiz-type-mcq' : 'quiz-type-frq');
-        typeBadge.textContent = q.type === 'mcq' ? 'MCQ' : 'FRQ';
+        typeBadge.className = 'quiz-type-badge ' + typeCfg.badgeClass;
+        typeBadge.textContent = typeCfg.label;
 
         const qNumber = document.createElement('span');
         qNumber.className = 'quiz-question-number';
@@ -333,15 +420,21 @@ function initQuizEditor(config) {
         const headerActions = document.createElement('div');
         headerActions.className = 'quiz-header-actions';
 
-        // Toggle MCQ ↔ FRQ
-        const toggleBtn = document.createElement('button');
-        toggleBtn.type = 'button';
-        toggleBtn.className = 'btn btn-sm btn-outline-secondary';
-        toggleBtn.title = q.type === 'mcq' ? 'Convert to FRQ' : 'Convert to MCQ';
-        toggleBtn.innerHTML = q.type === 'mcq'
-            ? '<i class="bi bi-arrow-left-right"></i> FRQ'
-            : '<i class="bi bi-arrow-left-right"></i> MCQ';
-        toggleBtn.addEventListener('click', () => toggleQuestionType(qIndex));
+        // Type selector from QUESTION_TYPES config
+        const typeGroup = document.createElement('div');
+        typeGroup.className = 'btn-group btn-group-sm quiz-type-group';
+        ALL_TYPES.forEach(typeKey => {
+            const t = QUESTION_TYPES[typeKey];
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'btn btn-sm ' + (q.type === typeKey ? 'btn-primary' : 'btn-outline-secondary');
+            btn.textContent = t.label;
+            btn.title = 'Switch to ' + t.label;
+            btn.addEventListener('click', () => changeQuestionType(qIndex, typeKey));
+            if (q.type === typeKey) btn.setAttribute('aria-pressed', 'true');
+            typeGroup.appendChild(btn);
+        });
+        headerActions.appendChild(typeGroup);
 
         // Delete question
         const deleteBtn = document.createElement('button');
@@ -350,8 +443,6 @@ function initQuizEditor(config) {
         deleteBtn.title = 'Delete question';
         deleteBtn.innerHTML = '<i class="bi bi-trash"></i>';
         deleteBtn.addEventListener('click', () => deleteQuestion(qIndex));
-
-        headerActions.appendChild(toggleBtn);
         headerActions.appendChild(deleteBtn);
 
         header.appendChild(dragHandle);
@@ -388,7 +479,7 @@ function initQuizEditor(config) {
         const choicesArea = document.createElement('div');
         choicesArea.className = 'quiz-choices-area';
 
-        if (q.type === 'mcq') {
+        if (typeCfg.hasChoices) {
             (q.choices || []).forEach((choice, cIndex) => {
                 const choiceRow = createChoiceRow(qIndex, cIndex, choice);
                 choicesArea.appendChild(choiceRow);
@@ -459,22 +550,38 @@ function initQuizEditor(config) {
             }
         });
 
-        // Correct answer radio
-        const radio = document.createElement('input');
-        radio.type = 'radio';
-        radio.className = 'quiz-choice-radio';
-        radio.name = 'correct-' + currentQuestions[qIndex].id;
-        radio.checked = choice.isCorrect;
-        radio.title = 'Mark as correct answer';
-        radio.addEventListener('change', () => {
-            // Unset all, set this one
-            currentQuestions[qIndex].choices.forEach((c, i) => {
-                c.isCorrect = (i === cIndex);
+        // Correct answer toggle (radio for MCQ, checkbox for MRQ, none for SRT)
+        const qType = currentQuestions[qIndex].type;
+        const typeCfg = QUESTION_TYPES[qType] || QUESTION_TYPES.mcq;
+        const toggle = document.createElement('input');
+        if (qType === 'mrq') {
+            toggle.type = 'checkbox';
+            toggle.className = 'quiz-choice-checkbox';
+            toggle.checked = choice.isCorrect;
+            toggle.title = 'Toggle correct answer';
+        } else if (qType === 'mcq') {
+            toggle.type = 'radio';
+            toggle.className = 'quiz-choice-radio';
+            toggle.name = 'correct-' + currentQuestions[qIndex].id;
+            toggle.checked = choice.isCorrect;
+            toggle.title = 'Mark as correct answer';
+        } else if (typeCfg.isSorting) {
+            // Sorting: tiny position number input
+            toggle.style.display = 'none';
+        }
+        if (qType !== 'srt') {
+            toggle.addEventListener('change', () => {
+                if (qType === 'mrq') {
+                    currentQuestions[qIndex].choices[cIndex].isCorrect = toggle.checked;
+                } else {
+                    currentQuestions[qIndex].choices.forEach((c, i) => {
+                        c.isCorrect = (i === cIndex);
+                    });
+                }
+                syncPreviewToSource();
+                refreshChoiceStates(qIndex);
             });
-            syncPreviewToSource();
-            // Refresh radio states in DOM
-            refreshChoiceRadios(qIndex);
-        });
+        }
 
         // Choice text input
         const input = document.createElement('input');
@@ -487,6 +594,22 @@ function initQuizEditor(config) {
             syncPreviewToSource();
         });
 
+        // Sort position input (SRT only)
+        let posInput = null;
+        if (typeCfg.isSorting) {
+            posInput = document.createElement('input');
+            posInput.type = 'number';
+            posInput.className = 'form-control quiz-sort-pos-input';
+            posInput.value = choice.sortPosition || (cIndex + 1);
+            posInput.min = 1;
+            posInput.step = 1;
+            posInput.title = 'Correct order position';
+            posInput.addEventListener('input', () => {
+                currentQuestions[qIndex].choices[cIndex].sortPosition = parseInt(posInput.value, 10) || 0;
+                syncPreviewToSource();
+            });
+        }
+
         // Delete choice button (min 1 choice for MCQ)
         const deleteBtn = document.createElement('button');
         deleteBtn.type = 'button';
@@ -496,7 +619,8 @@ function initQuizEditor(config) {
         deleteBtn.addEventListener('click', () => deleteChoice(qIndex, cIndex));
 
         row.appendChild(dragHandle);
-        row.appendChild(radio);
+        row.appendChild(toggle);
+        if (posInput) row.appendChild(posInput);
         row.appendChild(input);
         row.appendChild(deleteBtn);
         return row;
@@ -513,14 +637,14 @@ function initQuizEditor(config) {
         syncSourceToPreview();
     }
 
-    // ---- Refresh radio button states after correct answer change ----
-    function refreshChoiceRadios(qIndex) {
+    // ---- Refresh choice toggle states ----
+    function refreshChoiceStates(qIndex) {
         const card = previewEl.querySelector(`[data-question-index="${qIndex}"]`);
         if (!card) return;
-        const radios = card.querySelectorAll('.quiz-choice-radio');
+        const toggles = card.querySelectorAll('.quiz-choice-radio, .quiz-choice-checkbox');
         const choices = currentQuestions[qIndex].choices || [];
-        radios.forEach((radio, i) => {
-            radio.checked = choices[i] && choices[i].isCorrect;
+        toggles.forEach((toggle, i) => {
+            toggle.checked = choices[i] && choices[i].isCorrect;
         });
     }
 
@@ -538,9 +662,45 @@ function initQuizEditor(config) {
         currentQuestions.push(newQ);
         syncPreviewToSource();
         syncSourceToPreview();
-        // Scroll to bottom
         previewEl.scrollTop = previewEl.scrollHeight;
-        // Focus the new question input
+        const lastCard = previewEl.querySelector('.quiz-question-card:last-child .quiz-question-input');
+        if (lastCard) lastCard.focus();
+    }
+
+    // ---- Add a new MRQ question ----
+    function addMRQ() {
+        const newQ = {
+            id: nextQuestionId(),
+            type: 'mrq',
+            question: '',
+            choices: [
+                { id: nextChoiceId(), text: '', isCorrect: true },
+                { id: nextChoiceId(), text: '', isCorrect: false }
+            ]
+        };
+        currentQuestions.push(newQ);
+        syncPreviewToSource();
+        syncSourceToPreview();
+        previewEl.scrollTop = previewEl.scrollHeight;
+        const lastCard = previewEl.querySelector('.quiz-question-card:last-child .quiz-question-input');
+        if (lastCard) lastCard.focus();
+    }
+
+    // ---- Add a new SRT question ----
+    function addSRT() {
+        const newQ = {
+            id: nextQuestionId(),
+            type: 'srt',
+            question: '',
+            choices: [
+                { id: nextChoiceId(), text: '', isCorrect: false, sortPosition: 1 },
+                { id: nextChoiceId(), text: '', isCorrect: false, sortPosition: 2 }
+            ]
+        };
+        currentQuestions.push(newQ);
+        syncPreviewToSource();
+        syncSourceToPreview();
+        previewEl.scrollTop = previewEl.scrollHeight;
         const lastCard = previewEl.querySelector('.quiz-question-card:last-child .quiz-question-input');
         if (lastCard) lastCard.focus();
     }
@@ -579,41 +739,76 @@ function initQuizEditor(config) {
         syncSourceToPreview();
     }
 
-    // ---- Toggle question type (MCQ ↔ FRQ) ----
-    function toggleQuestionType(qIndex) {
+    // ---- Change question type (MCQ / MRQ / FRQ) ----
+    function changeQuestionType(qIndex, newType) {
         const q = currentQuestions[qIndex];
-        if (q.type === 'mcq') {
-            q.type = 'frq';
+        if (q.type === newType) return;
+
+        const oldType = q.type;
+        const newCfg = QUESTION_TYPES[newType];
+        q.type = newType;
+
+        if (!newCfg.hasChoices) {
+            // Switching to FRQ: clear choices
             q.choices = [];
-        } else {
-            q.type = 'mcq';
+        } else if (q.type === 'srt' || oldType === 'srt') {
+            // Switching to/from SRT: rebuild choices with appropriate defaults
+            const count = q.choices.length > 0 ? q.choices.length : 2;
+            q.choices = [];
+            for (let i = 0; i < count; i++) {
+                const c = { id: nextChoiceId(), text: '', isCorrect: false };
+                if (newType === 'srt') c.sortPosition = i + 1;
+                else if (i === 0) c.isCorrect = true;
+                q.choices.push(c);
+            }
+        } else if (!QUESTION_TYPES[oldType] || !QUESTION_TYPES[oldType].hasChoices) {
+            // Switching from FRQ to MCQ/MRQ
             q.choices = [
                 { id: nextChoiceId(), text: '', isCorrect: true },
                 { id: nextChoiceId(), text: '', isCorrect: false }
             ];
+        } else if (newType === 'mcq' && oldType === 'mrq') {
+            // MRQ → MCQ: keep only the first correct answer
+            let found = false;
+            q.choices.forEach(c => {
+                if (c.isCorrect) {
+                    if (!found) { found = true; }
+                    else { c.isCorrect = false; }
+                }
+            });
+            if (!found && q.choices.length > 0) q.choices[0].isCorrect = true;
         }
+        // MCQ → MRQ: no change needed (may already have multiple correct)
+
         syncPreviewToSource();
         syncSourceToPreview();
     }
 
-    // ---- Add a choice to an MCQ question ----
+    // ---- Add a choice to an MCQ/MRQ/SRT question ----
     function addChoice(qIndex) {
         const q = currentQuestions[qIndex];
-        if (q.type !== 'mcq') return;
-        q.choices.push({ id: nextChoiceId(), text: '', isCorrect: false });
+        const typeCfg = QUESTION_TYPES[q.type];
+        if (!typeCfg || !typeCfg.hasChoices) return;
+        const newChoice = { id: nextChoiceId(), text: '', isCorrect: false };
+        if (typeCfg.isSorting) {
+            // Auto-assign next sort position
+            const maxPos = q.choices.reduce((max, c) => Math.max(max, c.sortPosition || 0), 0);
+            newChoice.sortPosition = maxPos + 1;
+        }
+        q.choices.push(newChoice);
         syncPreviewToSource();
         syncSourceToPreview();
     }
 
-    // ---- Delete a choice from an MCQ question ----
+    // ---- Delete a choice from an MCQ/MRQ question ----
     function deleteChoice(qIndex, cIndex) {
         const q = currentQuestions[qIndex];
-        if (q.type !== 'mcq') return;
-        if (q.choices.length <= 1) return; // minimum 1 choice
+        const typeCfg = QUESTION_TYPES[q.type];
+        if (!typeCfg || !typeCfg.hasChoices) return;
+        if (q.choices.length <= 1) return;
         const wasCorrect = q.choices[cIndex].isCorrect;
         q.choices.splice(cIndex, 1);
-        // If the deleted choice was the correct one, mark first as correct
-        if (wasCorrect && q.choices.length > 0) {
+        if (!typeCfg.isSorting && wasCorrect && q.choices.length > 0) {
             q.choices[0].isCorrect = true;
         }
         syncPreviewToSource();
@@ -629,12 +824,10 @@ function initQuizEditor(config) {
     });
 
     // ---- Add Question buttons ----
-    if (addMcqBtn) {
-        addMcqBtn.addEventListener('click', addMCQ);
-    }
-    if (addFrqBtn) {
-        addFrqBtn.addEventListener('click', addFRQ);
-    }
+    if (addMcqBtn) addMcqBtn.addEventListener('click', addMCQ);
+    if (addMrqBtn) addMrqBtn.addEventListener('click', addMRQ);
+    if (addSrtBtn) addSrtBtn.addEventListener('click', addSRT);
+    if (addFrqBtn) addFrqBtn.addEventListener('click', addFRQ);
 
     // ---- Auto-scroll during drag (document-level for reliability) ----
     const SCROLL_ZONE = 60;   // px from edge to trigger scroll
@@ -698,6 +891,8 @@ function initQuizEditor(config) {
     // ---- Public API ----
     return {
         addMCQ,
+        addMRQ,
+        addSRT,
         addFRQ,
         refresh: syncSourceToPreview,
         getQuestions: () => currentQuestions,

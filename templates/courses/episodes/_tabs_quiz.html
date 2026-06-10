@@ -156,15 +156,10 @@
     letter-spacing: 0.05em;
 }
 
-.quiz-view-type-mcq {
-    background: #d1fae5;
-    color: #065f46;
-}
-
-.quiz-view-type-frq {
-    background: #dbeafe;
-    color: #1e40af;
-}
+.quiz-view-type-mcq { background: #d1fae5; color: #065f46; }
+.quiz-view-type-frq { background: #dbeafe; color: #1e40af; }
+.quiz-view-type-srt { background: #ede9fe; color: #5b21b6; }
+.quiz-view-type-mrq { background: #fef3c7; color: #92400e; }
 
 .quiz-view-number {
     font-weight: 600;
@@ -266,6 +261,20 @@
     border-radius: 50%;
 }
 
+.quiz-view-choice-checkbox {
+    width: 20px;
+    height: 20px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-secondary);
+    font-size: 1.2rem;
+}
+.quiz-view-choice.selected .quiz-view-choice-checkbox {
+    color: var(--primary-color);
+}
+
 .quiz-view-choice-text {
     flex: 1;
     line-height: 1.5;
@@ -299,6 +308,38 @@
 .quiz-view-frq textarea:focus {
     outline: none;
     border-color: var(--primary-color);
+}
+
+/* SRT (sorting) */
+.quiz-view-srt-choice {
+    cursor: grab;
+    user-select: none;
+}
+.quiz-view-srt-choice:active {
+    cursor: grabbing;
+}
+.quiz-view-srt-drag {
+    flex-shrink: 0;
+    color: var(--text-secondary);
+    font-size: 1.1rem;
+    margin-right: 0.25rem;
+}
+.quiz-view-srt-num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 22px;
+    font-weight: 700;
+    color: var(--text-secondary);
+    flex-shrink: 0;
+    margin-right: 0.5rem;
+}
+.quiz-choice-dragging {
+    opacity: 0.4;
+}
+.quiz-choice-drag-over {
+    outline: 2px dashed var(--primary-color);
+    outline-offset: -2px;
 }
 </style>
 
@@ -351,24 +392,64 @@
         function renderQuestion() {
             var q = questions[currentIndex];
             if (!q) return;
+            var isMrq = q.type === 'mrq';
+            var isSrt = q.type === 'srt';
+            var typeLabel = q.type === 'mrq' ? 'MRQ' : (q.type === 'srt' ? 'SRT' : (q.type === 'mcq' ? 'MCQ' : 'FRQ'));
+            var typeCSS = 'quiz-view-type-' + (q.type === 'frq' ? 'frq' : (q.type === 'srt' ? 'srt' : 'mcq'));
             var html = '<div class="quiz-view-card">';
             html += '<div class="quiz-view-header">';
-            html += '<span class="quiz-view-type ' + (q.type === 'mcq' ? 'quiz-view-type-mcq' : 'quiz-view-type-frq') + '">' + (q.type === 'mcq' ? 'MCQ' : 'FRQ') + '</span>';
+            html += '<span class="quiz-view-type ' + typeCSS + '">' + typeLabel + '</span>';
             html += '<span class="quiz-view-number">Question ' + (currentIndex + 1) + ' of ' + questions.length + '</span>';
             html += '</div><div class="quiz-view-body">';
             html += '<div class="quiz-view-question markdown-body">' + marked.parse(q.question) + '</div>';
 
-            if (q.type === 'mcq') {
+            if (q.type === 'srt') {
+                // Sorting question: draggable items in display order (no correct answer revealed)
+                // Get student's current ordering, or use initial order
+                var order = answers[currentIndex];
+                if (!order || !Array.isArray(order) || order.length !== q.choices.length) {
+                    // Initialize with the markdown display order
+                    order = [];
+                    for (var ci2 = 0; ci2 < q.choices.length; ci2++) order.push(ci2);
+                    answers[currentIndex] = order;
+                }
+                html += '<div class="quiz-view-choices" id="quiz-srt-area">';
+                for (var oi = 0; oi < order.length; oi++) {
+                    var ci = order[oi];
+                    var choice = q.choices[ci];
+                    html += '<div class="quiz-view-choice quiz-view-srt-choice" data-choice-index="' + ci + '" draggable="true">';
+                    html += '<span class="quiz-view-srt-drag"><i class="bi bi-grip-vertical"></i></span>';
+                    html += '<span class="quiz-view-srt-num">' + (oi + 1) + '</span>';
+                    html += '<span class="quiz-view-choice-text">' + escapeHTML(choice.text || '(empty)') + '</span>';
+                    html += '</div>';
+                }
+                html += '</div>';
+            } else if (q.type === 'mcq' || q.type === 'mrq') {
                 html += '<div class="quiz-view-choices">';
                 var letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-                q.choices.forEach(function(choice, ci) {
-                    if (!choice.text && choice.text !== '') return;
-                    var sel = (answers[currentIndex] === ci) ? ' selected' : '';
+                var selectedSet = null;
+                if (isMrq) {
+                    selectedSet = answers[currentIndex] || [];
+                    if (!Array.isArray(selectedSet)) selectedSet = [];
+                }
+                for (var ci = 0; ci < q.choices.length; ci++) {
+                    var choice = q.choices[ci];
+                    if (!choice.text && choice.text !== '') continue;
+                    var sel = '';
+                    if (isMrq) {
+                        sel = selectedSet.indexOf(ci) !== -1 ? ' selected' : '';
+                    } else {
+                        sel = (answers[currentIndex] === ci) ? ' selected' : '';
+                    }
                     html += '<div class="quiz-view-choice' + sel + '" data-choice-index="' + ci + '">';
-                    html += '<div class="quiz-view-choice-radio"></div>';
-                    html += '<span class="quiz-view-choice-text"><span class="quiz-view-choice-letter">' + letters[ci] + '.</span> ' + escapeHTML(choice.text) + '</span>';
+                    if (isMrq) {
+                        html += '<div class="quiz-view-choice-checkbox">' + (selectedSet.indexOf(ci) !== -1 ? '<i class="bi bi-check-square-fill"></i>' : '<i class="bi bi-square"></i>') + '</div>';
+                    } else {
+                        html += '<div class="quiz-view-choice-radio"></div>';
+                    }
+                    html += '<span class="quiz-view-choice-text"><span class="quiz-view-choice-letter">' + (letters[ci] || '') + '.</span> ' + escapeHTML(choice.text) + '</span>';
                     html += '</div>';
-                });
+                }
                 html += '</div>';
             } else {
                 html += '<div class="quiz-view-frq"><textarea placeholder="Type your answer here…">' + escapeHTML(answers[currentIndex] || '') + '</textarea></div>';
@@ -376,15 +457,66 @@
             html += '</div></div>';
             questionArea.innerHTML = html;
 
-            if (q.type === 'mcq') {
-                questionArea.querySelectorAll('.quiz-view-choice').forEach(function(el) {
-                    el.addEventListener('click', function() {
-                        var ci = parseInt(this.dataset.choiceIndex);
-                        if (answers[currentIndex] === ci) delete answers[currentIndex];
-                        else answers[currentIndex] = ci;
+            if (q.type === 'srt') {
+                // Drag-and-drop reordering for sorting question
+                var srtItems = questionArea.querySelectorAll('.quiz-view-srt-choice');
+                for (var si = 0; si < srtItems.length; si++) {
+                    srtItems[si].addEventListener('dragstart', function(e) {
+                        e.dataTransfer.setData('text/plain', this.dataset.choiceIndex);
+                        e.dataTransfer.effectAllowed = 'move';
+                        this.classList.add('quiz-choice-dragging');
+                    });
+                    srtItems[si].addEventListener('dragend', function(e) {
+                        this.classList.remove('quiz-choice-dragging');
+                        var all = questionArea.querySelectorAll('.quiz-view-srt-choice');
+                        for (var ai = 0; ai < all.length; ai++) {
+                            all[ai].classList.remove('quiz-choice-drag-over');
+                        }
+                    });
+                    srtItems[si].addEventListener('dragover', function(e) {
+                        e.preventDefault();
+                        e.dataTransfer.dropEffect = 'move';
+                        this.classList.add('quiz-choice-drag-over');
+                    });
+                    srtItems[si].addEventListener('dragleave', function() {
+                        this.classList.remove('quiz-choice-drag-over');
+                    });
+                    srtItems[si].addEventListener('drop', function(e) {
+                        e.preventDefault();
+                        this.classList.remove('quiz-choice-drag-over');
+                        var fromIdx = parseInt(e.dataTransfer.getData('text/plain'));
+                        var toIdx = parseInt(this.dataset.choiceIndex);
+                        if (fromIdx === toIdx) return;
+                        var order = answers[currentIndex];
+                        if (!order || !Array.isArray(order)) return;
+                        var fromPos = order.indexOf(fromIdx);
+                        var toPos = order.indexOf(toIdx);
+                        if (fromPos === -1 || toPos === -1) return;
+                        order.splice(fromPos, 1);
+                        order.splice(toPos, 0, fromIdx);
+                        answers[currentIndex] = order;
                         renderQuestion();
                     });
-                });
+                }
+            } else if (q.type === 'mcq' || q.type === 'mrq') {
+                var choiceEls = questionArea.querySelectorAll('.quiz-view-choice');
+                for (var i = 0; i < choiceEls.length; i++) {
+                    choiceEls[i].addEventListener('click', function() {
+                        var ci = parseInt(this.dataset.choiceIndex);
+                        if (isMrq) {
+                            var arr = answers[currentIndex] || [];
+                            if (!Array.isArray(arr)) arr = [];
+                            var idx = arr.indexOf(ci);
+                            if (idx !== -1) arr.splice(idx, 1);
+                            else arr.push(ci);
+                            answers[currentIndex] = arr;
+                        } else {
+                            if (answers[currentIndex] === ci) delete answers[currentIndex];
+                            else answers[currentIndex] = ci;
+                        }
+                        renderQuestion();
+                    });
+                }
             } else {
                 var ta = questionArea.querySelector('textarea');
                 if (ta) ta.addEventListener('input', function() { answers[currentIndex] = this.value; });
@@ -440,21 +572,33 @@
             if (!questionText) continue;
 
             var choices = [];
+            var hasMrqMarker = false;
+            var hasSortMarker = false;
             for (var k = 0; k < choiceLines.length; k++) {
                 var line = choiceLines[k];
                 var cm = line.match(/^>\+ (.+)$/);
                 var ce = line.match(/^>\+ \s*$/);
-                var wm = line.match(/^> (?!\+)(.+)$/);
+                var mm = line.match(/^>\* (.+)$/);
+                var me = line.match(/^>\* \s*$/);
+                var sm = line.match(/^>(\d+)(?:\s+(.+))?$/);
+                var wm = line.match(/^> (?!\+)(?!\*)(.+)$/);
                 var em = line.match(/^>\s*$/);
 
                 if (cm) choices.push({ text: cm[1].trim(), isCorrect: true });
                 else if (ce) choices.push({ text: '', isCorrect: true });
+                else if (mm) { choices.push({ text: mm[1].trim(), isCorrect: true }); hasMrqMarker = true; }
+                else if (me) { choices.push({ text: '', isCorrect: true }); hasMrqMarker = true; }
+                else if (sm) { choices.push({ text: sm[2] ? sm[2].trim() : '', isCorrect: false, sortPosition: parseInt(sm[1], 10) }); hasSortMarker = true; }
                 else if (wm) choices.push({ text: wm[1].trim(), isCorrect: false });
                 else if (em) choices.push({ text: '', isCorrect: false });
             }
 
             var isFRQ = choices.length === 0 || (choices.length === 1 && choices[0].text === '');
-            questions.push({ type: isFRQ ? 'frq' : 'mcq', question: questionText, choices: isFRQ ? [] : choices });
+            var qType;
+            if (isFRQ) qType = 'frq';
+            else if (hasSortMarker) qType = 'srt';
+            else qType = hasMrqMarker ? 'mrq' : 'mcq';
+            questions.push({ type: qType, question: questionText, choices: isFRQ ? [] : choices });
         }
         return questions;
     }
