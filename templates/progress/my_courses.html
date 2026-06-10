@@ -19,7 +19,7 @@
                         <div class="card-body">
                             <!-- Course Title and Creator -->
                             <h5 class="card-title">
-                                <a href="{% url 'courses:course_overview' data.course.id %}" class="text-decoration-none">
+                                <a href="{% url 'courses:course_dashboard' data.course.id %}" class="text-decoration-none">
                                     {{ data.course.title }}
                                 </a>
                             </h5>
@@ -69,12 +69,12 @@
                             <div class="d-flex gap-2">
                                 {% if data.current_episode %}
                                     <a href="{% url 'courses:learning_interface_episode' data.course.id data.current_episode.id %}"
-                                       class="btn btn-primary flex-fill">
+                                       class="btn btn-success flex-fill">
                                         <i class="bi bi-play-circle"></i> Continue Learning
                                     </a>
                                 {% else %}
                                     <a href="{% url 'courses:learning_interface' data.course.id %}"
-                                       class="btn btn-primary flex-fill">
+                                       class="btn btn-success flex-fill">
                                         <i class="bi bi-play-circle"></i> Start Learning
                                     </a>
                                 {% endif %}

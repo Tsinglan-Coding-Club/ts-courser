@@ -1,6 +1,16 @@
+import os
+
 from django import template
 
 register = template.Library()
+
+
+@register.filter
+def basename(value):
+    """Extract the filename from a full path."""
+    if not value:
+        return ''
+    return os.path.basename(value)
 
 # Episode type → display config mapping (badge CSS class, icon class, label)
 EPISODE_TYPE_CONFIG = {

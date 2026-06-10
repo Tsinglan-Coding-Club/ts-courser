@@ -3,7 +3,9 @@
     "allow": [
       "Bash(uv sync:*)",
       "Bash(uv run:*)",
-      "Bash(if not exist \"static\\images\" mkdir staticimages)"
+      "Bash(if not exist \"static\\images\" mkdir staticimages)",
+      "Bash(git diff *)",
+      "Read(//tmp/**)"
     ],
     "deny": [],
     "ask": []

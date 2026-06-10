@@ -84,3 +84,36 @@ class EpisodeReadStatus(models.Model):
     class Meta:
         unique_together = ['user', 'episode']
         verbose_name_plural = 'Episode Read Statuses'
+
+
+class QuizSubmission(models.Model):
+    """
+    Stores a student's submitted answers to a quiz episode.
+    """
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='quiz_submissions'
+    )
+    episode = models.ForeignKey(
+        Episode,
+        on_delete=models.CASCADE,
+        related_name='submissions'
+    )
+    answers = models.TextField(
+        blank=True,
+        help_text='JSON string of student answers'
+    )
+    frq_grades = models.TextField(
+        blank=True, default='{}',
+        help_text='JSON: question_index -> is_correct for FRQ grading'
+    )
+    submitted_at = models.DateTimeField(auto_now_add=True)
+    released_at = models.DateTimeField(null=True, blank=True)
+
+    def __str__(self):
+        return f"{self.user.username} - {self.episode.title}"
+
+    class Meta:
+        unique_together = ['user', 'episode']
+        ordering = ['-submitted_at']

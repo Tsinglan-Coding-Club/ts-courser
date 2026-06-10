@@ -358,7 +358,6 @@
 
                     <div class="btn-group">
                         {% if current_episode.type == 'code' %}
-                            <!-- Run + Save buttons for code episodes -->
                             <button type="button" class="btn btn-success" id="runBtn" disabled>
                                 <span class="spinner-border spinner-border-sm me-1" role="status"></span>
                                 <i class="bi bi-play-fill"></i> Run
@@ -366,6 +365,23 @@
                             <button type="button" class="btn btn-outline-secondary" id="saveBtn">
                                 <i class="bi bi-floppy"></i> Save
                             </button>
+                        {% elif current_episode.type == 'quiz' %}
+                            {% if quiz_submission %}
+                                {% if quiz_submission.released_at %}
+                                    <span class="btn btn-success" style="cursor: default;">
+                                        <i class="bi bi-check-circle-fill"></i> Reviewed
+                                    </span>
+                                {% else %}
+                                    <span class="btn btn-outline-warning" style="cursor: default;">
+                                        <i class="bi bi-hourglass-split"></i> Submitted
+                                    </span>
+                                {% endif %}
+                            {% else %}
+                                <button type="button" class="btn btn-success" id="quizSubmitHeaderBtn"
+                                        data-episode-id="{{ current_episode.id }}">
+                                    <i class="bi bi-send"></i> Submit
+                                </button>
+                            {% endif %}
                         {% else %}
                             <button type="button" class="btn btn-outline-primary" id="markReadBtn"
                                     data-episode-id="{{ current_episode.id }}"
@@ -435,6 +451,18 @@ if (markdownEl) {
     markdownEl.innerHTML = marked.parse(markdownContent);
 }
 {% endif %}
+
+// Quiz submit (header button)
+const quizSubmitHeaderBtn = document.getElementById('quizSubmitHeaderBtn');
+if (quizSubmitHeaderBtn) {
+    quizSubmitHeaderBtn.addEventListener('click', function() {
+        if (!window.__quizAnswers || !window.__quizQuestions) {
+            alert('No quiz data available. Please try reloading the page.');
+            return;
+        }
+        window.submitQuiz(this);
+    });
+}
 
 // Mark as read/unread functionality
 const markReadBtn = document.getElementById('markReadBtn');

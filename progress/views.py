@@ -4,11 +4,15 @@ from django.http import JsonResponse
 from django.views.decorators.http import require_POST
 from django.core.files.storage import default_storage
 from django.conf import settings
-from .models import UserProgress, EpisodeReadStatus, CourseEnrollment
+from django.utils import timezone
+from .models import UserProgress, EpisodeReadStatus, CourseEnrollment, QuizSubmission
 from courses.models import Episode, Course
+from ts_courser.utils import compress_image
+import json
 import uuid
 import os
 import magic
+import secrets
 
 
 @login_required
@@ -91,6 +95,9 @@ def vditor_upload(request):
         except Exception:
             continue
 
+        # Compress images larger than 1MB before saving
+        uploaded_file = compress_image(uploaded_file)
+
         # Generate unique filename
         ext = os.path.splitext(uploaded_file.name)[1]
         unique_filename = f"{uuid.uuid4()}{ext}"
@@ -124,6 +131,27 @@ def enroll_course(request):
 
     try:
         course = Course.objects.get(id=course_id, is_published=True)
+
+        # Check enrollment is open
+        if not course.enrollment_open:
+            return JsonResponse({
+                'success': False,
+                'error': 'Enrollment is currently closed for this course.'
+            })
+
+        # Check enrollment mode
+        if course.enrollment_mode == 'code':
+            entered_code = request.POST.get('course_code', '').strip().upper()
+            if not entered_code:
+                return JsonResponse({
+                    'success': False,
+                    'error': 'A course code is required to join this course.'
+                })
+            if not secrets.compare_digest(entered_code, (course.course_code or '').upper()):
+                return JsonResponse({
+                    'success': False,
+                    'error': 'Invalid course code. Please try again.'
+                })
 
         # Check if already enrolled
         enrollment, created = CourseEnrollment.objects.get_or_create(
@@ -180,6 +208,80 @@ def unenroll_course(request):
 
     except Course.DoesNotExist:
         return JsonResponse({'success': False, 'error': 'Course not found'})
+
+
+@login_required
+@require_POST
+def submit_quiz(request):
+    """Submit quiz answers for an episode."""
+    episode_id = request.POST.get('episode_id')
+    answers_json = request.POST.get('answers', '{}')
+
+    if not episode_id:
+        return JsonResponse({'success': False, 'error': 'Episode ID required'})
+
+    try:
+        episode = Episode.objects.get(id=episode_id, type='quiz')
+    except Episode.DoesNotExist:
+        return JsonResponse({'success': False, 'error': 'Quiz episode not found'})
+
+    course = episode.section.course
+
+    # Check enrollment
+    is_enrolled = CourseEnrollment.objects.filter(
+        user=request.user, course=course
+    ).exists()
+    if not is_enrolled and not (request.user.is_teacher or request.user.is_admin):
+        return JsonResponse({'success': False, 'error': 'You must be enrolled to submit'})
+
+    # Parse and validate answers
+    try:
+        answers = json.loads(answers_json)
+    except json.JSONDecodeError:
+        return JsonResponse({'success': False, 'error': 'Invalid answers format'})
+
+    # Determine if there are FRQ questions
+    has_frq = any(q.get('type') == 'frq' for q in answers.get('questions', []))
+
+    # Get existing submission so we can preserve a manual teacher release
+    existing = QuizSubmission.objects.filter(
+        user=request.user, episode=episode
+    ).first()
+
+    # Auto-release: episode-level quiz_show_results (immediate, even with FRQ)
+    # or course-level auto_release_results (only for non-FRQ)
+    if episode.quiz_show_results:
+        released_at = timezone.now()
+    elif course.auto_release_results and not has_frq:
+        released_at = timezone.now()
+    else:
+        released_at = None
+
+    # Preserve existing manual release if the new logic wouldn't auto-release
+    if not released_at and existing and existing.released_at:
+        released_at = existing.released_at
+
+    submission, created = QuizSubmission.objects.update_or_create(
+        user=request.user,
+        episode=episode,
+        defaults={
+            'answers': answers_json,
+            'released_at': released_at,
+        }
+    )
+
+    # Mark episode as read on submission
+    EpisodeReadStatus.objects.update_or_create(
+        user=request.user,
+        episode=episode,
+        defaults={'is_read': True}
+    )
+
+    return JsonResponse({
+        'success': True,
+        'message': 'Quiz submitted successfully!',
+        'auto_released': released_at is not None,
+    })
 
 
 @login_required

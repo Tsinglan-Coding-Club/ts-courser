@@ -6,7 +6,7 @@
         <ul class="nav nav-tabs card-header-tabs" id="episodeTabs" role="tablist">
             <li class="nav-item" role="presentation">
                 <button class="nav-link active" id="info-tab" data-bs-toggle="tab" data-bs-target="#info" type="button" role="tab">
-                    <i class="bi bi-info-circle"></i> Info
+                    <i class="bi bi-patch-question"></i> Quiz
                 </button>
             </li>
             {% if current_episode.content_pdf %}
@@ -27,13 +27,66 @@
     </div>
     <div class="card-body">
         <div class="tab-content" id="episodeTabContent">
-            <!-- Info Tab -->
+            <!-- Quiz Tab (replaces old Info tab) -->
             <div class="tab-pane fade show active" id="info" role="tabpanel">
-                {% if current_episode.info_page_content %}
-                    <div id="markdown-content" class="markdown-body"></div>
+                {% if quiz_submission and not quiz_submission.released_at %}
+                    <div class="text-center py-5">
+                        <i class="bi bi-hourglass-split" style="font-size: 4rem; color: var(--warning-color);"></i>
+                        <h4 class="mt-3">Quiz Submitted</h4>
+                        <p class="text-muted">Your answers have been submitted and are awaiting review.</p>
+                        <small class="text-muted">Submitted {{ quiz_submission.submitted_at|date:"M d, Y H:i" }}</small>
+                    </div>
+                {% elif current_episode.info_page_content %}
+                    {% autoescape off %}
+                    <textarea id="quiz-raw-data" style="display:none;">{{ current_episode.info_page_content|default_if_none:'' }}</textarea>
+                    {% endautoescape %}
+                    {% if quiz_submission and quiz_submission.released_at and quiz_answers_json %}
+                        <textarea id="quiz-submission-data" style="display:none;">{{ quiz_answers_json }}</textarea>
+                    {% endif %}
+                    <div class="quiz-nav-bar">
+                        <button class="btn btn-outline-primary quiz-nav-btn" id="quiz-prev" disabled>
+                            <i class="bi bi-chevron-left"></i> Previous
+                        </button>
+                        <span class="quiz-progress" id="quiz-progress">Question 1 of 1</span>
+                        <button class="btn btn-outline-primary quiz-nav-btn" id="quiz-next">
+                            Next <i class="bi bi-chevron-right"></i>
+                        </button>
+                    </div>
+                    <div id="quiz-question-area"></div>
+                    <div class="quiz-nav-bar quiz-nav-bottom">
+                        <button class="btn btn-outline-primary quiz-nav-btn" id="quiz-prev-bottom" disabled>
+                            <i class="bi bi-chevron-left"></i> Previous
+                        </button>
+                        <span class="quiz-progress" id="quiz-progress-bottom">Question 1 of 1</span>
+                        <button class="btn btn-outline-primary quiz-nav-btn" id="quiz-next-bottom">
+                            Next <i class="bi bi-chevron-right"></i>
+                        </button>
+                    </div>
+
+                    <!-- Submit / Status -->
+                    <div class="text-center mt-3">
+                        {% if quiz_submission %}
+                            {% if quiz_submission.released_at %}
+                                <div class="alert alert-success">
+                                    <i class="bi bi-check-circle-fill"></i>
+                                    Submitted and reviewed — results available.
+                                </div>
+                            {% else %}
+                                <div class="alert alert-info">
+                                    <i class="bi bi-hourglass-split"></i>
+                                    Submitted {{ quiz_submission.submitted_at|date:"M d, Y H:i" }} — awaiting review.
+                                </div>
+                            {% endif %}
+                        {% else %}
+                            <button type="button" class="btn btn-success btn-lg" id="quiz-submit-btn">
+                                <i class="bi bi-send"></i> Submit Answers
+                            </button>
+                            <div id="quiz-submit-status" class="mt-2" style="display:none;"></div>
+                        {% endif %}
+                    </div>
                 {% else %}
                     <div class="alert alert-info">
-                        <i class="bi bi-info-circle"></i> No info page content available for this episode.
+                        <i class="bi bi-info-circle"></i> No quiz questions available for this episode.
                     </div>
                 {% endif %}
             </div>
@@ -82,3 +135,728 @@
         </div>
     </div>
 </div>
+
+{% if current_episode.info_page_content %}
+<style>
+/* Quiz navigation bar */
+.quiz-nav-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.75rem 0;
+}
+
+.quiz-nav-bottom {
+    border-top: 1px solid var(--border-color);
+    margin-top: 1.5rem;
+    padding-top: 1rem;
+}
+
+.quiz-nav-btn {
+    min-width: 110px;
+}
+
+.quiz-progress {
+    font-weight: 600;
+    font-size: 0.95rem;
+    color: var(--text-secondary);
+}
+
+/* Question card */
+.quiz-view-card {
+    border: 1px solid var(--border-color);
+    border-radius: 0.75rem;
+    overflow: hidden;
+    background: var(--bg-secondary);
+}
+
+.quiz-view-header {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.75rem 1rem;
+    background: var(--bg-tertiary);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.quiz-view-type {
+    font-size: 0.7rem;
+    font-weight: 700;
+    padding: 0.15rem 0.5rem;
+    border-radius: 0.25rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.quiz-view-type-mcq { background: #d1fae5; color: #065f46; }
+.quiz-view-type-frq { background: #dbeafe; color: #1e40af; }
+.quiz-view-type-srt { background: #ede9fe; color: #5b21b6; }
+.quiz-view-type-mrq { background: #fef3c7; color: #92400e; }
+
+.quiz-view-number {
+    font-weight: 600;
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    flex: 1;
+}
+
+.quiz-view-body {
+    padding: 1.25rem;
+}
+
+.quiz-view-question {
+    margin-bottom: 1.25rem;
+    line-height: 1.7;
+}
+
+.quiz-view-question h1 { font-size: 1.3rem; }
+.quiz-view-question h2 { font-size: 1.15rem; }
+.quiz-view-question h3 { font-size: 1.05rem; }
+.quiz-view-question pre {
+    background: var(--bg-tertiary);
+    padding: 0.75rem 1rem;
+    border-radius: 0.35rem;
+    overflow-x: auto;
+}
+.quiz-view-question code {
+    background: var(--bg-tertiary);
+    padding: 0.15em 0.35em;
+    border-radius: 0.25rem;
+    font-size: 0.9em;
+}
+.quiz-view-question pre code {
+    background: transparent;
+    padding: 0;
+}
+
+/* Choices */
+.quiz-view-choices {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.quiz-view-choice {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.7rem 1rem;
+    border: 1.5px solid var(--border-color);
+    border-radius: 0.5rem;
+    cursor: pointer;
+    transition: border-color 0.15s, background-color 0.15s;
+    user-select: none;
+}
+
+.quiz-view-choice:hover {
+    border-color: var(--primary-color);
+    background: rgba(var(--primary-rgb, 13, 110, 253), 0.03);
+}
+
+.quiz-view-choice.selected {
+    border-color: var(--primary-color);
+    background: rgba(var(--primary-rgb, 13, 110, 253), 0.08);
+}
+
+.quiz-view-choice.correct-reveal {
+    border-color: #22c55e !important;
+    background: rgba(34, 197, 94, 0.08) !important;
+}
+
+.quiz-view-choice.wrong-reveal {
+    border-color: #ef4444 !important;
+    background: rgba(239, 68, 68, 0.05) !important;
+}
+.quiz-view-choice.answer-reveal {
+    border-color: var(--info-color) !important;
+    border-style: dashed !important;
+    background: rgba(79, 195, 247, 0.04) !important;
+}
+
+.quiz-view-choice-radio {
+    width: 20px;
+    height: 20px;
+    border: 2px solid var(--text-secondary);
+    border-radius: 50%;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: border-color 0.15s, background-color 0.15s;
+}
+
+.quiz-view-choice.selected .quiz-view-choice-radio {
+    border-color: var(--primary-color);
+    background: var(--primary-color);
+}
+
+.quiz-view-choice.selected .quiz-view-choice-radio::after {
+    content: '';
+    width: 8px;
+    height: 8px;
+    background: white;
+    border-radius: 50%;
+}
+
+.quiz-view-choice-checkbox {
+    width: 20px;
+    height: 20px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-secondary);
+    font-size: 1.2rem;
+}
+.quiz-view-choice.selected .quiz-view-choice-checkbox {
+    color: var(--primary-color);
+}
+
+.quiz-view-choice-text {
+    flex: 1;
+    line-height: 1.5;
+}
+
+.quiz-view-choice-letter {
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin-right: 0.4rem;
+}
+
+/* FRQ */
+.quiz-view-frq {
+    margin-top: 0.5rem;
+}
+
+.quiz-view-frq textarea {
+    width: 100%;
+    min-height: 120px;
+    padding: 0.75rem;
+    border: 1.5px solid var(--border-color);
+    border-radius: 0.5rem;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-family: inherit;
+    font-size: 0.95rem;
+    resize: vertical;
+    transition: border-color 0.15s;
+}
+
+.quiz-view-frq textarea:focus {
+    outline: none;
+    border-color: var(--primary-color);
+}
+
+/* SRT (sorting) */
+.quiz-view-srt-choice {
+    cursor: grab;
+    user-select: none;
+}
+.quiz-view-srt-choice:active {
+    cursor: grabbing;
+}
+.quiz-view-srt-drag {
+    flex-shrink: 0;
+    color: var(--text-secondary);
+    font-size: 1.1rem;
+    margin-right: 0.25rem;
+}
+.quiz-view-srt-num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 22px;
+    font-weight: 700;
+    color: var(--text-secondary);
+    flex-shrink: 0;
+    margin-right: 0.5rem;
+}
+.quiz-choice-dragging {
+    opacity: 0.4;
+}
+.quiz-choice-drag-over {
+    outline: 2px dashed var(--primary-color);
+    outline-offset: -2px;
+}
+</style>
+
+<script>
+(function() {
+    var rawEl = document.getElementById('quiz-raw-data');
+    if (!rawEl) return;
+    var markdown = rawEl.value;
+    if (!markdown || !markdown.trim()) return;
+
+    function initWhenReady() {
+        if (typeof marked === 'undefined') {
+            setTimeout(initWhenReady, 50);
+            return;
+        }
+
+        console.log('=== Quiz Debug ===');
+        console.log('markdown first 200:', markdown.substring(0, 200));
+
+        var questions = parseQuiz(markdown);
+        if (questions.length === 0) return;
+
+        var currentIndex = 0;
+        var answers = {};
+        var questionArea = document.getElementById('quiz-question-area');
+
+        // Initialize answers for MRQ/SRT to empty arrays (prevent contamination)
+        for (var qi = 0; qi < questions.length; qi++) {
+            var qt = questions[qi].type;
+            if (qt === 'mrq' || qt === 'srt') {
+                answers[qi] = [];
+            }
+        }
+
+        // Expose globally for header submit button
+        window.__quizAnswers = answers;
+        window.__quizQuestions = questions;
+        window.__quizRequireAll = {% if quiz_require_all %}true{% else %}false{% endif %};
+        window.__quizEpisodeId = '{{ current_episode.id }}';
+        window.__quizSubmitUrl = '{% url "progress:submit_quiz" %}';
+        window.__quizCsrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+
+        // Shared submit function used by both the tab button and header button
+        window.submitQuiz = async function(submitBtn) {
+            var qs = window.__quizQuestions;
+            var ans = window.__quizAnswers;
+
+            // Require-all check
+            if (window.__quizRequireAll) {
+                var unanswered = [];
+                for (var qi = 0; qi < qs.length; qi++) {
+                    var qt = qs[qi].type;
+                    var a = ans[qi];
+                    if (qt === 'mcq' && a === undefined) unanswered.push(qi + 1);
+                    else if ((qt === 'mrq' || qt === 'srt') && (!a || !Array.isArray(a) || a.length === 0)) unanswered.push(qi + 1);
+                    else if (qt === 'frq' && (!a || !a.trim())) unanswered.push(qi + 1);
+                }
+                if (unanswered.length > 0) {
+                    alert('Please answer all questions before submitting. Unanswered: Q' + unanswered.join(', Q'));
+                    return;
+                }
+            }
+
+            // Build payload
+            var payload = [];
+            for (var qi = 0; qi < qs.length; qi++) {
+                var q = qs[qi];
+                var entry = { type: q.type };
+                if (q.type === 'mcq') {
+                    entry.selectedIndex = ans[qi];
+                } else if (q.type === 'mrq') {
+                    entry.selectedIds = (ans[qi] || []).slice();
+                } else if (q.type === 'frq') {
+                    entry.text = ans[qi] || '';
+                } else if (q.type === 'srt') {
+                    entry.selectedIds = (ans[qi] || []).slice();
+                }
+                payload.push(entry);
+            }
+
+            var formData = new FormData();
+            formData.append('episode_id', window.__quizEpisodeId);
+            formData.append('answers', JSON.stringify({ questions: payload }));
+
+            var originalHTML = submitBtn.innerHTML;
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Submitting...';
+
+            try {
+                var response = await fetch(window.__quizSubmitUrl, {
+                    method: 'POST',
+                    headers: { 'X-CSRFToken': window.__quizCsrfToken },
+                    body: formData
+                });
+                var data = await response.json();
+                if (data.success) {
+                    location.reload();
+                } else {
+                    alert('Error: ' + (data.error || 'Submission failed'));
+                    submitBtn.disabled = false;
+                    submitBtn.innerHTML = originalHTML;
+                }
+            } catch (err) {
+                alert('Network error. Please try again.');
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = originalHTML;
+            }
+        };
+
+        console.log('[QUIZ DEBUG] init: questions parsed =', questions.length);
+        for (var di = 0; di < questions.length; di++) {
+            console.log('[QUIZ DEBUG] init: Q' + di, 'type=' + questions[di].type,
+                'choices=' + questions[di].choices.length,
+                'correctIdxs=' + questions[di].choices.map(function(c,j){return c.isCorrect?j:-1;}).filter(function(x){return x>=0;}));
+        }
+        console.log('[QUIZ DEBUG] init: initial answers =', JSON.parse(JSON.stringify(answers)));
+        var prevBtnTop = document.getElementById('quiz-prev');
+        var nextBtnTop = document.getElementById('quiz-next');
+        var prevBtnBot = document.getElementById('quiz-prev-bottom');
+        var nextBtnBot = document.getElementById('quiz-next-bottom');
+        var progressTop = document.getElementById('quiz-progress');
+        var progressBot = document.getElementById('quiz-progress-bottom');
+
+        function escapeHTML(str) {
+            var div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
+        }
+
+        function updateNav() {
+            var total = questions.length;
+            var txt = 'Question ' + (currentIndex + 1) + ' of ' + total;
+            if (progressTop) progressTop.textContent = txt;
+            if (progressBot) progressBot.textContent = txt;
+            if (prevBtnTop) prevBtnTop.disabled = currentIndex === 0;
+            if (prevBtnBot) prevBtnBot.disabled = currentIndex === 0;
+            if (nextBtnTop) nextBtnTop.disabled = currentIndex >= total - 1;
+            if (nextBtnBot) nextBtnBot.disabled = currentIndex >= total - 1;
+        }
+
+        function renderQuestion() {
+            var q = questions[currentIndex];
+            if (!q) return;
+            var isMrq = q.type === 'mrq';
+            var isSrt = q.type === 'srt';
+            var typeLabel = q.type === 'mrq' ? 'MRQ' : (q.type === 'srt' ? 'SRT' : (q.type === 'mcq' ? 'MCQ' : 'FRQ'));
+            var typeCSS = 'quiz-view-type-' + (q.type === 'frq' ? 'frq' : (q.type === 'srt' ? 'srt' : 'mcq'));
+            var html = '<div class="quiz-view-card">';
+            html += '<div class="quiz-view-header">';
+            html += '<span class="quiz-view-type ' + typeCSS + '">' + typeLabel + '</span>';
+            html += '<span class="quiz-view-number">Question ' + (currentIndex + 1) + ' of ' + questions.length + '</span>';
+            html += '</div><div class="quiz-view-body">';
+            html += '<div class="quiz-view-question markdown-body">' + marked.parse(q.question) + '</div>';
+
+            if (q.type === 'srt') {
+                // Sorting question: draggable items in display order (no correct answer revealed)
+                // Get student's current ordering, or use initial order
+                var order = answers[currentIndex];
+                if (!order || !Array.isArray(order) || order.length !== q.choices.length) {
+                    // Initialize with the markdown display order
+                    order = [];
+                    for (var ci2 = 0; ci2 < q.choices.length; ci2++) order.push(ci2);
+                    answers[currentIndex] = order;
+                }
+                html += '<div class="quiz-view-choices" id="quiz-srt-area">';
+                for (var oi = 0; oi < order.length; oi++) {
+                    var ci = order[oi];
+                    var choice = q.choices[ci];
+                    html += '<div class="quiz-view-choice quiz-view-srt-choice" data-choice-index="' + ci + '" draggable="true">';
+                    html += '<span class="quiz-view-srt-drag"><i class="bi bi-grip-vertical"></i></span>';
+                    html += '<span class="quiz-view-srt-num">' + (oi + 1) + '</span>';
+                    html += '<span class="quiz-view-choice-text">' + escapeHTML(choice.text || '(empty)') + '</span>';
+                    html += '</div>';
+                }
+                html += '</div>';
+            } else if (q.type === 'mcq' || q.type === 'mrq') {
+                html += '<div class="quiz-view-choices">';
+                var letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+                var selectedSet = null;
+                if (isMrq) {
+                    selectedSet = answers[currentIndex] || [];
+                    if (!Array.isArray(selectedSet)) selectedSet = [];
+                }
+                for (var ci = 0; ci < q.choices.length; ci++) {
+                    var choice = q.choices[ci];
+                    if (!choice.text && choice.text !== '') continue;
+                    var sel = '';
+                    if (isMrq) {
+                        sel = selectedSet.indexOf(ci) !== -1 ? ' selected' : '';
+                    } else {
+                        sel = (answers[currentIndex] === ci) ? ' selected' : '';
+                    }
+                    html += '<div class="quiz-view-choice' + sel + '" data-choice-index="' + ci + '">';
+                    if (isMrq) {
+                        html += '<div class="quiz-view-choice-checkbox">' + (selectedSet.indexOf(ci) !== -1 ? '<i class="bi bi-check-square-fill"></i>' : '<i class="bi bi-square"></i>') + '</div>';
+                    } else {
+                        html += '<div class="quiz-view-choice-radio"></div>';
+                    }
+                    html += '<span class="quiz-view-choice-text"><span class="quiz-view-choice-letter">' + (letters[ci] || '') + '.</span> ' + escapeHTML(choice.text) + '</span>';
+                    html += '</div>';
+                }
+                html += '</div>';
+            } else {
+                html += '<div class="quiz-view-frq"><textarea placeholder="Type your answer here…">' + escapeHTML(answers[currentIndex] || '') + '</textarea></div>';
+            }
+            html += '</div></div>';
+            questionArea.innerHTML = html;
+
+            if (q.type === 'srt') {
+                // Drag-and-drop reordering for sorting question
+                var srtItems = questionArea.querySelectorAll('.quiz-view-srt-choice');
+                for (var si = 0; si < srtItems.length; si++) {
+                    srtItems[si].addEventListener('dragstart', function(e) {
+                        e.dataTransfer.setData('text/plain', this.dataset.choiceIndex);
+                        e.dataTransfer.effectAllowed = 'move';
+                        this.classList.add('quiz-choice-dragging');
+                    });
+                    srtItems[si].addEventListener('dragend', function(e) {
+                        this.classList.remove('quiz-choice-dragging');
+                        var all = questionArea.querySelectorAll('.quiz-view-srt-choice');
+                        for (var ai = 0; ai < all.length; ai++) {
+                            all[ai].classList.remove('quiz-choice-drag-over');
+                        }
+                    });
+                    srtItems[si].addEventListener('dragover', function(e) {
+                        e.preventDefault();
+                        e.dataTransfer.dropEffect = 'move';
+                        this.classList.add('quiz-choice-drag-over');
+                    });
+                    srtItems[si].addEventListener('dragleave', function() {
+                        this.classList.remove('quiz-choice-drag-over');
+                    });
+                    srtItems[si].addEventListener('drop', function(e) {
+                        e.preventDefault();
+                        this.classList.remove('quiz-choice-drag-over');
+                        var fromIdx = parseInt(e.dataTransfer.getData('text/plain'));
+                        var toIdx = parseInt(this.dataset.choiceIndex);
+                        if (fromIdx === toIdx) return;
+                        var order = answers[currentIndex];
+                        if (!order || !Array.isArray(order)) return;
+                        var fromPos = order.indexOf(fromIdx);
+                        var toPos = order.indexOf(toIdx);
+                        if (fromPos === -1 || toPos === -1) return;
+                        order.splice(fromPos, 1);
+                        order.splice(toPos, 0, fromIdx);
+                        answers[currentIndex] = order;
+                        renderQuestion();
+                    });
+                }
+            } else if (q.type === 'mcq' || q.type === 'mrq') {
+                var choiceEls = questionArea.querySelectorAll('.quiz-view-choice');
+                for (var i = 0; i < choiceEls.length; i++) {
+                    choiceEls[i].addEventListener('click', function() {
+                        var ci = parseInt(this.dataset.choiceIndex);
+                        if (isMrq) {
+                            var arr = answers[currentIndex] || [];
+                            if (!Array.isArray(arr)) arr = [];
+                            var idx = arr.indexOf(ci);
+                            if (idx !== -1) arr.splice(idx, 1);
+                            else arr.push(ci);
+                            answers[currentIndex] = arr;
+                            console.log('[QUIZ DEBUG] MRQ click: Q' + currentIndex + ' choice=' + ci + ' -> selectedIds=' + JSON.stringify(arr));
+                        } else {
+                            if (answers[currentIndex] === ci) delete answers[currentIndex];
+                            else answers[currentIndex] = ci;
+                        }
+                        renderQuestion();
+                    });
+                }
+            } else {
+                var ta = questionArea.querySelector('textarea');
+                if (ta) ta.addEventListener('input', function() { answers[currentIndex] = this.value; });
+            }
+            updateNav();
+        }
+
+        function goTo(idx) {
+            if (idx < 0 || idx >= questions.length) return;
+            currentIndex = idx;
+            renderQuestion();
+        }
+
+        if (prevBtnTop) prevBtnTop.addEventListener('click', function() { goTo(currentIndex - 1); });
+        if (nextBtnTop) nextBtnTop.addEventListener('click', function() { goTo(currentIndex + 1); });
+        if (prevBtnBot) prevBtnBot.addEventListener('click', function() { goTo(currentIndex - 1); });
+        if (nextBtnBot) nextBtnBot.addEventListener('click', function() { goTo(currentIndex + 1); });
+
+        document.addEventListener('keydown', function(e) {
+            var quizTab = document.getElementById('info');
+            if (!quizTab || !quizTab.classList.contains('show')) return;
+            if (e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT') return;
+            if (e.key === 'ArrowLeft') { e.preventDefault(); goTo(currentIndex - 1); }
+            if (e.key === 'ArrowRight') { e.preventDefault(); goTo(currentIndex + 1); }
+        });
+
+        // ---- Submit (shared logic in window.submitQuiz) ----
+        var submitBtn = document.getElementById('quiz-submit-btn');
+        if (submitBtn) {
+            submitBtn.addEventListener('click', function() {
+                window.submitQuiz(submitBtn);
+            });
+        }
+
+        // ---- Results mode: if released, render all questions flat ----
+        var submissionDataEl = document.getElementById('quiz-submission-data');
+        if (submissionDataEl) {
+            try {
+                var subData = JSON.parse(submissionDataEl.value);
+                var subAnswers = subData.questions || [];
+                console.log('[QUIZ DEBUG] results-load: parsed submission answers =', JSON.stringify(subAnswers));
+                // Hide navigation
+                var quizNavBars = document.querySelectorAll('.quiz-nav-bar');
+                for (var nbi = 0; nbi < quizNavBars.length; nbi++) quizNavBars[nbi].style.display = 'none';
+                // Render all questions
+                var html = '';
+                var letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+                for (var qi = 0; qi < questions.length; qi++) {
+                    var q = questions[qi];
+                    var sa = subAnswers[qi] || {};
+                    var isCorrect = false;
+                    var typeLabel = q.type.toUpperCase();
+                    html += '<div class="quiz-view-card" style="margin-bottom:1.5rem;">';
+                    html += '<div class="quiz-view-header">';
+                    html += '<span class="quiz-view-type quiz-view-type-' + (q.type === 'frq' ? 'frq' : 'mcq') + '">' + typeLabel + '</span>';
+                    html += '<span class="quiz-view-number">Question ' + (qi + 1) + '</span>';
+                    var isAnswered = (q.type === 'mcq' && sa.selectedIndex !== undefined)
+                                  || (q.type === 'mrq' && (sa.selectedIds || []).length > 0)
+                                  || (q.type === 'srt' && (sa.selectedIds || []).length > 0);
+                    if (q.type === 'mcq') {
+                        isCorrect = isAnswered && q.choices[sa.selectedIndex] && q.choices[sa.selectedIndex].isCorrect;
+                    } else if (q.type === 'mrq') {
+                        var sids = sa.selectedIds || [];
+                        var cids = [];
+                        for (var ci = 0; ci < q.choices.length; ci++) { if (q.choices[ci].isCorrect) cids.push(ci); }
+                        isCorrect = sids.length === cids.length && sids.every(function(id) { return cids.indexOf(id) !== -1; });
+                    } else if (q.type === 'srt') {
+                        var sids2 = sa.selectedIds || [];
+                        var correct2 = [];
+                        for (var ci2 = 0; ci2 < q.choices.length; ci2++) correct2.push(q.choices[ci2].sortPosition - 1);
+                        isCorrect = sids2.length === correct2.length && sids2.every(function(id, idx) { return id === correct2[idx]; });
+                    }
+                    if (isAnswered) {
+                        html += '<span class="badge ' + (isCorrect ? 'bg-success' : 'bg-danger') + ' ms-auto">' + (isCorrect ? 'Correct' : 'Incorrect') + '</span>';
+                    } else {
+                        html += '<span class="badge bg-secondary ms-auto">Not Answered</span>';
+                    }
+                    html += '</div><div class="quiz-view-body">';
+                    html += '<div class="quiz-view-question markdown-body">' + marked.parse(q.question) + '</div>';
+                    if (q.type === 'mcq' || q.type === 'mrq') {
+                        html += '<div class="quiz-view-choices">';
+                        for (var ci = 0; ci < q.choices.length; ci++) {
+                            var c = q.choices[ci];
+                            var sel = (q.type === 'mcq' && sa.selectedIndex === ci) || (q.type === 'mrq' && (sa.selectedIds || []).indexOf(ci) !== -1);
+                            var cls = '';
+                            if (sel) {
+                                cls = c.isCorrect ? 'correct-reveal' : 'wrong-reveal';
+                            } else if (c.isCorrect && isAnswered) {
+                                cls = 'answer-reveal';
+                            }
+                            html += '<div class="quiz-view-choice ' + cls + '">';
+                            html += '<span class="quiz-view-choice-letter">' + (letters[ci] || '') + '.</span>';
+                            html += '<span class="quiz-view-choice-text">' + escapeHTML(c.text || '(empty)') + '</span>';
+                            if (sel) {
+                                if (c.isCorrect) html += '<i class="bi bi-check-circle-fill text-success ms-auto"></i>';
+                                else html += '<i class="bi bi-x-circle-fill text-danger ms-auto"></i>';
+                            }
+                            html += '</div>';
+                        }
+                        html += '</div>';
+                    } else if (q.type === 'srt') {
+                        html += '<div class="quiz-view-choices">';
+                        var sids3 = sa.selectedIds || [];
+                        for (var si = 0; si < sids3.length; si++) {
+                            var ci3 = sids3[si];
+                            var c3 = q.choices[ci3];
+                            var srtCls = (c3.sortPosition === si + 1) ? 'correct-reveal' : 'wrong-reveal';
+                            html += '<div class="quiz-view-choice ' + srtCls + '">';
+                            html += '<span class="quiz-view-srt-num">' + (si + 1) + '</span>';
+                            html += '<span class="quiz-view-choice-text">' + escapeHTML(c3.text || '(empty)') + '</span>';
+                            html += c3.sortPosition === si + 1 ? '<i class="bi bi-check-circle-fill text-success ms-auto"></i>' : '<i class="bi bi-x-circle-fill text-danger ms-auto"></i>';
+                            html += '</div>';
+                        }
+                        html += '</div>';
+                    } else if (q.type === 'frq') {
+                        html += '<div class="quiz-view-frq"><div class="frq-answer-box" style="background:var(--bg-primary);border:1px solid var(--border-color);border-radius:0.5rem;padding:0.75rem;white-space:pre-wrap;">' + escapeHTML(sa.text || '(no answer)') + '</div>';
+                        if (q.refAnswer && q.refAnswer.trim()) {
+                            html += '<div class="mt-2 p-2 rounded" style="background:rgba(79,195,247,0.06);border:1px dashed var(--info-color);">';
+                            html += '<small class="text-info fw-bold"><i class="bi bi-check-circle"></i> Reference Answer:</small>';
+                            html += '<div class="mt-1">' + escapeHTML(q.refAnswer) + '</div></div>';
+                        }
+                        html += '</div>';
+                    }
+                    html += '</div></div>';
+                }
+                questionArea.innerHTML = html;
+                // Don't show the submit button in results mode
+                var submitBtn = document.getElementById('quiz-submit-btn');
+                if (submitBtn) submitBtn.style.display = 'none';
+            } catch(e) { console.error('Results render error:', e); }
+        } else {
+            renderQuestion();
+        }
+    }
+    function parseQuiz(md) {
+        if (!md || !md.trim()) return [];
+        var questions = [];
+        var blocks = md.split(/^## (?![#])/m);
+
+        for (var i = 0; i < blocks.length; i++) {
+            var block = blocks[i];
+            if (!block) continue;
+            var lines = block.split('\n');
+            var firstChoiceIdx = -1;
+            for (var j = 0; j < lines.length; j++) {
+                if (/^>/.test(lines[j])) { firstChoiceIdx = j; break; }
+            }
+
+            var questionText, choiceLines;
+            if (firstChoiceIdx === -1) {
+                questionText = lines.join('\n').trim();
+                choiceLines = [];
+            } else {
+                questionText = lines.slice(0, firstChoiceIdx).join('\n').trim();
+                choiceLines = lines.slice(firstChoiceIdx);
+            }
+            if (!questionText) continue;
+
+            // Skip "None" (Django null artifact)
+            if (questionText === 'None') continue;
+
+            var choices = [];
+            var hasMrqMarker = false;
+            var hasSortMarker = false;
+            var hasCorrectMarker = false;
+            for (var k = 0; k < choiceLines.length; k++) {
+                var line = choiceLines[k];
+                var cm = line.match(/^>\+ (.+)$/);
+                var ce = line.match(/^>\+ \s*$/);
+                var mm = line.match(/^>\* (.+)$/);
+                var me = line.match(/^>\* \s*$/);
+                var frm = line.match(/^>= (.+)$/);
+                var fre = line.match(/^>=\s*$/);
+                var sm = line.match(/^>(\d+)(?:\s+(.+))?$/);
+                var wm = line.match(/^> (?!\+)(?!\*)(.+)$/);
+                var em = line.match(/^>\s*$/);
+
+                if (cm) { choices.push({ text: cm[1].trim(), isCorrect: true }); hasCorrectMarker = true; }
+                else if (ce) { choices.push({ text: '', isCorrect: true }); hasCorrectMarker = true; }
+                else if (mm) { choices.push({ text: mm[1].trim(), isCorrect: true }); hasMrqMarker = true; hasCorrectMarker = true; }
+                else if (me) { choices.push({ text: '', isCorrect: true }); hasMrqMarker = true; hasCorrectMarker = true; }
+                else if (sm) { choices.push({ text: sm[2] ? sm[2].trim() : '', isCorrect: false, sortPosition: parseInt(sm[1], 10) }); hasSortMarker = true; }
+                else if (frm) { choices.push({ text: frm[1].trim(), isCorrect: false, isFRQRef: true }); }
+                else if (fre) { choices.push({ text: '', isCorrect: false, isFRQRef: true }); }
+                else if (wm) choices.push({ text: wm[1].trim(), isCorrect: false });
+                else if (em) choices.push({ text: '', isCorrect: false });
+            }
+
+            var isFRQ = choices.length === 0
+                || (choices.length === 1 && choices[0].text === '')
+                || (choices.length === 1 && choices[0].isFRQRef === true);
+
+            // Auto-mark first choice as correct if none marked and choices exist
+            if (!isFRQ && !hasCorrectMarker && choices.length > 0) {
+                choices[0].isCorrect = true;
+            }
+
+            var refAnswer = '';
+            if (isFRQ && choices.length === 1 && choices[0].isFRQRef) {
+                refAnswer = choices[0].text || '';
+            }
+            var qType;
+            if (isFRQ) qType = 'frq';
+            else if (hasSortMarker) qType = 'srt';
+            else qType = hasMrqMarker ? 'mrq' : 'mcq';
+            questions.push({ type: qType, question: questionText, choices: isFRQ ? [] : choices, refAnswer: refAnswer });
+        }
+        return questions;
+    }
+
+    initWhenReady();
+})();
+</script>
+{% endif %}
