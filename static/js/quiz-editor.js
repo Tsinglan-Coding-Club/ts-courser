@@ -323,7 +323,7 @@ function serializeQuiz(questions) {
         return lines.join('\n');
     });
 
-    return blocks.join('\n\n') + '\n';
+    return blocks.join('\n\n');
 }
 
 // ============================================================================
@@ -528,7 +528,7 @@ function initQuizEditor(config) {
             refGroup.className = 'mb-2';
             const refLabel = document.createElement('label');
             refLabel.className = 'form-label small fw-bold';
-            refLabel.textContent = 'Reference Answer (>=)';
+            refLabel.textContent = 'Reference Answer';
             refGroup.appendChild(refLabel);
             const refInput = document.createElement('textarea');
             refInput.className = 'form-control form-control-sm';

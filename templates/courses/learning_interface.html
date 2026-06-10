@@ -455,87 +455,12 @@ if (markdownEl) {
 // Quiz submit (header button)
 const quizSubmitHeaderBtn = document.getElementById('quizSubmitHeaderBtn');
 if (quizSubmitHeaderBtn) {
-    quizSubmitHeaderBtn.addEventListener('click', async function() {
-        const episodeId = this.dataset.episodeId;
-        const submitUrl = '{% url "progress:submit_quiz" %}';
-
-        // Collect answers from the quiz JS scope — dispatch a custom event
-        // The quiz tab's JS will listen and respond with the answers
-        const event = new CustomEvent('quiz-collect-answers');
-        document.dispatchEvent(event);
-
+    quizSubmitHeaderBtn.addEventListener('click', function() {
         if (!window.__quizAnswers || !window.__quizQuestions) {
             alert('No quiz data available. Please try reloading the page.');
             return;
         }
-
-        // Require-all check
-        {% if quiz_require_all %}
-        var unanswered = [];
-        for (let qi = 0; qi < window.__quizQuestions.length; qi++) {
-            var qt = window.__quizQuestions[qi].type;
-            var a = window.__quizAnswers[qi];
-            if (qt === 'mcq' && a === undefined) unanswered.push(qi + 1);
-            else if ((qt === 'mrq' || qt === 'srt') && (!a || !Array.isArray(a) || a.length === 0)) unanswered.push(qi + 1);
-            else if (qt === 'frq' && (!a || !a.trim())) unanswered.push(qi + 1);
-        }
-        if (unanswered.length > 0) {
-            alert('Please answer all questions before submitting. Unanswered: Q' + unanswered.join(', Q'));
-            return;
-        }
-        {% endif %}
-
-        const payload = [];
-        const questions = window.__quizQuestions;
-        const answers = window.__quizAnswers;
-        console.log('[QUIZ DEBUG] submit-header: __quizAnswers =', JSON.parse(JSON.stringify(answers || {})));
-        for (let qi = 0; qi < questions.length; qi++) {
-            const q = questions[qi];
-            const entry = { type: q.type };
-            if (q.type === 'mcq') {
-                entry.selectedIndex = answers[qi];
-                console.log('[QUIZ DEBUG] submit-header: Q' + qi + ' mcq selectedIndex=' + answers[qi]);
-            } else if (q.type === 'mrq') {
-                entry.selectedIds = (answers[qi] || []).slice();
-                console.log('[QUIZ DEBUG] submit-header: Q' + qi + ' mrq answers[' + qi + ']=', JSON.stringify(answers[qi]), 'selectedIds=', JSON.stringify(entry.selectedIds));
-            } else if (q.type === 'frq') {
-                entry.text = answers[qi] || '';
-            } else if (q.type === 'srt') {
-                entry.selectedIds = (answers[qi] || []).slice();
-                console.log('[QUIZ DEBUG] submit-header: Q' + qi + ' srt selectedIds=', JSON.stringify(entry.selectedIds));
-            }
-            payload.push(entry);
-        }
-
-        const payloadJson = JSON.stringify({ questions: payload });
-        console.log('[QUIZ DEBUG] submit-header: FULL PAYLOAD =', payloadJson);
-
-        const formData = new FormData();
-        formData.append('episode_id', episodeId);
-        formData.append('answers', payloadJson);
-
-        this.disabled = true;
-        this.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Submitting...';
-
-        try {
-            const response = await fetch(submitUrl, {
-                method: 'POST',
-                headers: { 'X-CSRFToken': csrftoken },
-                body: formData
-            });
-            const data = await response.json();
-            if (data.success) {
-                location.reload();
-            } else {
-                alert('Error: ' + (data.error || 'Submission failed'));
-                this.disabled = false;
-                this.innerHTML = '<i class="bi bi-send"></i> Submit';
-            }
-        } catch (err) {
-            alert('Network error. Please try again.');
-            this.disabled = false;
-            this.innerHTML = '<i class="bi bi-send"></i> Submit';
-        }
+        window.submitQuiz(this);
     });
 }
 

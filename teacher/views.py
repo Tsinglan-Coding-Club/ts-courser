@@ -412,8 +412,8 @@ def episode_delete(request, episode_id):
 
 def validate_pdf(pdf_file):
     """Validate uploaded PDF file."""
-    # Size check (15MB limit)
-    if pdf_file.size > 15 * 1024 * 1024:
+    # Size check (50MB limit)
+    if pdf_file.size > 50 * 1024 * 1024:
         return False
 
     # MIME type check
@@ -731,9 +731,14 @@ def _parse_quiz_markdown(md):
         if not question_text:
             continue
 
+        # Skip "None" (Django null artifact, mirrors JS parser)
+        if question_text == 'None':
+            continue
+
         choices = []
         has_mrq = False
         has_sort = False
+        has_correct = False
 
         for line in choice_lines:
             m_frq_ref = re.match(r'^>= (.+)$', line)
@@ -752,14 +757,18 @@ def _parse_quiz_markdown(md):
                 choices.append({'text': '', 'isCorrect': False, 'isFRQRef': True})
             elif m_mcq:
                 choices.append({'text': m_mcq.group(1).strip(), 'isCorrect': True})
+                has_correct = True
             elif m_mcq_e:
                 choices.append({'text': '', 'isCorrect': True})
+                has_correct = True
             elif m_mrq:
                 choices.append({'text': m_mrq.group(1).strip(), 'isCorrect': True})
                 has_mrq = True
+                has_correct = True
             elif m_mrq_e:
                 choices.append({'text': '', 'isCorrect': True})
                 has_mrq = True
+                has_correct = True
             elif m_sort:
                 choices.append({
                     'text': m_sort.group(2).strip() if m_sort.group(2) else '',
@@ -775,6 +784,11 @@ def _parse_quiz_markdown(md):
         is_frq = (len(choices) == 0
                   or (len(choices) == 1 and choices[0]['text'] == '')
                   or (len(choices) == 1 and choices[0].get('isFRQRef')))
+
+        # Auto-mark first choice as correct if none marked and choices exist
+        if not is_frq and not has_correct and len(choices) > 0:
+            choices[0]['isCorrect'] = True
+
         ref_answer = ''
         if is_frq and len(choices) == 1 and choices[0].get('isFRQRef'):
             ref_answer = choices[0]['text']

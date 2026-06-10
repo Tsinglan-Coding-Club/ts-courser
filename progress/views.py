@@ -243,6 +243,11 @@ def submit_quiz(request):
     # Determine if there are FRQ questions
     has_frq = any(q.get('type') == 'frq' for q in answers.get('questions', []))
 
+    # Get existing submission so we can preserve a manual teacher release
+    existing = QuizSubmission.objects.filter(
+        user=request.user, episode=episode
+    ).first()
+
     # Auto-release: episode-level quiz_show_results (immediate, even with FRQ)
     # or course-level auto_release_results (only for non-FRQ)
     if episode.quiz_show_results:
@@ -252,19 +257,18 @@ def submit_quiz(request):
     else:
         released_at = None
 
+    # Preserve existing manual release if the new logic wouldn't auto-release
+    if not released_at and existing and existing.released_at:
+        released_at = existing.released_at
+
     submission, created = QuizSubmission.objects.update_or_create(
         user=request.user,
         episode=episode,
         defaults={
             'answers': answers_json,
-            'released_at': released_at if released_at else None,
+            'released_at': released_at,
         }
     )
-
-    # Re-set released_at for existing submissions too
-    if not created and course.auto_release_results and not has_frq and not submission.released_at:
-        submission.released_at = timezone.now()
-        submission.save(update_fields=['released_at'])
 
     # Mark episode as read on submission
     EpisodeReadStatus.objects.update_or_create(

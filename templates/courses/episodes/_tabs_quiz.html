@@ -38,12 +38,12 @@
                     </div>
                 {% elif current_episode.info_page_content %}
                     {% autoescape off %}
-                    <textarea id="quiz-raw-data" style="display:none;">{{ current_episode.info_page_content }}</textarea>
+                    <textarea id="quiz-raw-data" style="display:none;">{{ current_episode.info_page_content|default_if_none:'' }}</textarea>
                     {% endautoescape %}
                     {% if quiz_submission and quiz_submission.released_at and quiz_answers_json %}
                         <textarea id="quiz-submission-data" style="display:none;">{{ quiz_answers_json }}</textarea>
                     {% endif %}
-                    <div class="quiz-nav-bar"
+                    <div class="quiz-nav-bar">
                         <button class="btn btn-outline-primary quiz-nav-btn" id="quiz-prev" disabled>
                             <i class="bi bi-chevron-left"></i> Previous
                         </button>
@@ -414,6 +414,77 @@
         // Expose globally for header submit button
         window.__quizAnswers = answers;
         window.__quizQuestions = questions;
+        window.__quizRequireAll = {% if quiz_require_all %}true{% else %}false{% endif %};
+        window.__quizEpisodeId = '{{ current_episode.id }}';
+        window.__quizSubmitUrl = '{% url "progress:submit_quiz" %}';
+        window.__quizCsrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+
+        // Shared submit function used by both the tab button and header button
+        window.submitQuiz = async function(submitBtn) {
+            var qs = window.__quizQuestions;
+            var ans = window.__quizAnswers;
+
+            // Require-all check
+            if (window.__quizRequireAll) {
+                var unanswered = [];
+                for (var qi = 0; qi < qs.length; qi++) {
+                    var qt = qs[qi].type;
+                    var a = ans[qi];
+                    if (qt === 'mcq' && a === undefined) unanswered.push(qi + 1);
+                    else if ((qt === 'mrq' || qt === 'srt') && (!a || !Array.isArray(a) || a.length === 0)) unanswered.push(qi + 1);
+                    else if (qt === 'frq' && (!a || !a.trim())) unanswered.push(qi + 1);
+                }
+                if (unanswered.length > 0) {
+                    alert('Please answer all questions before submitting. Unanswered: Q' + unanswered.join(', Q'));
+                    return;
+                }
+            }
+
+            // Build payload
+            var payload = [];
+            for (var qi = 0; qi < qs.length; qi++) {
+                var q = qs[qi];
+                var entry = { type: q.type };
+                if (q.type === 'mcq') {
+                    entry.selectedIndex = ans[qi];
+                } else if (q.type === 'mrq') {
+                    entry.selectedIds = (ans[qi] || []).slice();
+                } else if (q.type === 'frq') {
+                    entry.text = ans[qi] || '';
+                } else if (q.type === 'srt') {
+                    entry.selectedIds = (ans[qi] || []).slice();
+                }
+                payload.push(entry);
+            }
+
+            var formData = new FormData();
+            formData.append('episode_id', window.__quizEpisodeId);
+            formData.append('answers', JSON.stringify({ questions: payload }));
+
+            var originalHTML = submitBtn.innerHTML;
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Submitting...';
+
+            try {
+                var response = await fetch(window.__quizSubmitUrl, {
+                    method: 'POST',
+                    headers: { 'X-CSRFToken': window.__quizCsrfToken },
+                    body: formData
+                });
+                var data = await response.json();
+                if (data.success) {
+                    location.reload();
+                } else {
+                    alert('Error: ' + (data.error || 'Submission failed'));
+                    submitBtn.disabled = false;
+                    submitBtn.innerHTML = originalHTML;
+                }
+            } catch (err) {
+                alert('Network error. Please try again.');
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = originalHTML;
+            }
+        };
 
         console.log('[QUIZ DEBUG] init: questions parsed =', questions.length);
         for (var di = 0; di < questions.length; di++) {
@@ -601,78 +672,11 @@
             if (e.key === 'ArrowRight') { e.preventDefault(); goTo(currentIndex + 1); }
         });
 
-        // ---- Submit ----
+        // ---- Submit (shared logic in window.submitQuiz) ----
         var submitBtn = document.getElementById('quiz-submit-btn');
         if (submitBtn) {
-            submitBtn.addEventListener('click', async function() {
-                // Collect answers
-                // Require-all check
-                {% if quiz_require_all %}
-                var unanswered = [];
-                for (var qi = 0; qi < questions.length; qi++) {
-                    var qt = questions[qi].type;
-                    var a = answers[qi];
-                    if (qt === 'mcq' && a === undefined) unanswered.push(qi + 1);
-                    else if ((qt === 'mrq' || qt === 'srt') && (!a || !Array.isArray(a) || a.length === 0)) unanswered.push(qi + 1);
-                    else if (qt === 'frq' && (!a || !a.trim())) unanswered.push(qi + 1);
-                }
-                if (unanswered.length > 0) {
-                    alert('Please answer all questions before submitting. Unanswered: Q' + unanswered.join(', Q'));
-                    return;
-                }
-                {% endif %}
-
-                var payload = [];
-                for (var qi = 0; qi < questions.length; qi++) {
-                    var q = questions[qi];
-                    var entry = { type: q.type };
-                    if (q.type === 'mcq') {
-                        entry.selectedIndex = answers[qi];
-                        console.log('[QUIZ DEBUG] submit-tab: Q' + qi + ' mcq selectedIndex=' + answers[qi]);
-                    } else if (q.type === 'mrq') {
-                        var arr = answers[qi] || [];
-                        entry.selectedIds = arr.slice();
-                        console.log('[QUIZ DEBUG] submit-tab: Q' + qi + ' mrq answers[' + qi + ']=', JSON.stringify(answers[qi]), 'selectedIds=', JSON.stringify(entry.selectedIds));
-                    } else if (q.type === 'frq') {
-                        entry.text = answers[qi] || '';
-                        console.log('[QUIZ DEBUG] submit-tab: Q' + qi + ' frq text.length=' + (entry.text ? entry.text.length : 0));
-                    } else if (q.type === 'srt') {
-                        var arr2 = answers[qi] || [];
-                        entry.selectedIds = arr2.slice();
-                        console.log('[QUIZ DEBUG] submit-tab: Q' + qi + ' srt selectedIds=', JSON.stringify(entry.selectedIds));
-                    }
-                    payload.push(entry);
-                }
-
-                var payloadJson = JSON.stringify({ questions: payload });
-                console.log('[QUIZ DEBUG] submit-tab: FULL PAYLOAD =', payloadJson);
-
-                var formData = new FormData();
-                formData.append('episode_id', '{{ current_episode.id }}');
-                formData.append('answers', payloadJson);
-
-                submitBtn.disabled = true;
-                submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Submitting...';
-
-                try {
-                    var response = await fetch('{% url "progress:submit_quiz" %}', {
-                        method: 'POST',
-                        headers: { 'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value },
-                        body: formData
-                    });
-                    var data = await response.json();
-                    if (data.success) {
-                        location.reload();
-                    } else {
-                        alert('Error: ' + (data.error || 'Submission failed'));
-                        submitBtn.disabled = false;
-                        submitBtn.innerHTML = '<i class="bi bi-send"></i> Submit Answers';
-                    }
-                } catch (err) {
-                    alert('Network error. Please try again.');
-                    submitBtn.disabled = false;
-                    submitBtn.innerHTML = '<i class="bi bi-send"></i> Submit Answers';
-                }
+            submitBtn.addEventListener('click', function() {
+                window.submitQuiz(submitBtn);
             });
         }
 
@@ -800,9 +804,13 @@
             }
             if (!questionText) continue;
 
+            // Skip "None" (Django null artifact)
+            if (questionText === 'None') continue;
+
             var choices = [];
             var hasMrqMarker = false;
             var hasSortMarker = false;
+            var hasCorrectMarker = false;
             for (var k = 0; k < choiceLines.length; k++) {
                 var line = choiceLines[k];
                 var cm = line.match(/^>\+ (.+)$/);
@@ -815,10 +823,10 @@
                 var wm = line.match(/^> (?!\+)(?!\*)(.+)$/);
                 var em = line.match(/^>\s*$/);
 
-                if (cm) choices.push({ text: cm[1].trim(), isCorrect: true });
-                else if (ce) choices.push({ text: '', isCorrect: true });
-                else if (mm) { choices.push({ text: mm[1].trim(), isCorrect: true }); hasMrqMarker = true; }
-                else if (me) { choices.push({ text: '', isCorrect: true }); hasMrqMarker = true; }
+                if (cm) { choices.push({ text: cm[1].trim(), isCorrect: true }); hasCorrectMarker = true; }
+                else if (ce) { choices.push({ text: '', isCorrect: true }); hasCorrectMarker = true; }
+                else if (mm) { choices.push({ text: mm[1].trim(), isCorrect: true }); hasMrqMarker = true; hasCorrectMarker = true; }
+                else if (me) { choices.push({ text: '', isCorrect: true }); hasMrqMarker = true; hasCorrectMarker = true; }
                 else if (sm) { choices.push({ text: sm[2] ? sm[2].trim() : '', isCorrect: false, sortPosition: parseInt(sm[1], 10) }); hasSortMarker = true; }
                 else if (frm) { choices.push({ text: frm[1].trim(), isCorrect: false, isFRQRef: true }); }
                 else if (fre) { choices.push({ text: '', isCorrect: false, isFRQRef: true }); }
@@ -829,6 +837,12 @@
             var isFRQ = choices.length === 0
                 || (choices.length === 1 && choices[0].text === '')
                 || (choices.length === 1 && choices[0].isFRQRef === true);
+
+            // Auto-mark first choice as correct if none marked and choices exist
+            if (!isFRQ && !hasCorrectMarker && choices.length > 0) {
+                choices[0].isCorrect = true;
+            }
+
             var refAnswer = '';
             if (isFRQ && choices.length === 1 && choices[0].isFRQRef) {
                 refAnswer = choices[0].text || '';
