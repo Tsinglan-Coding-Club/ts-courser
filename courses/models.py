@@ -137,6 +137,11 @@ class Episode(models.Model):
         ('code', 'Code'),
         ('paper', 'Paper'),
     ]
+    QUIZ_RELEASE_CHOICES = [
+        ('inherit', 'Use course default'),
+        ('manual', 'Require teacher release'),
+        ('immediate', 'Release immediately'),
+    ]
 
     section = models.ForeignKey(
         Section,
@@ -173,7 +178,13 @@ class Episode(models.Model):
     )
     quiz_show_results = models.BooleanField(
         default=False,
-        help_text='Show results immediately after submission (FRQ excluded)'
+        help_text='Legacy release setting; migrated to quiz_release_policy'
+    )
+    quiz_release_policy = models.CharField(
+        max_length=10,
+        choices=QUIZ_RELEASE_CHOICES,
+        default='inherit',
+        help_text='Whether this quiz inherits the course default, requires review, or releases immediately'
     )
 
     # Code episode layout toggles
@@ -184,6 +195,22 @@ class Episode(models.Model):
     show_reference = models.BooleanField(
         default=True,
         help_text='Show the Reference panel in code episodes'
+    )
+
+    # Code OJ (Online Judge) configuration
+    code_oj_enabled = models.BooleanField(
+        default=False,
+        help_text='Enable OJ mode with test cases for code episodes'
+    )
+    code_oj_testcases = models.TextField(
+        blank=True, default='[]',
+        help_text='JSON array of {input, expected_output} test case pairs'
+    )
+
+    # Reference sheet for code episodes
+    reference_sheet_content = models.TextField(
+        blank=True, default='',
+        help_text='Markdown reference sheet for code episodes'
     )
 
     created_at = models.DateTimeField(auto_now_add=True)

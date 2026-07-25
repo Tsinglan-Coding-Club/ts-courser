@@ -273,7 +273,7 @@
         {% if quiz_episodes %}
             <div class="card shadow-sm">
                 <div class="card-header bg-warning text-dark">
-                    <h5 class="mb-0"><i class="bi bi-clipboard-check"></i> Quiz Assignments</h5>
+                    <h5 class="mb-0"><i class="bi bi-clipboard-check"></i> Assignments</h5>
                 </div>
                 <div class="list-group list-group-flush">
                     {% for ep in quiz_episodes %}
@@ -282,6 +282,7 @@
                             <div>
                                 <strong>{{ ep.title }}</strong>
                                 <small class="text-muted ms-2">{{ ep.section.title }}</small>
+                                <span class="badge {% if ep.type == 'quiz' %}bg-info{% else %}bg-success{% endif %} ms-1" style="font-size:0.65rem;">{{ ep.type|upper }}</span>
                             </div>
                             <span class="badge bg-primary">{{ ep.submission_count }}/{{ stats.total_students }}</span>
                         </a>
@@ -292,8 +293,8 @@
             <div class="card shadow-sm">
                 <div class="card-body text-center py-5">
                     <i class="bi bi-clipboard-check" style="font-size: 4rem; color: var(--text-secondary);"></i>
-                    <h5 class="mt-3">No Quiz Assignments</h5>
-                    <p class="text-muted">Create quiz-type episodes to collect submissions from students.</p>
+                    <h5 class="mt-3">No Assignments</h5>
+                    <p class="text-muted">Create quiz or code episodes to collect submissions from students.</p>
                 </div>
             </div>
         {% endif %}

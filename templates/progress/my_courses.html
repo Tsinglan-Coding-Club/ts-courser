@@ -69,12 +69,12 @@
                             <div class="d-flex gap-2">
                                 {% if data.current_episode %}
                                     <a href="{% url 'courses:learning_interface_episode' data.course.id data.current_episode.id %}"
-                                       class="btn btn-success flex-fill">
+                                       class="btn btn-outline-primary flex-fill">
                                         <i class="bi bi-play-circle"></i> Continue Learning
                                     </a>
                                 {% else %}
                                     <a href="{% url 'courses:learning_interface' data.course.id %}"
-                                       class="btn btn-success flex-fill">
+                                       class="btn btn-outline-primary flex-fill">
                                         <i class="bi bi-play-circle"></i> Start Learning
                                     </a>
                                 {% endif %}

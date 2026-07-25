@@ -10,7 +10,7 @@
  *   PyodideInterpreter.registerAPI('draw_circle');
  */
 
-import { asyncRun, ping, resetNamespace as workerReset, onStreamOutput, writeInterrupt, terminateWorker } from '/static/js/pyodide-api.js';
+import { asyncRun, asyncJudge, ping, resetNamespace as workerReset, onStreamOutput, writeInterrupt, terminateWorker } from '/static/js/pyodide-api.js?v=4';
 
 const PyodideInterpreter = {
     // ---- State ----
@@ -96,6 +96,27 @@ const PyodideInterpreter = {
      */
     stop() {
         writeInterrupt();
+    },
+
+    /**
+     * Judge Python code against test cases (OJ mode).
+     * Each test case runs in isolation with custom stdin.
+     * Results are streamed in real-time via onOutput.
+     * @param {string} code - Python source code
+     * @param {Array<{input: string, expected: string}>} testCases
+     * @returns {Promise<{results: Array}>}
+     */
+    async judgeCode(code, testCases) {
+        if (!this._ready) {
+            throw new Error('Interpreter not initialized. Call PyodideInterpreter.init() first.');
+        }
+
+        this._running = true;
+        try {
+            return await asyncJudge(code, testCases, this._registeredApis);
+        } finally {
+            this._running = false;
+        }
     },
 
     /**

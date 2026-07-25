@@ -120,7 +120,7 @@ builtins.input = _custom_input
 // ---------------------------------------------------------------------------
 
 self.onmessage = async (event) => {
-    const { id, type, python, context, apis } = event.data;
+    const { id, type, python, context, apis, testCases } = event.data;
 
     try {
         const pyodide = await pyodideReady;
@@ -143,6 +143,10 @@ self.onmessage = async (event) => {
 
             case 'run':
                 await _runPython(pyodide, id, python, context, apis);
+                break;
+
+            case 'judge':
+                await _runJudge(pyodide, id, python, testCases, apis);
                 break;
 
             default:
@@ -211,6 +215,130 @@ async function _runPython(pyodide, id, python, context, apis) {
             interrupted: interrupted || undefined,
         });
     }
+}
+
+// ---------------------------------------------------------------------------
+// OJ Judge — batched test case execution
+// ---------------------------------------------------------------------------
+
+/**
+ * Run submitted code against multiple test cases.
+ * Each test case gets isolated stdin/stdout. Execution stops early on interrupt.
+ *
+ * @param {object} pyodide
+ * @param {number} id - Request ID
+ * @param {string} python - Python code to judge
+ * @param {Array<{input: string, expected: string}>} testCases
+ * @param {string[]} apis - Registered API names
+ */
+async function _runJudge(pyodide, id, python, testCases, apis) {
+    const results = [];
+    let interrupted = false;
+
+    if (!testCases || testCases.length === 0) {
+        self.postMessage({ id, results: [] });
+        return;
+    }
+
+    // Build globals once (API functions are the same for all test cases)
+    let globals;
+    try {
+        globals = _buildGlobals(pyodide, {}, apis || []);
+    } catch (e) {
+        self.postMessage({
+            id,
+            error: `Failed to build judge context: ${e.message}`,
+            results: [],
+        });
+        return;
+    }
+
+    for (let i = 0; i < testCases.length; i++) {
+        if (interrupted) {
+            results.push({
+                passed: false,
+                input: testCases[i].input || '',
+                expected: testCases[i].expected || '',
+                actual: '',
+                error: 'Skipped (interrupted)',
+                interrupted: true,
+            });
+            continue;
+        }
+
+        // Reset per-case buffers
+        _stdoutBuffer = '';
+        _stderrBuffer = '';
+
+        // Clear interrupt before each test case
+        if (_interruptBuf) _interruptBuf[0] = 0;
+
+        // Override builtins.input to read from test case input lines
+        const inputLines = (testCases[i].input || '').split('\n');
+        try {
+            await pyodide.runPythonAsync(`
+import builtins as _b
+_judge_lines = ${JSON.stringify(inputLines)}
+_judge_idx = [0]
+_judge_orig_input = _b.input
+
+def _judge_input(prompt=""):
+    if _judge_idx[0] < len(_judge_lines):
+        val = _judge_lines[_judge_idx[0]]
+        _judge_idx[0] += 1
+        return val
+    return ""
+
+_b.input = _judge_input
+`);
+        } catch (e) {
+            results.push({
+                passed: false,
+                input: testCases[i].input || '',
+                expected: testCases[i].expected || '',
+                actual: '',
+                error: `Stdin setup failed: ${e.message || e}`,
+            });
+            continue;
+        }
+
+        // Execute the code
+        try {
+            await pyodide.runPythonAsync(python, { globals });
+            const actual = _stdoutBuffer.trim();
+            const expected = (testCases[i].expected || '').trim();
+            results.push({
+                passed: actual === expected,
+                input: testCases[i].input || '',
+                expected: testCases[i].expected || '',
+                actual: actual,
+            });
+        } catch (error) {
+            const message = error.message || String(error);
+            const isInterrupt = message.includes('KeyboardInterrupt');
+            if (isInterrupt) interrupted = true;
+            results.push({
+                passed: false,
+                input: testCases[i].input || '',
+                expected: testCases[i].expected || '',
+                actual: _stdoutBuffer.trim(),
+                error: isInterrupt ? 'Interrupted' : message,
+                interrupted: isInterrupt || undefined,
+            });
+        }
+
+        // Restore original input between test cases
+        try {
+            await pyodide.runPythonAsync('_b.input = _judge_orig_input');
+        } catch (_) { /* ignore */ }
+
+        // Reset namespace for next test case (clear user globals)
+        try {
+            await _resetNamespace(pyodide);
+        } catch (_) { /* ignore */ }
+    }
+
+    self.postMessage({ id, results });
 }
 
 // ---------------------------------------------------------------------------

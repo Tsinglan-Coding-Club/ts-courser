@@ -198,6 +198,18 @@ def learning_interface(request, course_id, episode_id=None):
             if quiz_submission and quiz_submission.released_at and quiz_submission.answers:
                 quiz_answers_json = quiz_submission.answers
 
+    # Get code submission context
+    code_submission = None
+    code_oj_enabled = False
+    code_oj_testcases = '[]'
+    if current_episode and current_episode.type == 'code':
+        from progress.models import CodeSubmission
+        code_submission = CodeSubmission.objects.filter(
+            user=request.user, episode=current_episode
+        ).first()
+        code_oj_enabled = getattr(current_episode, 'code_oj_enabled', False)
+        code_oj_testcases = getattr(current_episode, 'code_oj_testcases', '[]')
+
     context = {
         'course': course,
         'sections': sections,
@@ -208,6 +220,8 @@ def learning_interface(request, course_id, episode_id=None):
         'quiz_submission': quiz_submission,
         'quiz_answers_json': quiz_answers_json,
         'quiz_require_all': getattr(current_episode, 'quiz_require_all', True) if current_episode else True,
-        'quiz_show_results': getattr(current_episode, 'quiz_show_results', False) if current_episode else False,
+        'code_submission': code_submission,
+        'code_oj_enabled': code_oj_enabled,
+        'code_oj_testcases': code_oj_testcases,
     }
     return render(request, 'courses/learning_interface.html', context)

@@ -156,7 +156,7 @@
         <!-- Right: Submission Content -->
         <div class="review-main">
             {% if selected_submission %}
-                <!-- Release Bar -->
+                <!-- Submission Info Bar -->
                 <div class="release-bar mb-3 rounded">
                     <div>
                         <strong>{{ selected_submission.user.get_display_name }}</strong>
@@ -165,38 +165,46 @@
                         </small>
                     </div>
                     <div class="d-flex align-items-center gap-2">
-                        {% if selected_submission.released_at %}
-                            <span class="badge bg-success">
-                                <i class="bi bi-check-circle"></i> Released {{ selected_submission.released_at|date:"M d" }}
-                            </span>
-                            {% if not episode.quiz_show_results %}
-                            <button type="button" class="btn btn-sm btn-outline-warning cancel-release-btn"
-                                    data-submission-id="{{ selected_submission.id }}">
-                                <i class="bi bi-arrow-counterclockwise"></i> Cancel Release
-                            </button>
+                        {% if episode.type == 'quiz' %}
+                            {% if selected_submission.released_at %}
+                                <span class="badge bg-success">
+                                    <i class="bi bi-check-circle"></i> Released {{ selected_submission.released_at|date:"M d" }}
+                                </span>
+                                {% if episode.quiz_release_policy != 'immediate' %}
+                                <button type="button" class="btn btn-sm btn-outline-warning cancel-release-btn"
+                                        data-submission-id="{{ selected_submission.id }}">
+                                    <i class="bi bi-arrow-counterclockwise"></i> Cancel Release
+                                </button>
+                                {% endif %}
+                                <button type="button" class="btn btn-sm btn-outline-danger reset-submission-btn"
+                                        data-submission-id="{{ selected_submission.id }}">
+                                    <i class="bi bi-arrow-repeat"></i> Return for Redo
+                                </button>
+                            {% else %}
+                                <button type="button" class="btn btn-sm btn-success release-btn"
+                                        data-submission-id="{{ selected_submission.id }}"
+                                        {% if not all_frq_graded %}disabled{% endif %}>
+                                    <i class="bi bi-send"></i> Release
+                                </button>
+                                <button type="button" class="btn btn-sm btn-outline-danger reset-submission-btn"
+                                        data-submission-id="{{ selected_submission.id }}">
+                                    <i class="bi bi-arrow-repeat"></i> Return for Redo
+                                </button>
+                                {% if not all_frq_graded %}
+                                    <small class="text-warning">All FRQs must be graded first</small>
+                                {% endif %}
                             {% endif %}
-                            <button type="button" class="btn btn-sm btn-outline-danger reset-submission-btn"
-                                    data-submission-id="{{ selected_submission.id }}">
-                                <i class="bi bi-arrow-repeat"></i> Return for Redo
-                            </button>
                         {% else %}
-                            <button type="button" class="btn btn-sm btn-success release-btn"
-                                    data-submission-id="{{ selected_submission.id }}"
-                                    {% if not all_frq_graded %}disabled{% endif %}>
-                                <i class="bi bi-send"></i> Release
-                            </button>
-                            <button type="button" class="btn btn-sm btn-outline-danger reset-submission-btn"
-                                    data-submission-id="{{ selected_submission.id }}">
-                                <i class="bi bi-arrow-repeat"></i> Return for Redo
-                            </button>
-                            {% if not all_frq_graded %}
-                                <small class="text-warning">All FRQs must be graded first</small>
-                            {% endif %}
+                            {# Code episode: no release mechanism needed #}
+                            <span class="badge bg-info">
+                                <i class="bi bi-code-slash"></i> Code
+                            </span>
                         {% endif %}
                     </div>
                 </div>
 
-                <!-- Questions -->
+                {% if episode.type == 'quiz' %}
+                <!-- Quiz Questions -->
                 {% for q in selected_questions %}
                     <div class="question-card" id="q{{ q.index }}">
                         <div class="question-header">
@@ -289,6 +297,59 @@
                 {% empty %}
                     <p class="text-muted">No answers to display.</p>
                 {% endfor %}
+                {% else %}
+                <!-- Code Submission Review -->
+                <div class="card mb-3">
+                    <div class="card-header">
+                        <h6 class="mb-0"><i class="bi bi-code-slash"></i> Submitted Code</h6>
+                    </div>
+                    <div class="card-body p-0">
+                        <pre style="margin:0;padding:1rem;background:var(--bg-secondary);border-radius:0;max-height:400px;overflow:auto;font-size:0.85rem;"><code>{{ selected_code }}</code></pre>
+                    </div>
+                </div>
+
+                {% if oj_enabled %}
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h6 class="mb-0"><i class="bi bi-check2-square"></i> Test Results</h6>
+                        <span class="badge {% if passed_count == total_count and total_count > 0 %}bg-success{% else %}bg-danger{% endif %}">
+                            {{ passed_count }}/{{ total_count }} passed
+                        </span>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="list-group list-group-flush">
+                            {% for tr in test_results %}
+                            <div class="list-group-item">
+                                <div class="d-flex align-items-center mb-1">
+                                    {% if tr.passed %}
+                                        <i class="bi bi-check-circle-fill text-success me-2"></i>
+                                        <span class="badge bg-success">Passed</span>
+                                    {% else %}
+                                        <i class="bi bi-x-circle-fill text-danger me-2"></i>
+                                        <span class="badge bg-danger">Failed</span>
+                                    {% endif %}
+                                    <strong class="ms-2">Test Case {{ forloop.counter }}</strong>
+                                </div>
+                                {% if tr.input %}
+                                <div class="small text-muted mb-1"><strong>Input:</strong> <code>{{ tr.input }}</code></div>
+                                {% endif %}
+                                {% if not tr.passed %}
+                                <div class="small mb-1"><strong>Expected:</strong> <code class="text-success">{{ tr.expected }}</code></div>
+                                <div class="small mb-1"><strong>Got:</strong> <code class="text-danger">{{ tr.actual|default:tr.error }}</code></div>
+                                {% endif %}
+                            </div>
+                            {% empty %}
+                            <div class="list-group-item text-muted">No test results available.</div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+                {% else %}
+                <div class="alert alert-info">
+                    <i class="bi bi-info-circle"></i> OJ mode was not enabled for this episode. Submission accepted without judging.
+                </div>
+                {% endif %}
+                {% endif %}
             {% else %}
                 <div class="empty-state">
                     <i class="bi bi-inbox" style="font-size: 4rem;"></i>

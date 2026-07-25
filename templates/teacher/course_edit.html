@@ -258,10 +258,8 @@
                             <div class="mb-2 form-check">
                                 <input type="checkbox" class="form-check-input" id="auto_release_results" name="auto_release_results"
                                        {% if course.auto_release_results %}checked{% endif %}>
-                                <label class="form-check-label small" for="auto_release_results">
-                                    Auto-release quiz results
-                                </label>
-                                <div class="form-text">Immediately show scores after submission (FRQ always requires manual grading).</div>
+                                <label class="form-check-label small" for="auto_release_results">Auto-release quiz results by default</label>
+                                <div class="form-text">Inherited quizzes release automatically unless they contain FRQs. Episodes can explicitly require review or release immediately.</div>
                             </div>
 
                             <button type="submit" class="btn btn-primary btn-sm w-100">

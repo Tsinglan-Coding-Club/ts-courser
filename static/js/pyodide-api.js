@@ -216,6 +216,26 @@ export async function resetNamespace() {
 }
 
 /**
+ * Run Python code against test cases for OJ judging.
+ * @param {string} script - Python code to judge
+ * @param {Array<{input: string, expected: string}>} testCases
+ * @param {string[]} apis - List of API names to enable
+ * @returns {Promise<{results: Array}>}
+ */
+export async function asyncJudge(script, testCases, apis = []) {
+    const worker = getWorker();
+    const response = await requestResponse(worker, {
+        type: 'judge',
+        python: script,
+        testCases,
+        apis,
+    });
+    return {
+        results: response.results || [],
+    };
+}
+
+/**
  * Ping the worker to check readiness.
  */
 export async function ping() {

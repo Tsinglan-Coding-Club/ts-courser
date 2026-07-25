@@ -7,7 +7,7 @@ from django.views.decorators.http import require_POST
 from django.utils import timezone
 from django.db import models
 from courses.models import Course, Section, Episode, Tag
-from progress.models import CourseEnrollment, EpisodeReadStatus, QuizSubmission
+from progress.models import CourseEnrollment, EpisodeReadStatus, QuizSubmission, CodeSubmission
 from .decorators import (
     teacher_required,
     require_course_ownership,
@@ -224,11 +224,20 @@ def episode_edit(request, episode_id):
 
         # Quiz configuration toggles
         episode.quiz_require_all = request.POST.get('quiz_require_all') == 'on'
-        episode.quiz_show_results = request.POST.get('quiz_show_results') == 'on'
+        release_policy = request.POST.get('quiz_release_policy', 'inherit')
+        if release_policy in dict(Episode.QUIZ_RELEASE_CHOICES):
+            episode.quiz_release_policy = release_policy
 
         # Code episode layout toggles
         episode.show_interactive = request.POST.get('show_interactive') == 'on'
         episode.show_reference = request.POST.get('show_reference') == 'on'
+
+        # Code OJ configuration
+        episode.code_oj_enabled = request.POST.get('code_oj_enabled') == 'on'
+        episode.code_oj_testcases = request.POST.get('code_oj_testcases', '[]')
+
+        # Reference sheet
+        episode.reference_sheet_content = request.POST.get('reference_sheet_content', '')
 
         episode.save()
         messages.success(request, f'Episode "{episode.title}" updated successfully!')
@@ -238,6 +247,7 @@ def episode_edit(request, episode_id):
         'episode': episode,
         'course': course,
         'type_options': Episode.TYPE_CHOICES,
+        'release_policy_options': Episode.QUIZ_RELEASE_CHOICES,
     }
     return render(request, 'teacher/episode_edit.html', context)
 
@@ -516,14 +526,23 @@ def course_manage(request, course_id):
             'total_students': 0,
         }
 
-    # Get quiz episodes with submission counts
+    # Get quiz and code episodes with submission counts
     quiz_episodes = []
-    for ep in Episode.objects.filter(section__course=course, type='quiz').select_related('section'):
-        count = QuizSubmission.objects.filter(episode=ep).count()
+    assignable_types = ['quiz', 'code']
+    for ep in Episode.objects.filter(
+        section__course=course, type__in=assignable_types
+    ).select_related('section'):
+        if ep.type == 'quiz':
+            count = QuizSubmission.objects.filter(episode=ep).count()
+        else:
+            count = CodeSubmission.objects.filter(
+                episode=ep, is_submitted=True
+            ).count()
         quiz_episodes.append({
             'id': ep.id,
             'title': ep.title,
             'section': ep.section,
+            'type': ep.type,
             'submission_count': count,
         })
 
@@ -569,9 +588,12 @@ def remove_student(request):
 @login_required
 @teacher_required
 def assignment_review(request, course_id, episode_id):
-    """Review quiz submissions for a specific episode."""
+    """Review submissions for quiz or code episodes."""
     course = get_object_or_404(Course, id=course_id)
-    episode = get_object_or_404(Episode, id=episode_id, section__course=course, type='quiz')
+    episode = get_object_or_404(Episode, id=episode_id, section__course=course)
+
+    if episode.type not in ('quiz', 'code'):
+        raise PermissionDenied("This episode type does not support assignment review.")
 
     # Ownership check
     if not request.user.is_admin and course.creator != request.user:
@@ -579,9 +601,17 @@ def assignment_review(request, course_id, episode_id):
 
     # Get all enrolled students and their submissions
     enrollments = CourseEnrollment.objects.filter(course=course).select_related('user')
-    submissions_by_user = {
-        s.user_id: s for s in QuizSubmission.objects.filter(episode=episode)
-    }
+
+    if episode.type == 'quiz':
+        submissions_by_user = {
+            s.user_id: s for s in QuizSubmission.objects.filter(episode=episode)
+        }
+    else:
+        submissions_by_user = {
+            s.user_id: s for s in CodeSubmission.objects.filter(
+                episode=episode, is_submitted=True
+            )
+        }
 
     students = []
     for enrollment in enrollments:
@@ -591,10 +621,6 @@ def assignment_review(request, course_id, episode_id):
             'submitted': sub is not None,
             'submission': sub,
         })
-
-    # Parse quiz content for display
-    quiz_content = episode.info_page_content or ''
-    quiz_questions = _parse_quiz_markdown(quiz_content)
 
     # Determine selected student's submission
     selected_user_id = request.GET.get('user_id')
@@ -609,94 +635,129 @@ def assignment_review(request, course_id, episode_id):
                 selected_submission = s['submission']
                 break
 
-    # Parse FRQ grades and student answers, merge with quiz data
-    frq_grades = {}
-    selected_questions = None
-    all_frq_graded = True
+    # Parse content and build review data based on episode type
+    import json
 
-    if selected_submission:
-        import json
-        if selected_submission.frq_grades:
-            try:
-                frq_grades = json.loads(selected_submission.frq_grades)
-            except json.JSONDecodeError:
-                frq_grades = {}
+    if episode.type == 'quiz':
+        # --- Quiz review logic (existing) ---
+        quiz_content = episode.info_page_content or ''
+        quiz_questions = _parse_quiz_markdown(quiz_content)
 
-        if selected_submission.answers:
-            try:
-                selected_answers = json.loads(selected_submission.answers)
-            except json.JSONDecodeError:
+        frq_grades = {}
+        selected_questions = None
+        all_frq_graded = True
+
+        if selected_submission:
+            if selected_submission.frq_grades:
+                try:
+                    frq_grades = json.loads(selected_submission.frq_grades)
+                except json.JSONDecodeError:
+                    frq_grades = {}
+
+            if selected_submission.answers:
+                try:
+                    selected_answers = json.loads(selected_submission.answers)
+                except json.JSONDecodeError:
+                    selected_answers = None
+            else:
                 selected_answers = None
-        else:
-            selected_answers = None
 
-        # Merge quiz questions with student answers
-        if selected_answers:
-            answer_list = selected_answers.get('questions', [])
-            selected_questions = []
-            has_frq = False
-            for i, quiz_q in enumerate(quiz_questions):
-                student_ans = answer_list[i] if i < len(answer_list) else {}
-                merged = {
-                    'index': i,
-                    'type': quiz_q['type'],
-                    'question_html': quiz_q['question'],
-                    'choices': quiz_q['choices'],
-                    'student_answer': student_ans,
-                    'refAnswer': quiz_q.get('refAnswer', ''),
-                }
-                # Pre-compute choice display data
-                letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
-                for j, c in enumerate(quiz_q['choices']):
-                    c['letter'] = letters[j] if j < len(letters) else str(j)
+            if selected_answers:
+                answer_list = selected_answers.get('questions', [])
+                selected_questions = []
+                has_frq = False
+                for i, quiz_q in enumerate(quiz_questions):
+                    student_ans = answer_list[i] if i < len(answer_list) else {}
+                    merged = {
+                        'index': i,
+                        'type': quiz_q['type'],
+                        'question_html': quiz_q['question'],
+                        'choices': quiz_q['choices'],
+                        'student_answer': student_ans,
+                        'refAnswer': quiz_q.get('refAnswer', ''),
+                    }
+                    letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+                    for j, c in enumerate(quiz_q['choices']):
+                        c['letter'] = letters[j] if j < len(letters) else str(j)
+                        if quiz_q['type'] == 'mcq':
+                            c['isSelected'] = (student_ans.get('selectedIndex') == j)
+                            c['rowClass'] = 'correct' if c.get('isCorrect') else ('wrong-student' if c['isSelected'] else '')
+                        elif quiz_q['type'] == 'mrq':
+                            sids = student_ans.get('selectedIds', []) or []
+                            c['isSelected'] = j in sids
+                            c['rowClass'] = 'correct' if c.get('isCorrect') else ('wrong-student' if c['isSelected'] else '')
+                        elif quiz_q['type'] == 'srt':
+                            sids = student_ans.get('selectedIds', []) or []
+                            try:
+                                c['studentPos'] = sids.index(j) + 1
+                            except (ValueError, IndexError):
+                                c['studentPos'] = 0
+
                     if quiz_q['type'] == 'mcq':
-                        c['isSelected'] = (student_ans.get('selectedIndex') == j)
-                        c['rowClass'] = 'correct' if c.get('isCorrect') else ('wrong-student' if c['isSelected'] else '')
+                        si = student_ans.get('selectedIndex')
+                        merged['is_correct'] = (
+                            si is not None and
+                            any(c['isCorrect'] for j, c in enumerate(quiz_q['choices']) if j == si)
+                        )
                     elif quiz_q['type'] == 'mrq':
                         sids = student_ans.get('selectedIds', []) or []
-                        c['isSelected'] = j in sids
-                        c['rowClass'] = 'correct' if c.get('isCorrect') else ('wrong-student' if c['isSelected'] else '')
+                        correct_ids = {j for j, c in enumerate(quiz_q['choices']) if c.get('isCorrect')}
+                        merged['is_correct'] = set(sids) == correct_ids
                     elif quiz_q['type'] == 'srt':
                         sids = student_ans.get('selectedIds', []) or []
-                        try:
-                            c['studentPos'] = sids.index(j) + 1
-                        except (ValueError, IndexError):
-                            c['studentPos'] = 0
+                        correct_order = [c.get('sortPosition', j+1) - 1 for j, c in enumerate(quiz_q['choices'])]
+                        merged['is_correct'] = sids == correct_order
+                    elif quiz_q['type'] == 'frq':
+                        has_frq = True
+                        merged['frq_graded'] = str(i) in frq_grades
+                        merged['frq_correct'] = frq_grades.get(str(i), None)
+                        if not merged['frq_graded']:
+                            all_frq_graded = False
+                    selected_questions.append(merged)
+                if not has_frq:
+                    all_frq_graded = True
 
-                # Determine correctness per type
-                if quiz_q['type'] == 'mcq':
-                    si = student_ans.get('selectedIndex')
-                    merged['is_correct'] = (
-                        si is not None and
-                        any(c['isCorrect'] for j, c in enumerate(quiz_q['choices']) if j == si)
-                    )
-                elif quiz_q['type'] == 'mrq':
-                    sids = student_ans.get('selectedIds', []) or []
-                    correct_ids = {j for j, c in enumerate(quiz_q['choices']) if c.get('isCorrect')}
-                    merged['is_correct'] = set(sids) == correct_ids
-                elif quiz_q['type'] == 'srt':
-                    sids = student_ans.get('selectedIds', []) or []
-                    correct_order = [c.get('sortPosition', j+1) - 1 for j, c in enumerate(quiz_q['choices'])]
-                    merged['is_correct'] = sids == correct_order
-                elif quiz_q['type'] == 'frq':
-                    has_frq = True
-                    merged['frq_graded'] = str(i) in frq_grades
-                    merged['frq_correct'] = frq_grades.get(str(i), None)
-                    if not merged['frq_graded']:
-                        all_frq_graded = False
-                selected_questions.append(merged)
-            if not has_frq:
-                all_frq_graded = True
+        context = {
+            'course': course,
+            'episode': episode,
+            'students': students,
+            'selected_submission': selected_submission,
+            'selected_questions': selected_questions,
+            'frq_grades': frq_grades,
+            'all_frq_graded': all_frq_graded,
+        }
 
-    context = {
-        'course': course,
-        'episode': episode,
-        'students': students,
-        'selected_submission': selected_submission,
-        'selected_questions': selected_questions,
-        'frq_grades': frq_grades,
-        'all_frq_graded': all_frq_graded,
-    }
+    else:
+        # --- Code review logic ---
+        selected_code = ''
+        test_results = []
+        oj_enabled = getattr(episode, 'code_oj_enabled', False)
+        oj_testcases_raw = getattr(episode, 'code_oj_testcases', '[]')
+
+        if selected_submission:
+            selected_code = selected_submission.code or ''
+            if selected_submission.test_results:
+                try:
+                    test_results = json.loads(selected_submission.test_results)
+                except json.JSONDecodeError:
+                    test_results = []
+
+        # Count passed test cases
+        passed_count = sum(1 for tr in test_results if tr.get('passed'))
+        total_count = len(test_results) if test_results else 0
+
+        context = {
+            'course': course,
+            'episode': episode,
+            'students': students,
+            'selected_submission': selected_submission,
+            'selected_code': selected_code,
+            'test_results': test_results,
+            'passed_count': passed_count,
+            'total_count': total_count,
+            'oj_enabled': oj_enabled,
+        }
+
     return render(request, 'teacher/assignment_review.html', context)
 
 

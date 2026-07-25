@@ -346,6 +346,34 @@
     margin-bottom: 0.4rem;
     opacity: 0.5;
 }
+
+/* Reference sheet preview */
+.ref-sheet { font-size: 0.8rem; }
+.ref-heading {
+    font-weight: 700; color: var(--primary-color);
+    border-bottom: 2px solid var(--primary-color);
+    padding-bottom: 0.15rem; margin: 0.6rem 0 0.3rem 0; font-size: 0.85rem;
+}
+.ref-heading:first-child { margin-top: 0; }
+.ref-code-block {
+    background: #1e1e2e; color: #cdd6f4; border-radius: 0.3rem;
+    padding: 0.4rem 0.6rem; margin: 0 0 0.3rem 0;
+    font-family: 'SF Mono', 'Cascadia Code', 'Consolas', monospace;
+    font-size: 0.72rem; line-height: 1.5; white-space: pre; overflow-x: auto;
+}
+.ref-code-block code { font-family: inherit; font-size: inherit; }
+.ref-indent-0 { background: transparent; }
+.ref-indent-1 { background: rgba(100, 140, 255, 0.05); display: inline-block; width: 100%; }
+.ref-indent-2 { background: rgba(100, 140, 255, 0.10); display: inline-block; width: 100%; }
+.ref-indent-3 { background: rgba(100, 140, 255, 0.14); display: inline-block; width: 100%; }
+.ref-annotation { font-size: 0.72rem; padding: 0.05rem 0 0.05rem 0.5rem; color: var(--text-secondary); }
+.ref-annotation code { background: var(--bg-tertiary); padding: 0.05em 0.25em; border-radius: 0.15rem; font-size: 0.92em; }
+.py-keyword { color: #c792ea; font-weight: 700; }
+.py-builtin { color: #82aaff; }
+.py-string { color: #c3e88d; }
+.py-comment { color: #676e95; font-style: italic; }
+.py-number { color: #f78c6c; }
+.py-placeholder { background: rgba(251, 191, 36, 0.18); color: #e6a817; padding: 0 0.15rem; border-radius: 0.12rem; font-weight: 600; }
 </style>
 {% endblock %}
 
@@ -553,13 +581,17 @@
                         </div>
                     </div>
                     <div class="col-md-6">
-                        <div class="form-check form-switch">
-                            <input class="form-check-input" type="checkbox" id="quizShowResults"
-                                   name="quiz_show_results" {% if episode.quiz_show_results %}checked{% endif %}>
-                            <label class="form-check-label" for="quizShowResults">
-                                <i class="bi bi-eye"></i> Show results immediately
-                            </label>
-                            <div class="form-text">Reveal correct answers right after submission (FRQ always requires manual grading).</div>
+                        <label class="form-label" for="quizReleasePolicy">
+                            <i class="bi bi-eye"></i> Results release policy
+                        </label>
+                        <select class="form-select" id="quizReleasePolicy" name="quiz_release_policy">
+                            {% for policy_value, policy_label in release_policy_options %}
+                            <option value="{{ policy_value }}" {% if episode.quiz_release_policy == policy_value %}selected{% endif %}>
+                                {{ policy_label }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                        <div class="form-text">The course default controls inherited quizzes. Immediate release also applies to FRQs.</div>
                         </div>
                     </div>
                 </div>
@@ -591,6 +623,88 @@
                                 <i class="bi bi-book"></i> Show Reference Area
                             </label>
                             <div class="form-text">Display a reference materials panel in the code editor.</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Online Judge (OJ) Config (code type only) -->
+        <div class="card mb-4" id="codeOJCard">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-cpu"></i> Online Judge (OJ)</h5>
+            </div>
+            <div class="card-body">
+                <div class="form-check form-switch mb-3">
+                    <input class="form-check-input" type="checkbox" id="codeOJEnabled"
+                           name="code_oj_enabled" {% if episode.code_oj_enabled %}checked{% endif %}>
+                    <label class="form-check-label" for="codeOJEnabled">
+                        <i class="bi bi-check2-square"></i> Enable OJ mode
+                    </label>
+                    <div class="form-text">Add sample input/output test cases. Students' code will be auto-judged locally in the browser.</div>
+                </div>
+                <div id="ojTestCasesPanel" style="{% if not episode.code_oj_enabled %}display:none;{% endif %}">
+                    <hr>
+                    <h6 class="mb-3"><i class="bi bi-list-check"></i> Test Cases</h6>
+                    <div id="ojTestCasesContainer">
+                        <!-- Populated by JS -->
+                    </div>
+                    <button type="button" class="btn btn-sm btn-outline-primary" id="addTestCaseBtn">
+                        <i class="bi bi-plus-circle"></i> Add Test Case
+                    </button>
+                </div>
+                <input type="hidden" name="code_oj_testcases" id="codeOJTestCasesInput"
+                       value="{{ episode.code_oj_testcases|default:'[]' }}">
+            </div>
+        </div>
+
+        <!-- Reference Sheet (code type only) -->
+        <div class="card mb-4" id="referenceSheetCard">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="bi bi-book"></i> Reference Sheet</h5>
+                <button type="button" class="btn btn-sm btn-outline-info" id="loadPythonPresetBtn">
+                    <i class="bi bi-lightning"></i> Load Python Preset
+                </button>
+            </div>
+            <div class="card-body">
+                <div class="md-editor-container">
+                    <div class="md-toolbar" id="refToolbar">
+                        <button type="button" class="md-toolbar-btn ref-md-btn" data-action="bold" title="Bold">
+                            <i class="bi bi-type-bold"></i>
+                        </button>
+                        <button type="button" class="md-toolbar-btn ref-md-btn" data-action="italic" title="Italic">
+                            <i class="bi bi-type-italic"></i>
+                        </button>
+                        <button type="button" class="md-toolbar-btn ref-md-btn" data-action="code" title="Inline Code">
+                            <i class="bi bi-code"></i>
+                        </button>
+                        <button type="button" class="md-toolbar-btn ref-md-btn" data-action="codeblock" title="Code Block">
+                            <i class="bi bi-code-square"></i>
+                        </button>
+                        <div class="md-toolbar-separator"></div>
+                        <button type="button" class="md-toolbar-btn ref-md-btn" data-action="ul" title="Bulleted List">
+                            <i class="bi bi-list-ul"></i>
+                        </button>
+                        <button type="button" class="md-toolbar-btn ref-md-btn" data-action="h2" title="Heading">
+                            <i class="bi bi-type-h2"></i>
+                        </button>
+                    </div>
+                    <div class="md-editor-panels">
+                        <div class="md-editor-panel">
+                            <div class="md-panel-header">Markdown</div>
+                            <textarea class="md-textarea" id="refEditor"
+                                name="reference_sheet_content"
+                                placeholder="Write reference sheet in markdown...
+
+## Topic Name
+&#96;&#96;&#96;python
+code example
+&#96;&#96;&#96;
+- annotation">{{ episode.reference_sheet_content|default_if_none:'' }}</textarea>
+                        </div>
+                        <div class="md-editor-panel">
+                            <div class="md-panel-header">Preview</div>
+                            <div class="md-preview" id="refPreview"></div>
                         </div>
                     </div>
                 </div>
@@ -687,6 +801,7 @@
 {% block extra_js %}
 <!-- Marked.js for Markdown rendering -->
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="{% static 'js/reference-renderer.js' %}"></script>
 <script>
 function confirmDeleteEpisode(id, name) {
     if (confirm('Are you sure you want to delete "' + name + '"?\\n\\nThis action cannot be undone. All content and files for this episode will be permanently removed.')) {
@@ -731,14 +846,14 @@ const TYPE_CARD_VISIBILITY = {
         cards: ['episodeInfoCard', 'quizEditorCard', 'quizConfigCard'],
     },
     code: {
-        cards: ['episodeInfoCard', 'infoContentCard', 'codeLayoutCard'],
+        cards: ['episodeInfoCard', 'infoContentCard', 'codeLayoutCard', 'codeOJCard', 'referenceSheetCard'],
     },
     paper: {
         cards: ['episodeInfoCard', 'pdfFilesCard'],
     },
 };
 
-const ALL_TYPE_RELEVANT_CARDS = ['episodeInfoCard', 'infoContentCard', 'pdfFilesCard', 'codeLayoutCard', 'quizEditorCard', 'quizConfigCard'];
+const ALL_TYPE_RELEVANT_CARDS = ['episodeInfoCard', 'infoContentCard', 'pdfFilesCard', 'codeLayoutCard', 'codeOJCard', 'referenceSheetCard', 'quizEditorCard', 'quizConfigCard'];
 
 // Configure marked.js
 marked.setOptions({
@@ -1154,6 +1269,432 @@ setEpisodeType = function(selectedType) {
         }
     }
 };
+
+// ====================================================================
+// OJ Test Case Editor
+// ====================================================================
+
+const codeOJEnabled = document.getElementById('codeOJEnabled');
+const ojTestCasesPanel = document.getElementById('ojTestCasesPanel');
+const ojTestCasesContainer = document.getElementById('ojTestCasesContainer');
+const addTestCaseBtn = document.getElementById('addTestCaseBtn');
+const codeOJTestCasesInput = document.getElementById('codeOJTestCasesInput');
+
+let ojTestCases = [];
+try {
+    const raw = codeOJTestCasesInput.value || '[]';
+    ojTestCases = JSON.parse(raw);
+    if (!Array.isArray(ojTestCases)) ojTestCases = [];
+} catch (e) {
+    ojTestCases = [];
+}
+
+function renderOJTestCases() {
+    if (!ojTestCasesContainer) return;
+    ojTestCasesContainer.innerHTML = '';
+
+    ojTestCases.forEach(function(tc, idx) {
+        const row = document.createElement('div');
+        row.className = 'oj-testcase-row mb-3 p-3 border rounded';
+        row.style.background = 'var(--bg-secondary)';
+
+        row.innerHTML =
+            '<div class="d-flex justify-content-between align-items-center mb-2">' +
+            '<strong class="small">Test Case ' + (idx + 1) + '</strong>' +
+            '<button type="button" class="btn btn-sm btn-outline-danger oj-delete-tc" data-idx="' + idx + '">' +
+            '<i class="bi bi-x"></i></button>' +
+            '</div>' +
+            '<div class="row g-2">' +
+            '<div class="col-md-6">' +
+            '<label class="form-label small mb-1">Input (stdin)</label>' +
+            '<textarea class="form-control form-control-sm oj-tc-input" rows="3" ' +
+            'placeholder="Enter input lines...">' + escapeHtml(tc.input || '') + '</textarea>' +
+            '</div>' +
+            '<div class="col-md-6">' +
+            '<label class="form-label small mb-1">Expected Output (stdout)</label>' +
+            '<textarea class="form-control form-control-sm oj-tc-expected" rows="3" ' +
+            'placeholder="Expected output...">' + escapeHtml(tc.expected || '') + '</textarea>' +
+            '</div>' +
+            '</div>';
+
+        ojTestCasesContainer.appendChild(row);
+    });
+
+    syncOJToInput();
+}
+
+function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
+
+function syncOJToInput() {
+    // Read current values from DOM
+    const inputs = ojTestCasesContainer.querySelectorAll('.oj-tc-input');
+    const expecteds = ojTestCasesContainer.querySelectorAll('.oj-tc-expected');
+    const result = [];
+    for (let i = 0; i < ojTestCases.length; i++) {
+        result.push({
+            input: inputs[i] ? inputs[i].value : (ojTestCases[i] ? ojTestCases[i].input : ''),
+            expected: expecteds[i] ? expecteds[i].value : (ojTestCases[i] ? ojTestCases[i].expected : ''),
+        });
+    }
+    ojTestCases = result;
+    codeOJTestCasesInput.value = JSON.stringify(result);
+}
+
+// Toggle test case panel visibility
+if (codeOJEnabled && ojTestCasesPanel) {
+    codeOJEnabled.addEventListener('change', function() {
+        ojTestCasesPanel.style.display = this.checked ? '' : 'none';
+    });
+}
+
+// Add test case
+if (addTestCaseBtn) {
+    addTestCaseBtn.addEventListener('click', function() {
+        ojTestCases.push({ input: '', expected: '' });
+        renderOJTestCases();
+    });
+}
+
+// Delegate: delete test case + sync input changes
+if (ojTestCasesContainer) {
+    ojTestCasesContainer.addEventListener('click', function(e) {
+        const delBtn = e.target.closest('.oj-delete-tc');
+        if (delBtn) {
+            const idx = parseInt(delBtn.getAttribute('data-idx'));
+            ojTestCases.splice(idx, 1);
+            renderOJTestCases();
+        }
+    });
+    ojTestCasesContainer.addEventListener('input', function(e) {
+        if (e.target.classList.contains('oj-tc-input') || e.target.classList.contains('oj-tc-expected')) {
+            syncOJToInput();
+        }
+    });
+}
+
+// Initial render
+if (ojTestCases.length > 0) {
+    renderOJTestCases();
+}
+
+// ====================================================================
+// Reference Sheet Editor
+// ====================================================================
+
+const refEditor = document.getElementById('refEditor');
+const refPreview = document.getElementById('refPreview');
+const loadPythonPresetBtn = document.getElementById('loadPythonPresetBtn');
+const refToolbarBtns = document.querySelectorAll('#refToolbar .ref-md-btn');
+
+// Python Preset — comprehensive reference for students
+const PYTHON_PRESET = [
+'## 输出 Output',
+'',
+'```python',
+'print(<value>)',
+'print(<value1>, <value2>, ...)',
+'print(<value>, end=<separator>)',
+'```',
+'- `<value>`: any value (str, int, float, list…) — what to print',
+'- `end`: optional separator (default newline `\\\\n`)',
+'',
+'## 输入 Input',
+'',
+'```python',
+'<var> = input()',
+'<var> = input(<prompt>)',
+'<var> = int(input())  # read as integer',
+'```',
+'- `<var>`: variable to store the input',
+'- `<prompt>`: optional string shown before input',
+'- `int()` / `float()`: convert input string to number',
+'',
+'## 变量与类型 Variables & Types',
+'',
+'```python',
+'<var> = <value>',
+'x = 10           # int（整数）',
+'y = 3.14         # float（浮点数）',
+'name = "Alice"   # str（字符串）',
+'flag = True      # bool（布尔值）',
+'items = [1,2,3]  # list（列表）',
+'d = {"a":1}      # dict（字典）',
+'```',
+'- `<var>`: variable name (letters, digits, underscore; cannot start with digit)',
+'- `<value>`: any expression or literal',
+'',
+'## 条件语句 Conditionals',
+'',
+'```python',
+'if <condition>:',
+'    <code>',
+'elif <condition>:',
+'    <code>',
+'else:',
+'    <code>',
+'```',
+'- `<condition>`: expression that evaluates to True or False',
+'- `<code>`: indented block executed when condition is True',
+'- `elif` and `else` are optional; you can have multiple `elif`',
+'',
+'## 循环 Loops',
+'',
+'```python',
+'# for loop',
+'for <var> in <iterable>:',
+'    <code>',
+'',
+'# for loop with range',
+'for i in range(<n>):        # 0 to n-1',
+'    <code>',
+'for i in range(<a>, <b>):   # a to b-1',
+'    <code>',
+'for i in range(<a>, <b>, <step>):',
+'    <code>',
+'',
+'# while loop',
+'while <condition>:',
+'    <code>',
+'```',
+'- `<iterable>`: list, string, range, dict… — object to iterate over',
+'- `range(n)`: generates 0, 1, …, n-1',
+'- `break`: exits the loop immediately',
+'- `continue`: skips to next iteration',
+'',
+'## 函数 Functions',
+'',
+'```python',
+'def <name>(<param1>, <param2>, ...):',
+'    <code>',
+'    return <value>',
+'```',
+'- `<name>`: function name',
+'- `<param>`: parameter names; can have default value (`param=default`)',
+'- `return`: optional — sends value back to caller; if omitted, returns None',
+'',
+'## 列表 Lists',
+'',
+'```python',
+'<list> = [<item1>, <item2>, ...]',
+'<list> = []                        # empty list',
+'<list>[<i>]                        # access item at index i (0-based)',
+'<list>[<start>:<end>]              # slice from start to end-1',
+'<list>[<start>:<end>:<step>]       # slice with step',
+'<list>.append(<item>)              # add item to end',
+'<list>.pop()                       # remove and return last item',
+'<list>.pop(<i>)                    # remove and return item at index i',
+'<list>.insert(<i>, <item>)         # insert item at index i',
+'<list>.remove(<item>)              # remove first matching item',
+'len(<list>)                        # number of items',
+'<item> in <list>                   # check if item exists → bool',
+'```',
+'- `<list>`: a list variable',
+'- `<i>`: integer index (0 is first, -1 is last)',
+'- `<start>`: inclusive start index',
+'- `<end>`: exclusive end index',
+'',
+'## 字符串 Strings',
+'',
+'```python',
+'<str> = "..."                      # double-quoted string',
+'<str> = \'...\'                      # single-quoted string',
+'<str>[<i>]                         # character at index i',
+'<str>[<start>:<end>]              # substring slice',
+'<str>.upper()                      # all uppercase',
+'<str>.lower()                      # all lowercase',
+'<str>.strip()                      # remove leading/trailing whitespace',
+'<str>.split(<sep>)                 # split into list by separator',
+'<sep>.join(<list>)                 # join list items with separator',
+'f"{<var>}"                         # f-string — embed variables in string',
+'f"{<var>:.<n>f}"                   # format float to n decimal places',
+'```',
+'- `<str>`: a string variable',
+'- `<i>`: character index (0-based; -1 is last char)',
+'- `<sep>`: separator string',
+'',
+'## 字典 Dictionaries',
+'',
+'```python',
+'<dict> = {<key1>: <val1>, <key2>: <val2>}',
+'<dict> = {}                        # empty dict',
+'<dict>[<key>]                      # access value by key',
+'<dict>[<key>] = <val>             # set/update value',
+'<dict>.get(<key>, <default>)       # safe access with fallback',
+'<dict>.keys()                      # all keys → iterable',
+'<dict>.values()                    # all values → iterable',
+'<dict>.items()                     # (key, value) pairs → iterable',
+'<key> in <dict>                    # check if key exists → bool',
+'```',
+'- `<dict>`: a dictionary variable',
+'- `<key>`: usually string or number — must be hashable',
+'- `<default>`: value returned if key not found',
+'',
+'## 运算符 Operators',
+'',
+'```python',
+'# Arithmetic 算术',
+'<a> + <b>    # addition',
+'<a> - <b>    # subtraction',
+'<a> * <b>    # multiplication',
+'<a> / <b>    # division (float result)',
+'<a> // <b>   # floor division (integer result)',
+'<a> % <b>    # modulo (remainder)',
+'<a> ** <b>   # exponentiation',
+'',
+'# Comparison 比较',
+'<a> == <b>   # equal',
+'<a> != <b>   # not equal',
+'<a> < <b>    # less than',
+'<a> > <b>    # greater than',
+'<a> <= <b>   # less than or equal',
+'<a> >= <b>   # greater than or equal',
+'',
+'# Logical 逻辑',
+'<a> and <b>  # True if both True',
+'<a> or <b>   # True if at least one True',
+'not <a>      # negate boolean',
+'',
+'# Membership 成员',
+'<item> in <iterable>      # True if item present',
+'<item> not in <iterable>  # True if item absent',
+'```',
+'',
+'## 类型转换 Type Conversion',
+'',
+'```python',
+'int(<value>)      # convert to integer',
+'float(<value>)    # convert to float',
+'str(<value>)      # convert to string',
+'list(<iterable>)  # convert to list',
+'bool(<value>)     # convert to boolean',
+'```',
+'- `int("42")` → 42',
+'- `float("3.14")` → 3.14',
+'- `str(42)` → "42"',
+'- `bool(0)`, `bool("")`, `bool([])` → False; otherwise True',
+'',
+'## 常用函数 Built-in Functions',
+'',
+'```python',
+'range(<n>)                    # 0, 1, …, n-1',
+'range(<a>, <b>)              # a, a+1, …, b-1',
+'range(<a>, <b>, <step>)      # with step',
+'len(<iterable>)              # length / count',
+'type(<value>)                # get type →  <class \'int\'>, etc.',
+'abs(<num>)                   # absolute value',
+'min(<a>, <b>, ...)           # smallest value',
+'max(<a>, <b>, ...)           # largest value',
+'sum(<iterable>)              # sum of all items',
+'sorted(<iterable>)           # sorted list (ascending)',
+'sorted(<iterable>, reverse=True)  # descending',
+'enumerate(<iterable>)        # (index, item) pairs',
+'zip(<a>, <b>)                # pair up items from two sources',
+'```',
+].join('\n');
+
+// Load Preset
+if (loadPythonPresetBtn) {
+    loadPythonPresetBtn.addEventListener('click', function() {
+        const current = refEditor.value.trim();
+        if (current && current !== 'None' && current !== '') {
+            if (!confirm('This will replace the current reference sheet content. Continue?')) {
+                return;
+            }
+        }
+        refEditor.value = PYTHON_PRESET;
+        refEditor.dispatchEvent(new Event('input'));
+        // Flash feedback
+        const origHTML = this.innerHTML;
+        this.innerHTML = '<i class="bi bi-check"></i> Preset Loaded!';
+        this.classList.add('btn-success');
+        this.classList.remove('btn-outline-info');
+        setTimeout(() => {
+            this.innerHTML = origHTML;
+            this.classList.remove('btn-success');
+            this.classList.add('btn-outline-info');
+        }, 1500);
+    });
+}
+
+// Markdown toolbar
+refToolbarBtns.forEach(btn => {
+    btn.addEventListener('click', function() {
+        const action = this.getAttribute('data-action');
+        const start = refEditor.selectionStart;
+        const end = refEditor.selectionEnd;
+        const selectedText = refEditor.value.substring(start, end);
+        const beforeText = refEditor.value.substring(0, start);
+        const afterText = refEditor.value.substring(end);
+
+        let replacement = '';
+        let cursorOffset = 0;
+
+        switch (action) {
+            case 'bold':
+                replacement = '**' + (selectedText || 'bold text') + '**';
+                cursorOffset = selectedText ? 0 : -2;
+                break;
+            case 'italic':
+                replacement = '*' + (selectedText || 'italic text') + '*';
+                cursorOffset = selectedText ? 0 : -1;
+                break;
+            case 'code':
+                replacement = '`' + (selectedText || 'code') + '`';
+                cursorOffset = selectedText ? 0 : -1;
+                break;
+            case 'codeblock':
+                replacement = '\n```python\n' + (selectedText || 'code') + '\n```\n';
+                break;
+            case 'ul':
+                replacement = '- ' + (selectedText || 'List item');
+                break;
+            case 'h2':
+                replacement = '## ' + (selectedText || 'Topic Name');
+                break;
+        }
+
+        refEditor.value = beforeText + replacement + afterText;
+        const newCursorPos = start + replacement.length + cursorOffset;
+        refEditor.setSelectionRange(newCursorPos, newCursorPos);
+        refEditor.focus();
+        refEditor.dispatchEvent(new Event('input'));
+    });
+});
+
+// Live preview (debounced)
+let refPreviewTimeout = null;
+if (refEditor && refPreview) {
+    refEditor.addEventListener('input', function() {
+        clearTimeout(refPreviewTimeout);
+        refPreviewTimeout = setTimeout(() => {
+            const md = refEditor.value;
+            if (md && md.trim() && md !== 'None') {
+                refPreview.innerHTML = window.renderReferenceSheet(md);
+            } else {
+                refPreview.innerHTML = '<div class="text-muted p-3">Start writing to see preview...</div>';
+            }
+            // Auto-resize textarea
+            refEditor.style.height = 'auto';
+            refEditor.style.height = refEditor.scrollHeight + 'px';
+        }, 300);
+    });
+    // Initial render
+    const initMd = refEditor.value;
+    if (initMd && initMd.trim() && initMd !== 'None') {
+        refPreview.innerHTML = window.renderReferenceSheet(initMd);
+    }
+}
+
+// Handle "None" artifact on focus
+if (refEditor) {
+    refEditor.addEventListener('focus', function() {
+        if (this.value.trim() === 'None') this.value = '';
+    });
+}
 
 // Form submission: ensure quiz content is synced to mdEditor
 const episodeForm = document.getElementById('episodeForm');
