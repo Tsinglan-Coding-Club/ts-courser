@@ -209,6 +209,30 @@ uv run python manage.py runserver
 
 ## Features & Development Status
 
+### Current Trust Boundaries and Deferred Hardening
+
+TS-Courser is currently intended for small classes within a specific school.
+The following are deliberate MVP assumptions or known limitations, and should
+be revisited before opening the service to untrusted users or the public:
+
+- **Client-side OJ results:** Python code is executed and judged in the
+  student's browser (Pyodide). The server stores the reported test results
+  without independently rerunning the code. This keeps the platform simple
+  for the current trusted classroom setting, but means results are not
+  tamper-proof and must not be used for high-stakes grading.
+- **Teacher-authored Markdown:** Markdown is rendered as HTML in the browser.
+  The current deployment assumes verified teachers are non-malicious. Raw HTML
+  must be sanitized before teachers can be treated as untrusted or content can
+  be imported from external sources; otherwise stored cross-site scripting is
+  possible.
+- **Image uploads:** The inline-editor upload endpoint currently requires only
+  an authenticated user. Its course/teacher ownership policy is still under
+  discussion. Restrict it to the appropriate content authors and allow only
+  safely decoded raster image formats once that policy is decided.
+- **Authorization model:** Course, enrollment, and user-group authorization is
+  still being designed. Do not treat the present endpoint-level authorization
+  checks as a final access-control policy.
+
 ### Implemented Features (MVP)
 - [x] Database schema design with Django ORM
 - [x] User authentication system (email-based login)
