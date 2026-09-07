@@ -139,7 +139,7 @@ def _entra_username(object_id):
 
 @transaction.atomic
 def get_or_create_microsoft_user(principal, requested_role):
-    if requested_role not in {'student', 'teacher'}:
+    if requested_role is not None and requested_role not in {'student', 'teacher'}:
         raise MicrosoftIdentityError('The requested role is invalid.')
 
     identity = (
@@ -154,7 +154,7 @@ def get_or_create_microsoft_user(principal, requested_role):
     now = timezone.now()
     if identity:
         user = identity.user
-        if user.role != requested_role:
+        if requested_role is not None and user.role != requested_role:
             raise MicrosoftIdentityError(
                 'This Microsoft account is already registered with another role.'
             )
@@ -171,6 +171,9 @@ def get_or_create_microsoft_user(principal, requested_role):
             user.display_name = principal.display_name[:100]
         user.save(update_fields=('email', 'display_name'))
         return user, False
+
+    if requested_role is None:
+        return None, False
 
     username = _entra_username(principal.object_id)
     if User.objects.filter(username=username).exists():

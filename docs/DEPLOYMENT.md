@@ -106,6 +106,8 @@ The custom user manager marks this account as a local platform administrator.
 There is no public registration or automatic "first visitor" promotion.
 Administrators issue local student accounts at `/accounts/manage/`; each initial
 password is displayed once and expires after seven days by default. Teachers
-appear on the same page after their first Microsoft sign-in and cannot enter the
-platform until approved. Directory disable/removal synchronization is outside
-the first release, so administrators must also deactivate departed users locally.
+and students choose their role only after their first verified Microsoft sign-in.
+That choice is then bound to the Microsoft identity and is not shown on later
+sign-ins. Teachers appear on the management page and cannot enter the platform
+until approved. Directory disable/removal synchronization is outside the first
+release, so administrators must also deactivate departed users locally.

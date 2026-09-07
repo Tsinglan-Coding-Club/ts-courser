@@ -46,6 +46,35 @@ class ImageUploadValidationTests(TestCase):
         with self.assertRaises(ImageUploadValidationError):
             validate_and_reencode_image(upload, max_pixels=100)
 
+    def test_center_crops_height_to_requested_aspect_ratio(self):
+        image = Image.new('RGB', (160, 160), 'green')
+        image.paste((255, 0, 0), (0, 0, 160, 35))
+        image.paste((0, 0, 255), (0, 125, 160, 160))
+        image_bytes = BytesIO()
+        image.save(image_bytes, format='PNG')
+        upload = SimpleUploadedFile('cover.png', image_bytes.getvalue(), 'image/png')
+
+        cropped = validate_and_reencode_image(upload, crop_aspect_ratio=(16, 9))
+
+        with Image.open(cropped) as result:
+            self.assertEqual(result.size, (160, 90))
+            self.assertEqual(result.getpixel((0, 0)), (0, 128, 0))
+            self.assertEqual(result.getpixel((159, 89)), (0, 128, 0))
+
+    def test_aspect_ratio_crop_does_not_enlarge_a_wide_image(self):
+        image_bytes = BytesIO()
+        Image.new('RGB', (20, 10), 'blue').save(image_bytes, format='PNG')
+        upload = SimpleUploadedFile(
+            'wide.png', image_bytes.getvalue(), content_type='image/png'
+        )
+
+        processed = validate_and_reencode_image(
+            upload, crop_aspect_ratio=(16, 9)
+        )
+
+        with Image.open(processed) as result:
+            self.assertEqual(result.size, (20, 10))
+
 
 class ProfileAvatarUploadTests(TestCase):
     def setUp(self):

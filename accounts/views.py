@@ -21,6 +21,7 @@ from ts_courser.utils import ImageUploadValidationError, validate_and_reencode_i
 from .forms import FirstLoginCredentialsForm, LocalStudentCreationForm
 from .microsoft import (
     MicrosoftIdentityError,
+    MicrosoftPrincipal,
     build_msal_app,
     get_or_create_microsoft_user,
     validate_claims,
@@ -34,6 +35,9 @@ PREAUTH_USER_KEY = 'credential_change_user_id'
 PREAUTH_HASH_KEY = 'credential_change_password_hash'
 PREAUTH_TIME_KEY = 'credential_change_started_at'
 PREAUTH_NEXT_KEY = 'credential_change_next'
+PENDING_MICROSOFT_PRINCIPAL_KEY = 'pending_microsoft_principal'
+PENDING_MICROSOFT_TIME_KEY = 'pending_microsoft_verified_at'
+PENDING_MICROSOFT_NEXT_KEY = 'pending_microsoft_next'
 
 
 def _safe_next(request, candidate=None):
@@ -94,20 +98,18 @@ def logout_view(request):
     """User logout view."""
     logout(request)
     _clear_preauth(request)
+    _clear_pending_microsoft_identity(request)
     messages.success(request, 'You have been logged out successfully.')
     return redirect('accounts:login')
 
 
 @require_POST
 def microsoft_login(request):
-    requested_role = request.POST.get('role')
-    if requested_role not in {'student', 'teacher'}:
-        messages.error(request, 'Choose Student or Teacher before continuing.')
-        return redirect('accounts:login')
     if not settings.MS_ENTRA_ENABLED:
         messages.error(request, 'Microsoft sign-in is not configured on this server.')
         return redirect('accounts:login')
 
+    _clear_pending_microsoft_identity(request)
     try:
         flow = build_msal_app().initiate_auth_code_flow(
             scopes=[],
@@ -122,16 +124,14 @@ def microsoft_login(request):
         return redirect('accounts:login')
 
     request.session['microsoft_auth_flow'] = flow
-    request.session['microsoft_requested_role'] = requested_role
     request.session['microsoft_next'] = _safe_next(request)
     return redirect(flow['auth_uri'])
 
 
 def microsoft_callback(request):
     flow = request.session.pop('microsoft_auth_flow', None)
-    requested_role = request.session.pop('microsoft_requested_role', None)
     next_url = request.session.pop('microsoft_next', None)
-    if not flow or requested_role not in {'student', 'teacher'}:
+    if not flow:
         return render(
             request,
             'accounts/microsoft_error.html',
@@ -158,17 +158,7 @@ def microsoft_callback(request):
     try:
         claims = verify_id_token(id_token, flow.get('nonce'))
         principal = validate_claims(claims)
-        try:
-            user, _created = get_or_create_microsoft_user(principal, requested_role)
-        except IntegrityError:
-            # A simultaneous first sign-in can win the unique username/identity
-            # insert. Retry once after the failed transaction has rolled back.
-            try:
-                user, _created = get_or_create_microsoft_user(principal, requested_role)
-            except IntegrityError as exc:
-                raise MicrosoftIdentityError(
-                    'This Microsoft account could not be created safely. Try again.'
-                ) from exc
+        user, _created = get_or_create_microsoft_user(principal, None)
     except MicrosoftIdentityError as exc:
         return render(
             request,
@@ -177,6 +167,18 @@ def microsoft_callback(request):
             status=403,
         )
 
+    if user is None:
+        request.session[PENDING_MICROSOFT_PRINCIPAL_KEY] = {
+            'tenant_id': principal.tenant_id,
+            'object_id': principal.object_id,
+            'principal_name': principal.principal_name,
+            'display_name': principal.display_name,
+        }
+        request.session[PENDING_MICROSOFT_TIME_KEY] = timezone.now().isoformat()
+        request.session[PENDING_MICROSOFT_NEXT_KEY] = next_url
+        return redirect('accounts:microsoft_role_selection')
+
+    _clear_pending_microsoft_identity(request)
     login(request, user, backend='accounts.backends.EntraSessionBackend')
     if user.role == 'teacher' and not user.is_verified_teacher:
         return redirect('accounts:teacher_pending')
@@ -185,6 +187,80 @@ def microsoft_callback(request):
         allowed_hosts={request.get_host()},
         require_https=request.is_secure(),
     ) else reverse('courses:course_list'))
+
+
+def microsoft_role_selection(request):
+    principal_data = request.session.get(PENDING_MICROSOFT_PRINCIPAL_KEY)
+    verified_at_value = request.session.get(PENDING_MICROSOFT_TIME_KEY)
+    if not principal_data or not verified_at_value:
+        messages.error(request, 'Sign in with your school Microsoft account first.')
+        return redirect('accounts:login')
+    try:
+        verified_at = timezone.datetime.fromisoformat(verified_at_value)
+        principal = MicrosoftPrincipal(**principal_data)
+    except (TypeError, ValueError):
+        verified_at = None
+    if not verified_at or timezone.now() - verified_at > timedelta(minutes=10):
+        _clear_pending_microsoft_identity(request)
+        messages.error(request, 'Your verified Microsoft session has expired. Sign in again.')
+        return redirect('accounts:login')
+
+    if request.method == 'POST':
+        requested_role = request.POST.get('role')
+        if requested_role not in {'student', 'teacher'}:
+            messages.error(request, 'Choose either the Student or Teacher role.')
+        else:
+            next_url = request.session.get(PENDING_MICROSOFT_NEXT_KEY)
+            try:
+                try:
+                    user, _created = get_or_create_microsoft_user(
+                        principal,
+                        requested_role,
+                    )
+                except IntegrityError:
+                    user, _created = get_or_create_microsoft_user(
+                        principal,
+                        requested_role,
+                    )
+            except IntegrityError:
+                return render(
+                    request,
+                    'accounts/microsoft_error.html',
+                    {'message': 'This Microsoft account could not be registered. Please try again.'},
+                    status=409,
+                )
+            except MicrosoftIdentityError as exc:
+                return render(
+                    request,
+                    'accounts/microsoft_error.html',
+                    {'message': str(exc)},
+                    status=403,
+                )
+
+            _clear_pending_microsoft_identity(request)
+            login(request, user, backend='accounts.backends.EntraSessionBackend')
+            if user.role == 'teacher' and not user.is_verified_teacher:
+                return redirect('accounts:teacher_pending')
+            return redirect(next_url if next_url and url_has_allowed_host_and_scheme(
+                next_url,
+                allowed_hosts={request.get_host()},
+                require_https=request.is_secure(),
+            ) else reverse('courses:course_list'))
+
+    return render(
+        request,
+        'accounts/microsoft_role_selection.html',
+        {'principal': principal},
+    )
+
+
+def _clear_pending_microsoft_identity(request):
+    for key in (
+        PENDING_MICROSOFT_PRINCIPAL_KEY,
+        PENDING_MICROSOFT_TIME_KEY,
+        PENDING_MICROSOFT_NEXT_KEY,
+    ):
+        request.session.pop(key, None)
 
 
 @login_required
