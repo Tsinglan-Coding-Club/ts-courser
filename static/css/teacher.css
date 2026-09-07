@@ -1,0 +1,385 @@
+/* ==========================================================================
+   Teacher / Manage Courses
+   --------------------------------------------------------------------------
+   Styles for templates/teacher/course_manage.html
+
+   Design principle: one primary accent, neutral surfaces, and restrained
+   status colors. Avoids the former high-saturation blue/yellow combination.
+   ========================================================================== */
+
+:root {
+    --teacher-radius: 1rem;
+    --teacher-soft-success-bg: rgba(40, 167, 69, 0.14);
+    --teacher-soft-success-text: #2f7d42;
+    --teacher-soft-warning-bg: rgba(255, 193, 7, 0.16);
+    --teacher-soft-warning-text: #8a6d1a;
+}
+
+[data-theme="dark"] {
+    --teacher-soft-success-bg: rgba(61, 216, 101, 0.16);
+    --teacher-soft-success-text: #7edc96;
+    --teacher-soft-warning-bg: rgba(255, 213, 79, 0.14);
+    --teacher-soft-warning-text: #ffdf80;
+}
+
+/* ----------------------- Shared page shell ------------------------------ */
+
+.teacher-page-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.teacher-page-heading {
+    display: flex;
+    align-items: center;
+    gap: 0.9rem;
+}
+
+.teacher-page-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 3rem;
+    height: 3rem;
+    flex: 0 0 3rem;
+    border-radius: 0.9rem;
+    background: var(--primary-pale);
+    color: var(--primary-color);
+    font-size: 1.35rem;
+}
+
+.teacher-page-title {
+    margin: 0;
+    font-size: 1.65rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+}
+
+.teacher-page-subtitle {
+    margin: 0.15rem 0 0;
+    color: var(--text-secondary);
+    font-size: 0.95rem;
+}
+
+/* ------------------------ Soft status badges ---------------------------- */
+.teacher-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.28rem 0.6rem;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 650;
+    line-height: 1;
+}
+
+.teacher-status::before {
+    content: "";
+    width: 0.4rem;
+    height: 0.4rem;
+    border-radius: 50%;
+    background: currentColor;
+}
+
+.teacher-status-published {
+    background: var(--teacher-soft-success-bg);
+    color: var(--teacher-soft-success-text);
+}
+
+.teacher-status-draft {
+    background: var(--teacher-soft-warning-bg);
+    color: var(--teacher-soft-warning-text);
+}
+
+/* --------------------------- Manage tabs -------------------------------- */
+.manage-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.45rem;
+    padding: 0.4rem;
+    margin-bottom: 1.5rem;
+    border: 1px solid var(--border-color);
+    border-radius: var(--teacher-radius);
+    background: var(--bg-secondary);
+}
+
+.manage-tabs .btn-check {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.manage-tab {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    min-height: 2.7rem;
+    padding: 0.65rem 0.8rem;
+    border: 1px solid transparent;
+    border-radius: calc(var(--teacher-radius) - 0.4rem);
+    background: transparent;
+    color: var(--text-secondary);
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: color 0.16s ease, background-color 0.16s ease, border-color 0.16s ease;
+}
+
+.manage-tab:hover {
+    color: var(--primary-color);
+    background: var(--primary-pale);
+}
+
+.manage-tabs .btn-check:checked + .manage-tab {
+    border-color: var(--primary-color);
+    background: var(--primary-color);
+    color: #ffffff;
+}
+
+/* ------------------------- Manage section cards ------------------------- */
+.section-card {
+    border-radius: var(--bs-card-border-radius, 0.375rem);
+    box-shadow: none;
+    overflow: hidden;
+}
+
+.section-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 1rem 1.25rem;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.section-card-title {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.55rem;
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 700;
+}
+
+.section-card-title i {
+    color: var(--primary-color);
+}
+
+.section-count {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.25rem 0.55rem;
+    border-radius: 999px;
+    background: var(--primary-pale);
+    color: var(--primary-color);
+    font-size: 0.75rem;
+    font-weight: 700;
+}
+
+.section-card .list-group-item {
+    background: transparent;
+    border-color: var(--border-color);
+    color: var(--text-primary);
+}
+
+.section-card .list-group-item-action:hover {
+    background: var(--bg-tertiary);
+}
+
+/* --------------------------- Student rows ------------------------------- */
+.student-row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 1rem 1.25rem;
+}
+
+.student-identity {
+    min-width: 0;
+}
+
+.student-name {
+    display: block;
+    color: var(--text-primary);
+    font-weight: 650;
+}
+
+.student-email {
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+}
+
+.student-progress {
+    width: min(18rem, 40%);
+    flex: 0 0 min(18rem, 40%);
+}
+
+.student-progress-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-bottom: 0.45rem;
+}
+
+.student-progress-meta {
+    color: var(--text-secondary);
+    font-size: 0.78rem;
+}
+
+.teacher-progress {
+    height: 8px;
+    background: var(--bg-tertiary);
+    border-radius: 999px;
+    overflow: hidden;
+}
+
+.teacher-progress-bar {
+    height: 100%;
+    border-radius: inherit;
+}
+
+/* ---------------------------- Assignments ------------------------------- */
+.assignment-link {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 1rem 1.25rem;
+    color: var(--text-primary);
+    text-decoration: none;
+}
+
+.assignment-link:hover {
+    background: var(--bg-tertiary);
+}
+
+.assignment-main {
+    min-width: 0;
+}
+
+.assignment-title {
+    display: block;
+    font-weight: 650;
+}
+
+.assignment-section {
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+}
+
+/* ------------------------- Box plot (progress) -------------------------- */
+.box-plot {
+    position: relative;
+    height: 86px;
+    margin: 0.25rem 0.75rem 2.2rem;
+}
+
+.box-plot-bar {
+    position: absolute;
+    top: 26px;
+    left: 0;
+    width: 100%;
+    height: 12px;
+    background: var(--bg-tertiary);
+    border-radius: 999px;
+}
+
+.box-plot-whisker {
+    position: absolute;
+    top: 26px;
+    height: 12px;
+    background: rgba(136, 56, 144, 0.24);
+    border-radius: 999px;
+}
+
+.box-plot-box {
+    position: absolute;
+    top: 19px;
+    height: 26px;
+    background: var(--primary-color);
+    border-radius: 5px;
+}
+
+.box-plot-median {
+    position: absolute;
+    top: 16px;
+    width: 3px;
+    height: 32px;
+    background: var(--bg-primary);
+    border-radius: 2px;
+    box-shadow: 0 0 0 1px var(--border-color);
+}
+
+.box-plot-tick {
+    position: absolute;
+    top: 22px;
+    width: 1px;
+    height: 20px;
+    background: var(--text-secondary);
+    opacity: 0.4;
+}
+
+.box-plot-tick-label {
+    position: absolute;
+    top: 45px;
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    transform: translateX(-50%);
+}
+
+.box-plot-val {
+    position: absolute;
+    top: 0;
+    font-size: 0.7rem;
+    font-weight: 650;
+    color: var(--primary-color);
+    transform: translateX(-50%);
+    white-space: nowrap;
+}
+
+/* ----------------------------- Empty states ----------------------------- */
+.teacher-empty {
+    padding: 3.5rem 1rem;
+    text-align: center;
+    color: var(--text-secondary);
+}
+
+.teacher-empty-icon {
+    display: block;
+    margin-bottom: 0.75rem;
+    color: var(--text-muted);
+    font-size: 3rem;
+}
+
+.teacher-empty-title {
+    margin: 0 0 0.35rem;
+    color: var(--text-primary);
+    font-weight: 700;
+}
+
+/* ------------------------------ Responsive ------------------------------ */
+@media (max-width: 767.98px) {
+    .teacher-page-header {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .manage-tabs {
+        grid-template-columns: 1fr;
+    }
+
+    .student-row {
+        flex-direction: column;
+    }
+
+    .student-progress {
+        width: 100%;
+        flex-basis: auto;
+    }
+}

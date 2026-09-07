@@ -5,6 +5,9 @@ import uuid
 import os
 
 
+DEFAULT_STARTER_CODE = '# Write your Python code here\n'
+
+
 class Tag(models.Model):
     """
     Tags for categorizing courses (e.g., AP Calculus, A-Level Physics).
@@ -110,7 +113,7 @@ class Section(models.Model):
         return f"{self.course.title} - {self.title}"
 
     class Meta:
-        ordering = ['order']
+        ordering = ['order', 'id']
 
 
 def episode_pdf_path(instance, filename):
@@ -205,6 +208,12 @@ class Episode(models.Model):
     code_oj_testcases = models.TextField(
         blank=True, default='[]',
         help_text='JSON array of {input, expected_output} test case pairs'
+    )
+
+    # Starter code for code episodes
+    starter_code = models.TextField(
+        blank=True, default=DEFAULT_STARTER_CODE,
+        help_text='Initial Python code shown to students before they save or upload work'
     )
 
     # Reference sheet for code episodes

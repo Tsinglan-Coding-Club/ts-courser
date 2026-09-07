@@ -32,9 +32,7 @@
                 <div class="code-panel-header">
                     <i class="bi bi-display"></i> Interactive
                 </div>
-                <div class="code-panel-body code-panel-placeholder">
-                    <span class="text-muted">Interactive area — coming soon</span>
-                </div>
+                <div class="code-panel-body" id="interactive-container"></div>
             </div>
             <div class="code-panel code-panel-bottom">
                 <div class="code-panel-body code-console-container" id="console-container"></div>
@@ -82,7 +80,7 @@
 {% endwith %}
 {% endwith %}
 
-<script src="{% static 'js/reference-renderer.js' %}"></script>
+<script src="{% static 'js/reference-renderer.js' %}?v=2"></script>
 <script>
 (function() {
     var refRaw = document.getElementById('reference-raw-data');

@@ -4,6 +4,7 @@ from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.db.models import Q, Prefetch
 from .models import Course, Tag, Section, Episode
+from .quiz import review_answers, student_questions
 from progress.models import UserProgress, EpisodeReadStatus, CourseEnrollment
 
 
@@ -60,7 +61,7 @@ def course_overview(request, course_id):
     sections = Section.objects.filter(course=course).prefetch_related(
         Prefetch(
             'episodes',
-            queryset=Episode.objects.all().order_by('order')
+            queryset=Episode.objects.all().order_by('order', 'id')
         )
     )
 
@@ -98,7 +99,7 @@ def course_dashboard(request, course_id):
     sections = Section.objects.filter(course=course).prefetch_related(
         Prefetch(
             'episodes',
-            queryset=Episode.objects.all().order_by('order')
+            queryset=Episode.objects.all().order_by('order', 'id')
         )
     )
 
@@ -134,7 +135,7 @@ def learning_interface(request, course_id, episode_id=None):
     ).exists()
     is_teacher_or_admin = request.user.is_teacher or request.user.is_admin
 
-    if not is_enrolled and course.enrollment_mode == 'open':
+    if not is_enrolled and course.enrollment_mode == 'open' and course.enrollment_open:
         CourseEnrollment.objects.get_or_create(user=request.user, course=course)
         is_enrolled = True
 
@@ -153,7 +154,7 @@ def learning_interface(request, course_id, episode_id=None):
     sections = Section.objects.filter(course=course).prefetch_related(
         Prefetch(
             'episodes',
-            queryset=Episode.objects.all().order_by('order')
+            queryset=Episode.objects.all().order_by('order', 'id')
         )
     )
 
@@ -172,6 +173,15 @@ def learning_interface(request, course_id, episode_id=None):
         progress.current_episode = current_episode
         progress.save()
 
+    # Keep the sidebar accordion focused on the section containing the episode
+    # being viewed. Fall back to the first section when the course has no
+    # current episode yet.
+    if current_episode:
+        expanded_section_id = current_episode.section_id
+    else:
+        first_section = sections.first()
+        expanded_section_id = first_section.id if first_section else None
+
     # Get read statuses for all episodes
     read_statuses = EpisodeReadStatus.objects.filter(
         user=request.user,
@@ -183,6 +193,7 @@ def learning_interface(request, course_id, episode_id=None):
     current_read_status = None
     quiz_submission = None
     quiz_answers_json = None
+    quiz_questions = []
     if current_episode:
         current_read_status, _ = EpisodeReadStatus.objects.get_or_create(
             user=request.user,
@@ -195,8 +206,11 @@ def learning_interface(request, course_id, episode_id=None):
                 user=request.user, episode=current_episode
             ).first()
             quiz_answers_json = None
-            if quiz_submission and quiz_submission.released_at and quiz_submission.answers:
-                quiz_answers_json = quiz_submission.answers
+            released = bool(quiz_submission and quiz_submission.released_at)
+            if released:
+                quiz_answers_json = _json.dumps(review_answers(current_episode, quiz_submission.answers))
+            if not quiz_submission or released:
+                quiz_questions = student_questions(current_episode, released=released)
 
     # Get code submission context
     code_submission = None
@@ -214,11 +228,13 @@ def learning_interface(request, course_id, episode_id=None):
         'course': course,
         'sections': sections,
         'current_episode': current_episode,
+        'expanded_section_id': expanded_section_id,
         'current_read_status': current_read_status,
         'read_status_dict': read_status_dict,
         'is_teacher': request.user.is_teacher,
         'quiz_submission': quiz_submission,
         'quiz_answers_json': quiz_answers_json,
+        'quiz_questions': quiz_questions,
         'quiz_require_all': getattr(current_episode, 'quiz_require_all', True) if current_episode else True,
         'code_submission': code_submission,
         'code_oj_enabled': code_oj_enabled,

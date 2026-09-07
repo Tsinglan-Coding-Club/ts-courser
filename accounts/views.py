@@ -10,7 +10,7 @@ from django.utils import timezone
 from datetime import timedelta
 from .models import User
 from courses.models import Tag
-from ts_courser.utils import compress_image
+from ts_courser.utils import ImageUploadValidationError, validate_and_reencode_image
 import os
 import random
 import string
@@ -210,23 +210,14 @@ def profile_edit(request):
         user.display_name = request.POST.get('display_name', '').strip()
         user.bio = request.POST.get('bio', '').strip()
 
-        # Handle avatar upload (compress if > 1MB)
+        # Handle avatar upload using a decoded, sanitized raster image.
         if 'avatar' in request.FILES:
             avatar_file = request.FILES['avatar']
-
-            # Validate file size (2MB max)
-            if avatar_file.size > 2 * 1024 * 1024:
-                messages.error(request, 'Avatar file size must be less than 2MB.')
+            try:
+                avatar_file = validate_and_reencode_image(avatar_file)
+            except ImageUploadValidationError as exc:
+                messages.error(request, str(exc))
                 return redirect('accounts:profile_edit')
-
-            # Validate file type
-            allowed_types = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
-            if avatar_file.content_type not in allowed_types:
-                messages.error(request, 'Avatar must be a valid image file (JPEG, PNG, GIF, or WebP).')
-                return redirect('accounts:profile_edit')
-
-            # Compress large images with Pillow before saving
-            avatar_file = compress_image(avatar_file)
 
             # Delete old avatar if exists
             if user.avatar:

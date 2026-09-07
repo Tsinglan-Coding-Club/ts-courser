@@ -11,7 +11,13 @@
  */
 
 import { loadPyodide } from '/static/pyodide/pyodide.mjs?v=3';
-import { createApiWrapper, initStdin, stdinWithPrompt, getDiagnostics } from '/static/js/worker-apis.js';
+import { createApiWrapper, initStdin, stdinWithPrompt, getDiagnostics, setStdinExecution } from '/static/js/worker-apis.js?v=2';
+import { createCourserRuntime } from './courser-runtime.mjs?v=1';
+import { createPythonExecutor, ExecutionInterrupted } from './python-execution.mjs?v=1';
+import {
+    isUserPythonError,
+    normalizeExecutionError,
+} from '/static/js/python-error.mjs?v=2';
 
 // ---------------------------------------------------------------------------
 // Diagnostic: environment check (runs immediately)
@@ -26,6 +32,15 @@ console.log('[pyodide-worker] Worker started. Diagnostics:', JSON.stringify(getD
 let _stdoutBuffer = '';
 let _stderrBuffer = '';
 let _stdinEnabled = false;
+let _courserRuntime = null;
+let _executePython = null;
+
+function normalizeRunError(error) {
+    if (error instanceof ExecutionInterrupted) {
+        return { error: 'Execution interrupted', errorKind: 'interrupted', interrupted: true };
+    }
+    return normalizeExecutionError(error);
+}
 let _interruptBuf = null;
 // Named stdout/stderr writers for batched output.
 // Per Pyodide docs: batched is called when \n is written (line will END
@@ -47,25 +62,38 @@ const _stderrWrite = (text) => {
 
 let pyodideReady = (async () => {
     console.log('[pyodide-worker] Loading Pyodide...');
-    const pyodide = await loadPyodide({
-        indexURL: '/static/pyodide/',
-        env: { PYTHONUNBUFFERED: '1' },
-    });
+    const [pyodide, courserSource] = await Promise.all([
+        loadPyodide({
+            indexURL: '/static/pyodide/',
+            env: { PYTHONUNBUFFERED: '1' },
+        }),
+        fetch('/static/python/courser.py?v=1').then(response => {
+            if (!response.ok) throw new Error('Could not load the courser Python library.');
+            return response.text();
+        }),
+    ]);
+    _courserRuntime = createCourserRuntime(pyodide, courserSource, message => self.postMessage(message));
+    _executePython = createPythonExecutor(pyodide);
     console.log('[pyodide-worker] Pyodide loaded. Version:', pyodide.version);
 
     // Set up stdin: override Python's input() to pass prompt explicitly,
     // because Pyodide's stdin callback doesn't receive the prompt argument.
-    const stdinOk = initStdin();
+    const stdinOk = initStdin(() => _courserRuntime.flush());
     if (stdinOk) {
         pyodide.globals.set('_stdin_with_prompt', stdinWithPrompt);
         await pyodide.runPythonAsync(`
 import builtins
 
-def _custom_input(prompt=""):
-    return _stdin_with_prompt(str(prompt))
+def _make_input(read):
+    def _custom_input(prompt=""):
+        response = read(str(prompt))
+        if not response[0]:
+            raise EOFError("Input cancelled")
+        return response[1]
+    return _custom_input
 
-builtins.input = _custom_input
-`);
+builtins.input = _make_input(_stdin_with_prompt)
+`, { filename: '<courser-runner>' });
         _stdinEnabled = true;
         console.log('[pyodide-worker] stdin (input()) enabled with prompt support.');
     } else {
@@ -150,13 +178,20 @@ self.onmessage = async (event) => {
                 break;
 
             default:
-                self.postMessage({ id, error: `Unknown message type: ${type}` });
+                console.error('[pyodide-worker] Unknown message type:', type);
+                self.postMessage({
+                    id,
+                    error: 'Python environment error.',
+                    errorKind: 'internal',
+                });
         }
     } catch (error) {
         // Catch initialization failures (e.g., Pyodide load failed)
+        console.error('[pyodide-worker] Worker initialization failed:', error);
         self.postMessage({
             id,
-            error: `Worker initialization failed: ${error.message || String(error)}`,
+            error: 'Python environment error.',
+            errorKind: 'internal',
             diagnostics: getDiagnostics(),
         });
     }
@@ -167,58 +202,42 @@ self.onmessage = async (event) => {
 // ---------------------------------------------------------------------------
 
 async function _runPython(pyodide, id, python, context, apis) {
-    // Reset per-run buffers
     _stdoutBuffer = '';
     _stderrBuffer = '';
-
-    // Load any packages imported by the script
-    try {
-        await pyodide.loadPackagesFromImports(python);
-    } catch (e) {
-        _stderrBuffer += `[Package load warning] ${e.message || e}\n`;
-    }
-
-    // Build the globals dict: context data + custom API functions
     let globals;
+    let response;
     try {
+        // The site's courser.py is already installed. This loader handles
+        // other known imports such as numpy; it does not fetch custom modules.
+        try {
+            await pyodide.loadPackagesFromImports(python);
+        } catch (error) {
+            if (!isUserPythonError(error) || !['SyntaxError', 'IndentationError', 'TabError'].includes(error.type)) throw error;
+        }
         globals = _buildGlobals(pyodide, context || {}, apis || []);
-    } catch (e) {
-        self.postMessage({
-            id,
-            error: `Failed to build execution context: ${e.message}`,
-            stdout: _stdoutBuffer,
-            stderr: _stderrBuffer,
-        });
-        return;
-    }
-
-    // Execute
-    try {
-        // Clear any stale interrupt signal before running
-        if (_interruptBuf) _interruptBuf[0] = 0;
-
-        const result = await pyodide.runPythonAsync(python, { globals });
-        self.postMessage({
-            id,
-            result: _convertResult(result),
-            stdout: _stdoutBuffer,
-            stderr: _stderrBuffer,
-        });
+        _courserRuntime.begin(id);
+        setStdinExecution(id);
+        const result = await _executePython(python, globals);
+        try {
+            response = { id, result: _convertResult(result) };
+        } finally {
+            result?.destroy?.();
+        }
     } catch (error) {
-        const message = error.message || String(error);
-        const interrupted = message.includes('KeyboardInterrupt');
-        self.postMessage({
-            id,
-            error: interrupted ? 'Execution interrupted' : message,
-            stdout: _stdoutBuffer,
-            stderr: _stderrBuffer,
-            interrupted: interrupted || undefined,
-        });
+        const normalized = normalizeRunError(error);
+        if (normalized.errorKind === 'internal') console.error('[pyodide-worker] Execution failed:', error);
+        response = { id, ...normalized };
+    } finally {
+        // Deliver the final coalesced snapshot before the completion message.
+        _courserRuntime.end();
+        setStdinExecution(null);
+        globals?.destroy();
     }
+    self.postMessage({ ...response, stdout: _stdoutBuffer, stderr: _stderrBuffer });
 }
 
 // ---------------------------------------------------------------------------
-// OJ Judge — batched test case execution
+// Automated test checking — batched test case execution
 // ---------------------------------------------------------------------------
 
 /**
@@ -234,110 +253,65 @@ async function _runPython(pyodide, id, python, context, apis) {
 async function _runJudge(pyodide, id, python, testCases, apis) {
     const results = [];
     let interrupted = false;
-
-    if (!testCases || testCases.length === 0) {
-        self.postMessage({ id, results: [] });
-        return;
-    }
-
-    // Build globals once (API functions are the same for all test cases)
-    let globals;
-    try {
-        globals = _buildGlobals(pyodide, {}, apis || []);
-    } catch (e) {
-        self.postMessage({
-            id,
-            error: `Failed to build judge context: ${e.message}`,
-            results: [],
-        });
-        return;
-    }
-
-    for (let i = 0; i < testCases.length; i++) {
+    for (const testCase of testCases || []) {
         if (interrupted) {
             results.push({
-                passed: false,
-                input: testCases[i].input || '',
-                expected: testCases[i].expected || '',
-                actual: '',
-                error: 'Skipped (interrupted)',
-                interrupted: true,
+                passed: false, input: testCase.input || '', expected: testCase.expected || '',
+                actual: '', error: 'Skipped (interrupted)', interrupted: true,
             });
             continue;
         }
-
-        // Reset per-case buffers
         _stdoutBuffer = '';
         _stderrBuffer = '';
-
-        // Clear interrupt before each test case
-        if (_interruptBuf) _interruptBuf[0] = 0;
-
-        // Override builtins.input to read from test case input lines
-        const inputLines = (testCases[i].input || '').split('\n');
+        let globals;
+        let inputGlobals;
         try {
-            await pyodide.runPythonAsync(`
-import builtins as _b
-_judge_lines = ${JSON.stringify(inputLines)}
-_judge_idx = [0]
-_judge_orig_input = _b.input
-
-def _judge_input(prompt=""):
-    if _judge_idx[0] < len(_judge_lines):
-        val = _judge_lines[_judge_idx[0]]
-        _judge_idx[0] += 1
-        return val
-    return ""
-
-_b.input = _judge_input
-`);
-        } catch (e) {
-            results.push({
-                passed: false,
-                input: testCases[i].input || '',
-                expected: testCases[i].expected || '',
-                actual: '',
-                error: `Stdin setup failed: ${e.message || e}`,
-            });
-            continue;
-        }
-
-        // Execute the code
-        try {
-            await pyodide.runPythonAsync(python, { globals });
+            globals = _buildGlobals(pyodide, {}, apis || []);
+            _courserRuntime.begin(id, false);
+            // Keep this helper out of student globals and restore it even if
+            // Python execution fails or is stopped during the test case.
+            inputGlobals = pyodide.toPy({ lines: (testCase.input || '').split('\n') });
+            pyodide.runPython(`
+import builtins
+original_input = builtins.input
+line_iterator = iter(lines)
+def judge_input(prompt=""):
+    return next(line_iterator, "")
+builtins.input = judge_input
+`, { globals: inputGlobals });
+            const result = await _executePython(python, globals);
+            result?.destroy?.();
             const actual = _stdoutBuffer.trim();
-            const expected = (testCases[i].expected || '').trim();
-            results.push({
-                passed: actual === expected,
-                input: testCases[i].input || '',
-                expected: testCases[i].expected || '',
-                actual: actual,
-            });
+            const expected = (testCase.expected || '').trim();
+            results.push({ passed: actual === expected, input: testCase.input || '', expected: testCase.expected || '', actual });
         } catch (error) {
-            const message = error.message || String(error);
-            const isInterrupt = message.includes('KeyboardInterrupt');
-            if (isInterrupt) interrupted = true;
+            const normalized = normalizeRunError(error);
+            if (normalized.errorKind === 'internal') {
+                console.error('[pyodide-worker] Test execution failed:', error);
+                self.postMessage({ id, ...normalized, results });
+                return;
+            }
+            if (normalized.interrupted) interrupted = true;
             results.push({
-                passed: false,
-                input: testCases[i].input || '',
-                expected: testCases[i].expected || '',
-                actual: _stdoutBuffer.trim(),
-                error: isInterrupt ? 'Interrupted' : message,
-                interrupted: isInterrupt || undefined,
+                passed: false, input: testCase.input || '', expected: testCase.expected || '',
+                actual: _stdoutBuffer.trim(), error: normalized.interrupted ? 'Interrupted' : normalized.error,
+                errorKind: normalized.errorKind, interrupted: normalized.interrupted || undefined,
             });
+        } finally {
+            if (inputGlobals) {
+                // Reset the signal only after recording the interrupted result,
+                // otherwise restoring input would itself be interrupted.
+                if (_interruptBuf && interrupted) _interruptBuf[0] = 0;
+                try {
+                    pyodide.runPython('builtins.input = original_input', { globals: inputGlobals });
+                } finally {
+                    inputGlobals.destroy();
+                }
+            }
+            _courserRuntime.end();
+            globals?.destroy();
         }
-
-        // Restore original input between test cases
-        try {
-            await pyodide.runPythonAsync('_b.input = _judge_orig_input');
-        } catch (_) { /* ignore */ }
-
-        // Reset namespace for next test case (clear user globals)
-        try {
-            await _resetNamespace(pyodide);
-        } catch (_) { /* ignore */ }
     }
-
     self.postMessage({ id, results });
 }
 
@@ -351,11 +325,8 @@ _b.input = _judge_input
  *   - `apis`: list of API names → Python-callable wrapped handlers
  */
 function _buildGlobals(pyodide, context, apis) {
-    const PyDict = pyodide.globals.get('dict');
-
-    // Convert JS context object to Python dict
-    const entries = Object.entries(context).map(([k, v]) => [k, _jsToPython(pyodide, v)]);
-    const globals = PyDict(entries);
+    const globals = pyodide.toPy(context);
+    globals.set('__name__', '__main__');
 
     // Inject custom API functions
     for (const apiName of apis) {
@@ -368,23 +339,6 @@ function _buildGlobals(pyodide, context, apis) {
     }
 
     return globals;
-}
-
-/**
- * Recursively convert a JS value to a Python-compatible value via Pyodide FFI.
- */
-function _jsToPython(pyodide, value) {
-    if (value === null || value === undefined) return null;
-    if (Array.isArray(value)) {
-        return pyodide.globals.get('list')(value.map(v => _jsToPython(pyodide, v)));
-    }
-    if (typeof value === 'object') {
-        const PyDict = pyodide.globals.get('dict');
-        const entries = Object.entries(value).map(([k, v]) => [k, _jsToPython(pyodide, v)]);
-        return PyDict(entries);
-    }
-    // Primitives: numbers, strings, booleans pass through directly
-    return value;
 }
 
 /**
@@ -424,12 +378,10 @@ function _pyDictToObject(value) {
  * Runs in the same Pyodide instance to keep the runtime warm.
  */
 async function _resetNamespace(pyodide) {
-    // Gather names to delete (all non-builtin, non-dunder globals)
-    await pyodide.runPythonAsync(`
-import builtins as _b
-_keep = set(dir(_b)) | {'__builtins__', '__name__', '__doc__', '__package__'}
-for _k in list(globals().keys()):
-    if _k not in _keep and not _k.startswith('_pyodide'):
-        del globals()[_k]
+    _courserRuntime.end();
+    const result = pyodide.runPython(`
+(lambda namespace: [namespace.pop(name, None) for name in list(namespace)
+                    if not name.startswith('__') and not name.startswith('_pyodide')])(globals())
 `);
+    result.destroy();
 }

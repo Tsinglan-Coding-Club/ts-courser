@@ -1,8 +1,8 @@
 {# Tabs and content for episode type: quiz #}
 {% load course_filters %}
 
-<div class="card">
-    <div class="card-header">
+<div class="card quiz-workspace">
+    <div class="card-header quiz-workspace-tabs">
         <ul class="nav nav-tabs card-header-tabs" id="episodeTabs" role="tablist">
             <li class="nav-item" role="presentation">
                 <button class="nav-link active" id="info-tab" data-bs-toggle="tab" data-bs-target="#info" type="button" role="tab">
@@ -25,7 +25,7 @@
             {% endif %}
         </ul>
     </div>
-    <div class="card-body">
+    <div class="card-body quiz-workspace-body">
         <div class="tab-content" id="episodeTabContent">
             <!-- Quiz Tab (replaces old Info tab) -->
             <div class="tab-pane fade show active" id="info" role="tabpanel">
@@ -37,53 +37,57 @@
                         <small class="text-muted">Submitted {{ quiz_submission.submitted_at|date:"M d, Y H:i" }}</small>
                     </div>
                 {% elif current_episode.info_page_content %}
-                    {% autoescape off %}
-                    <textarea id="quiz-raw-data" style="display:none;">{{ current_episode.info_page_content|default_if_none:'' }}</textarea>
-                    {% endautoescape %}
+                    {{ quiz_questions|json_script:"quiz-raw-data" }}
                     {% if quiz_submission and quiz_submission.released_at and quiz_answers_json %}
                         <textarea id="quiz-submission-data" style="display:none;">{{ quiz_answers_json }}</textarea>
                     {% endif %}
-                    <div class="quiz-nav-bar">
-                        <button class="btn btn-outline-primary quiz-nav-btn" id="quiz-prev" disabled>
-                            <i class="bi bi-chevron-left"></i> Previous
-                        </button>
-                        <span class="quiz-progress" id="quiz-progress">Question 1 of 1</span>
-                        <button class="btn btn-outline-primary quiz-nav-btn" id="quiz-next">
-                            Next <i class="bi bi-chevron-right"></i>
-                        </button>
-                    </div>
-                    <div id="quiz-question-area"></div>
-                    <div class="quiz-nav-bar quiz-nav-bottom">
-                        <button class="btn btn-outline-primary quiz-nav-btn" id="quiz-prev-bottom" disabled>
-                            <i class="bi bi-chevron-left"></i> Previous
-                        </button>
-                        <span class="quiz-progress" id="quiz-progress-bottom">Question 1 of 1</span>
-                        <button class="btn btn-outline-primary quiz-nav-btn" id="quiz-next-bottom">
-                            Next <i class="bi bi-chevron-right"></i>
-                        </button>
+                    <div class="quiz-assessment">
+                        <div class="quiz-overview quiz-taking-chrome">
+                            <div class="quiz-overview-copy">
+                                <span class="quiz-overview-label">Question</span>
+                                <span class="quiz-progress" id="quiz-progress" aria-live="polite">1 of 1</span>
+                            </div>
+                            <div class="quiz-progress-track"
+                                 id="quiz-progress-track"
+                                 role="progressbar"
+                                 aria-label="Quiz progress"
+                                 aria-valuemin="1"
+                                 aria-valuemax="1"
+                                 aria-valuenow="1">
+                                <span class="quiz-progress-fill" id="quiz-progress-fill"></span>
+                            </div>
+                        </div>
+
+                        <div id="quiz-question-area"></div>
+
+                        <div class="quiz-action-bar quiz-taking-chrome">
+                            <button type="button" class="btn quiz-nav-btn" id="quiz-prev" aria-label="Previous question" disabled>
+                                <i class="bi bi-chevron-left" aria-hidden="true"></i>
+                                <span>Previous</span>
+                            </button>
+                            <div class="quiz-action-end">
+                                <button type="button" class="btn quiz-nav-btn" id="quiz-next" aria-label="Next question">
+                                    <span>Next</span>
+                                    <i class="bi bi-chevron-right" aria-hidden="true"></i>
+                                </button>
+                                {% if not quiz_submission %}
+                                    <button type="button" class="btn btn-primary quiz-submit-btn" id="quiz-submit-btn">
+                                        <i class="bi bi-send" aria-hidden="true"></i>
+                                        <span>Submit Answers</span>
+                                    </button>
+                                {% endif %}
+                            </div>
+                        </div>
+
+                        <div id="quiz-submit-status" class="quiz-submit-status" style="display:none;"></div>
                     </div>
 
-                    <!-- Submit / Status -->
-                    <div class="text-center mt-3">
-                        {% if quiz_submission %}
-                            {% if quiz_submission.released_at %}
-                                <div class="alert alert-success">
-                                    <i class="bi bi-check-circle-fill"></i>
-                                    Submitted and reviewed — results available.
-                                </div>
-                            {% else %}
-                                <div class="alert alert-info">
-                                    <i class="bi bi-hourglass-split"></i>
-                                    Submitted {{ quiz_submission.submitted_at|date:"M d, Y H:i" }} — awaiting review.
-                                </div>
-                            {% endif %}
-                        {% else %}
-                            <button type="button" class="btn btn-success btn-lg" id="quiz-submit-btn">
-                                <i class="bi bi-send"></i> Submit Answers
-                            </button>
-                            <div id="quiz-submit-status" class="mt-2" style="display:none;"></div>
-                        {% endif %}
-                    </div>
+                    {% if quiz_submission and quiz_submission.released_at %}
+                        <div class="quiz-result-status" role="status">
+                            <i class="bi bi-check-circle-fill" aria-hidden="true"></i>
+                            <span>Submitted and reviewed — results available.</span>
+                        </div>
+                    {% endif %}
                 {% else %}
                     <div class="alert alert-info">
                         <i class="bi bi-info-circle"></i> No quiz questions available for this episode.
@@ -138,60 +142,302 @@
 
 {% if current_episode.info_page_content %}
 <style>
-/* Quiz navigation bar */
-.quiz-nav-bar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0.75rem 0;
+/* A single bordered workspace replaces the former stack of nested cards. */
+.quiz-workspace {
+    overflow: hidden;
+    background: var(--bg-primary);
+    border-color: var(--border-color);
+    border-radius: 0.75rem;
 }
 
-.quiz-nav-bottom {
-    border-top: 1px solid var(--border-color);
-    margin-top: 1.5rem;
-    padding-top: 1rem;
+.quiz-workspace-tabs {
+    padding: 0 1rem;
+    background: var(--bg-secondary);
+    border-bottom-color: var(--border-color);
 }
 
-.quiz-nav-btn {
-    min-width: 110px;
-}
-
-.quiz-progress {
-    font-weight: 600;
-    font-size: 0.95rem;
+.quiz-workspace-tabs .nav-link {
+    padding: 0.8rem 1rem;
     color: var(--text-secondary);
 }
 
-/* Question card */
-.quiz-view-card {
-    border: 1px solid var(--border-color);
-    border-radius: 0.75rem;
+.quiz-workspace-tabs .nav-link.active {
+    color: var(--text-primary);
+    background: var(--bg-primary);
+    border-color: var(--border-color) var(--border-color) var(--bg-primary);
+    font-weight: 600;
+}
+
+.quiz-workspace-body {
+    padding: 0;
+    background: var(--bg-primary);
+}
+
+.quiz-assessment {
+    padding: 1.5rem clamp(1.25rem, 3vw, 2.5rem) 1.75rem;
+    container-type: inline-size;
+}
+
+.quiz-overview {
+    display: grid;
+    grid-template-columns: auto minmax(180px, 1fr);
+    align-items: center;
+    gap: 1.5rem;
+    padding-bottom: 1.15rem;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.quiz-overview-copy {
+    display: flex;
+    align-items: baseline;
+    gap: 0.45rem;
+    white-space: nowrap;
+}
+
+.quiz-overview-label {
+    color: var(--text-primary);
+    font-size: 0.95rem;
+    font-weight: 700;
+}
+
+.quiz-progress {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    font-weight: 500;
+}
+
+.quiz-progress-track {
+    height: 5px;
     overflow: hidden;
-    background: var(--bg-secondary);
+    background: var(--bg-tertiary);
+    border-radius: 999px;
+}
+
+.quiz-progress-fill {
+    display: block;
+    width: 0;
+    height: 100%;
+    background: var(--primary-color);
+    border-radius: inherit;
+    transition: width 0.2s ease;
+}
+
+.quiz-view-card {
+    background: transparent;
+}
+
+.quiz-view-card + .quiz-view-card {
+    margin-top: 0 !important;
+    padding-top: 1.75rem;
+    border-top: 1px solid var(--border-color);
+}
+
+.quiz-results-list .quiz-view-body {
+    min-height: 0;
+    padding-bottom: 1.75rem;
 }
 
 .quiz-view-header {
     display: flex;
     align-items: center;
     gap: 0.6rem;
-    padding: 0.75rem 1rem;
-    background: var(--bg-tertiary);
-    border-bottom: 1px solid var(--border-color);
+    padding: 2rem 0 0;
 }
 
 .quiz-view-type {
     font-size: 0.7rem;
     font-weight: 700;
-    padding: 0.15rem 0.5rem;
-    border-radius: 0.25rem;
+    padding: 0.2rem 0.55rem;
+    border-radius: 999px;
     text-transform: uppercase;
     letter-spacing: 0.05em;
 }
 
-.quiz-view-type-mcq { background: #d1fae5; color: #065f46; }
-.quiz-view-type-frq { background: #dbeafe; color: #1e40af; }
-.quiz-view-type-srt { background: #ede9fe; color: #5b21b6; }
-.quiz-view-type-mrq { background: #fef3c7; color: #92400e; }
+.quiz-view-type-mcq,
+.quiz-view-type-mrq,
+.quiz-view-type-frq,
+.quiz-view-type-srt,
+.quiz-view-type-cba {
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+    border: 1px solid var(--border-color);
+}
+
+/* Code block assembly */
+.quiz-cba-shell {
+    display: grid;
+    gap: 1rem;
+}
+
+.quiz-cba-workspace,
+.quiz-cba-bank {
+    overflow: hidden;
+    border: 1px solid var(--border-color);
+    border-radius: 0.75rem;
+    background: var(--bg-secondary);
+}
+
+.quiz-cba-section-label {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.7rem 0.9rem;
+    border-bottom: 1px solid var(--border-color);
+    color: var(--text-secondary);
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.quiz-cba-code {
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 0.65rem 0;
+    background: color-mix(in srgb, var(--bg-tertiary) 72%, transparent);
+    font: 0.9rem/1.8 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.quiz-cba-line {
+    display: grid;
+    grid-template-columns: 2.5rem minmax(max-content, 1fr);
+    width: max-content;
+    min-width: 100%;
+    min-height: 2.55rem;
+    padding-right: 0.8rem;
+}
+
+.quiz-cba-line-number {
+    padding: 0.32rem 0.65rem 0 0;
+    color: var(--text-muted);
+    text-align: right;
+    user-select: none;
+}
+
+.quiz-cba-line-slots {
+    display: flex;
+    align-items: center;
+    flex-wrap: nowrap;
+    gap: 0.38rem;
+    width: max-content;
+    min-width: 12rem;
+    padding: 0.28rem 0;
+    white-space: nowrap;
+}
+
+.quiz-cba-slot {
+    min-width: 3.4rem;
+    min-height: 2rem;
+    padding: 0.25rem;
+    border: 1px dashed color-mix(in srgb, var(--text-muted) 58%, transparent);
+    border-radius: 0.45rem;
+    background: color-mix(in srgb, var(--bg-primary) 72%, transparent);
+}
+
+.quiz-cba-slot.drag-over {
+    border-color: var(--primary-color);
+    background: var(--primary-pale);
+}
+
+.quiz-cba-slot.is-indent-slot {
+    width: max(2.5rem, calc(var(--cba-indent-columns, 1) * 1ch + 1ch + 0.4rem));
+    min-width: 0;
+    padding: 0;
+    border-radius: 0.3rem;
+}
+
+.quiz-cba-token {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    max-width: 100%;
+    min-height: 2rem;
+    padding: 0.28rem 0.62rem;
+    border: 1px solid color-mix(in srgb, var(--primary-color) 42%, var(--border-color));
+    border-radius: 0.45rem;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font: inherit;
+    white-space: pre;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+    cursor: grab;
+}
+
+.quiz-cba-token:hover {
+    border-color: var(--primary-color);
+    background: var(--primary-pale);
+}
+
+.quiz-cba-token.is-hint {
+    border-color: color-mix(in srgb, var(--info-color) 45%, var(--border-color));
+    background: color-mix(in srgb, var(--info-color) 10%, var(--bg-primary));
+    color: var(--text-secondary);
+    cursor: default;
+}
+
+.quiz-cba-token.is-indent {
+    width: max(2.5rem, calc(var(--cba-indent-columns, 1) * 1ch + 1ch + 0.4rem));
+    min-width: 0;
+    padding-inline: 0.2rem;
+    justify-content: flex-start;
+    border-style: dashed;
+    background-image: repeating-linear-gradient(
+        90deg,
+        transparent 0,
+        transparent calc(1ch - 1px),
+        color-mix(in srgb, var(--warning-color) 16%, transparent) calc(1ch - 1px),
+        color-mix(in srgb, var(--warning-color) 16%, transparent) 1ch
+    );
+    color: var(--warning-color);
+}
+
+.quiz-cba-token.has-leading-indent {
+    gap: 0.15rem;
+    padding-inline-start: 0.3rem;
+}
+
+.quiz-cba-indent-marker,
+.quiz-cba-fixed-indent {
+    display: inline-flex;
+    align-items: center;
+    width: calc(var(--cba-indent-columns, 1) * 1ch + 1ch);
+    min-width: max-content;
+    color: var(--warning-color);
+    font-size: 0.78rem;
+    line-height: 1;
+    letter-spacing: 0;
+    white-space: pre;
+}
+
+.quiz-cba-fixed-indent {
+    min-height: 2rem;
+    color: var(--text-secondary);
+    opacity: 0.82;
+}
+
+.quiz-cba-token.correct-reveal {
+    border-color: #22c55e;
+    background: rgba(34, 197, 94, 0.09);
+}
+
+.quiz-cba-token.wrong-reveal {
+    border-color: #ef4444;
+    background: rgba(239, 68, 68, 0.07);
+}
+
+.quiz-cba-bank-tokens {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.55rem;
+    min-height: 4.4rem;
+    padding: 0.9rem;
+}
+
+.quiz-cba-empty {
+    color: var(--text-muted);
+    font-size: 0.85rem;
+}
 
 .quiz-view-number {
     font-weight: 600;
@@ -200,18 +446,45 @@
     flex: 1;
 }
 
+.quiz-view-instruction {
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    font-weight: 500;
+}
+
 .quiz-view-body {
-    padding: 1.25rem;
+    min-height: 24rem;
+    padding: 1.15rem 0 2.25rem;
 }
 
 .quiz-view-question {
-    margin-bottom: 1.25rem;
+    box-sizing: border-box;
+    width: 100%;
+    max-width: none;
+    margin: 0 0 2rem;
+    padding: 0;
+    background: transparent;
     line-height: 1.7;
+    font-size: 1.05rem;
 }
 
+.quiz-view-question > :first-child { margin-top: 0; }
+.quiz-view-question > :last-child { margin-bottom: 0; }
+
+.quiz-view-question h1,
+.quiz-view-question h2,
+.quiz-view-question h3 {
+    margin: 0 0 1rem;
+    padding: 0;
+    border: 0;
+}
 .quiz-view-question h1 { font-size: 1.3rem; }
 .quiz-view-question h2 { font-size: 1.15rem; }
 .quiz-view-question h3 { font-size: 1.05rem; }
+.quiz-view-question img {
+    max-width: 100%;
+    height: auto;
+}
 .quiz-view-question pre {
     background: var(--bg-tertiary);
     padding: 0.75rem 1rem;
@@ -233,29 +506,59 @@
 .quiz-view-choices {
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
+    gap: 0.65rem;
+    width: 100%;
+    max-width: none;
+}
+
+.quiz-view-choices.quiz-choices-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: stretch;
+}
+
+.quiz-choices-grid.quiz-choices-odd .quiz-view-choice:last-child {
+    grid-column: 1 / -1;
+}
+
+.quiz-choices-compact .quiz-view-choice {
+    min-height: 4.25rem;
 }
 
 .quiz-view-choice {
     display: flex;
     align-items: center;
+    width: 100%;
     gap: 0.75rem;
-    padding: 0.7rem 1rem;
-    border: 1.5px solid var(--border-color);
+    padding: 0.85rem 1rem;
+    border: 1px solid var(--border-color);
     border-radius: 0.5rem;
+    background: var(--bg-primary);
+    color: var(--text-primary);
     cursor: pointer;
-    transition: border-color 0.15s, background-color 0.15s;
+    font: inherit;
+    text-align: left;
+    transition: border-color 0.15s, background-color 0.15s, box-shadow 0.15s;
     user-select: none;
+}
+
+.quiz-view-choice:focus-visible,
+.quiz-nav-btn:focus-visible,
+.quiz-submit-btn:focus-visible {
+    outline: 2px solid var(--primary-color);
+    outline-offset: 2px;
+    box-shadow: none;
 }
 
 .quiz-view-choice:hover {
     border-color: var(--primary-color);
-    background: rgba(var(--primary-rgb, 13, 110, 253), 0.03);
+    background: var(--primary-pale);
 }
 
 .quiz-view-choice.selected {
     border-color: var(--primary-color);
-    background: rgba(var(--primary-rgb, 13, 110, 253), 0.08);
+    background: var(--primary-pale);
+    box-shadow: inset 3px 0 0 var(--primary-color);
 }
 
 .quiz-view-choice.correct-reveal {
@@ -314,7 +617,9 @@
 
 .quiz-view-choice-text {
     flex: 1;
+    min-width: 0;
     line-height: 1.5;
+    overflow-wrap: anywhere;
 }
 
 .quiz-view-choice-letter {
@@ -371,6 +676,38 @@
     flex-shrink: 0;
     margin-right: 0.5rem;
 }
+.quiz-view-srt-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    margin-left: auto;
+}
+.quiz-srt-move {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    padding: 0;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 0.35rem;
+    color: var(--text-secondary);
+}
+.quiz-srt-move:hover:not(:disabled) {
+    border-color: var(--primary-color);
+    color: var(--primary-color);
+}
+.quiz-srt-move:focus-visible {
+    outline: 2px solid var(--primary-color);
+    outline-offset: 2px;
+}
+.quiz-srt-move:disabled {
+    opacity: 1;
+    background: var(--bg-tertiary);
+    border-color: transparent;
+    color: var(--text-muted);
+}
 .quiz-choice-dragging {
     opacity: 0.4;
 }
@@ -378,14 +715,168 @@
     outline: 2px dashed var(--primary-color);
     outline-offset: -2px;
 }
+
+.quiz-action-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding-top: 1.25rem;
+    border-top: 1px solid var(--border-color);
+}
+
+.quiz-action-end {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.quiz-nav-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.35rem;
+    min-width: 108px;
+    min-height: 42px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
+.quiz-nav-btn:hover:not(:disabled) {
+    background: var(--bg-secondary);
+    border-color: var(--text-secondary);
+    color: var(--text-primary);
+}
+
+.quiz-nav-btn:disabled,
+.quiz-nav-btn.disabled {
+    opacity: 1;
+    background: var(--bg-tertiary);
+    border-color: transparent;
+    color: var(--text-muted);
+    cursor: not-allowed;
+    box-shadow: none;
+}
+
+.quiz-submit-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.45rem;
+    min-height: 42px;
+    padding-inline: 1.1rem;
+    font-weight: 600;
+}
+
+.quiz-submit-status {
+    margin-top: 0.75rem;
+    text-align: right;
+}
+
+.quiz-result-status {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 1.25rem clamp(1.25rem, 3vw, 2.5rem) 1.5rem;
+    padding: 0.8rem 1rem;
+    background: rgba(34, 197, 94, 0.08);
+    border: 1px solid rgba(34, 197, 94, 0.3);
+    border-radius: 0.5rem;
+    color: var(--text-primary);
+}
+
+.quiz-result-status .bi {
+    color: var(--success-color);
+}
+
+@container (max-width: 720px) {
+    .quiz-view-choices.quiz-choices-grid {
+        display: flex;
+    }
+
+    .quiz-choices-grid.quiz-choices-odd .quiz-view-choice:last-child {
+        grid-column: auto;
+    }
+}
+
+@media (max-width: 767.98px) {
+    .quiz-assessment {
+        padding: 1.1rem 1rem 1.25rem;
+    }
+
+    .quiz-overview {
+        grid-template-columns: 1fr;
+        gap: 0.7rem;
+    }
+
+    .quiz-view-header {
+        padding-top: 1.4rem;
+    }
+
+    .quiz-view-body {
+        min-height: 18rem;
+        padding-bottom: 1.5rem;
+    }
+
+    .quiz-view-question {
+        margin-bottom: 1.35rem;
+    }
+
+    .quiz-cba-line {
+        grid-template-columns: 2rem minmax(max-content, 1fr);
+    }
+
+    .quiz-action-bar {
+        align-items: stretch;
+    }
+
+    .quiz-action-end {
+        flex: 1;
+        justify-content: flex-end;
+    }
+
+    .quiz-nav-btn {
+        min-width: 44px;
+    }
+
+    .quiz-nav-btn span {
+        display: none;
+    }
+}
+
+@media (max-width: 430px) {
+    .quiz-action-bar,
+    .quiz-action-end {
+        display: grid;
+        grid-template-columns: 44px 44px minmax(0, 1fr);
+        gap: 0.5rem;
+    }
+
+    .quiz-action-end {
+        display: contents;
+    }
+
+    .quiz-submit-btn {
+        min-width: 0;
+        padding-inline: 0.75rem;
+    }
+}
 </style>
 
 <script>
 (function() {
     var rawEl = document.getElementById('quiz-raw-data');
     if (!rawEl) return;
-    var markdown = rawEl.value;
-    if (!markdown || !markdown.trim()) return;
+    var questions;
+    try {
+        questions = JSON.parse(rawEl.textContent);
+    } catch (error) {
+        console.error('Unable to read quiz source:', error);
+        return;
+    }
+    if (!Array.isArray(questions) || questions.length === 0) return;
 
     function initWhenReady() {
         if (typeof marked === 'undefined') {
@@ -393,25 +884,22 @@
             return;
         }
 
-        console.log('=== Quiz Debug ===');
-        console.log('markdown first 200:', markdown.substring(0, 200));
-
-        var questions = parseQuiz(markdown);
-        if (questions.length === 0) return;
 
         var currentIndex = 0;
         var answers = {};
         var questionArea = document.getElementById('quiz-question-area');
 
-        // Initialize answers for MRQ/SRT to empty arrays (prevent contamination)
+        // Initialize collection-based answers (prevent cross-question contamination).
         for (var qi = 0; qi < questions.length; qi++) {
             var qt = questions[qi].type;
             if (qt === 'mrq' || qt === 'srt') {
                 answers[qi] = [];
+            } else if (qt === 'cba') {
+                answers[qi] = questions[qi].lines.map(function() { return []; });
             }
         }
 
-        // Expose globally for header submit button
+        // Expose quiz state for the shared submit routine.
         window.__quizAnswers = answers;
         window.__quizQuestions = questions;
         window.__quizRequireAll = {% if quiz_require_all %}true{% else %}false{% endif %};
@@ -419,7 +907,7 @@
         window.__quizSubmitUrl = '{% url "progress:submit_quiz" %}';
         window.__quizCsrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
 
-        // Shared submit function used by both the tab button and header button
+        // Shared submit function used by the workspace submit button.
         window.submitQuiz = async function(submitBtn) {
             var qs = window.__quizQuestions;
             var ans = window.__quizAnswers;
@@ -432,6 +920,7 @@
                     var a = ans[qi];
                     if (qt === 'mcq' && a === undefined) unanswered.push(qi + 1);
                     else if ((qt === 'mrq' || qt === 'srt') && (!a || !Array.isArray(a) || a.length === 0)) unanswered.push(qi + 1);
+                    else if (qt === 'cba' && !isCBAComplete(qs[qi], a)) unanswered.push(qi + 1);
                     else if (qt === 'frq' && (!a || !a.trim())) unanswered.push(qi + 1);
                 }
                 if (unanswered.length > 0) {
@@ -453,6 +942,10 @@
                     entry.text = ans[qi] || '';
                 } else if (q.type === 'srt') {
                     entry.selectedIds = (ans[qi] || []).slice();
+                } else if (q.type === 'cba') {
+                    entry.tokenIds = (ans[qi] || []).map(function(line) {
+                        return Array.isArray(line) ? line.slice() : [];
+                    });
                 }
                 payload.push(entry);
             }
@@ -493,12 +986,11 @@
                 'correctIdxs=' + questions[di].choices.map(function(c,j){return c.isCorrect?j:-1;}).filter(function(x){return x>=0;}));
         }
         console.log('[QUIZ DEBUG] init: initial answers =', JSON.parse(JSON.stringify(answers)));
-        var prevBtnTop = document.getElementById('quiz-prev');
-        var nextBtnTop = document.getElementById('quiz-next');
-        var prevBtnBot = document.getElementById('quiz-prev-bottom');
-        var nextBtnBot = document.getElementById('quiz-next-bottom');
-        var progressTop = document.getElementById('quiz-progress');
-        var progressBot = document.getElementById('quiz-progress-bottom');
+        var prevBtn = document.getElementById('quiz-prev');
+        var nextBtn = document.getElementById('quiz-next');
+        var progressText = document.getElementById('quiz-progress');
+        var progressTrack = document.getElementById('quiz-progress-track');
+        var progressFill = document.getElementById('quiz-progress-fill');
 
         function escapeHTML(str) {
             var div = document.createElement('div');
@@ -506,32 +998,293 @@
             return div.innerHTML;
         }
 
-        function updateNav() {
-            var total = questions.length;
-            var txt = 'Question ' + (currentIndex + 1) + ' of ' + total;
-            if (progressTop) progressTop.textContent = txt;
-            if (progressBot) progressBot.textContent = txt;
-            if (prevBtnTop) prevBtnTop.disabled = currentIndex === 0;
-            if (prevBtnBot) prevBtnBot.disabled = currentIndex === 0;
-            if (nextBtnTop) nextBtnTop.disabled = currentIndex >= total - 1;
-            if (nextBtnBot) nextBtnBot.disabled = currentIndex >= total - 1;
+        function escapeAttribute(str) {
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
         }
 
-        function renderQuestion() {
+        function sanitizeMarkedHTML(html) {
+            var template = document.createElement('template');
+            template.innerHTML = String(html || '');
+            template.content.querySelectorAll(
+                'script,style,iframe,object,embed,form,meta,link,base'
+            ).forEach(function(element) { element.remove(); });
+            template.content.querySelectorAll('*').forEach(function(element) {
+                Array.from(element.attributes).forEach(function(attribute) {
+                    var name = attribute.name.toLowerCase();
+                    var value = attribute.value.trim();
+                    if (/^on/.test(name) || name === 'srcdoc') {
+                        element.removeAttribute(attribute.name);
+                    } else if (
+                        (name === 'href' || name === 'src' || name === 'xlink:href')
+                        && /^(?:javascript|data\s*:\s*text\/html)/i.test(value.replace(/\s+/g, ''))
+                    ) {
+                        element.removeAttribute(attribute.name);
+                    }
+                });
+            });
+            return template.innerHTML;
+        }
+
+        function renderQuestionMarkdown(markdownText) {
+            return sanitizeMarkedHTML(marked.parse(markdownText || ''));
+        }
+
+        function cbaMovableIds(q) {
+            return q.choices.filter(function(choice) { return !choice.hint; })
+                .map(function(choice) { return choice.id; });
+        }
+
+        function flattenTokenLines(lines) {
+            if (!Array.isArray(lines)) return [];
+            return lines.reduce(function(all, line) {
+                return all.concat(Array.isArray(line) ? line : []);
+            }, []);
+        }
+
+        function isCBAComplete(q, lines) {
+            var required = cbaMovableIds(q);
+            var placed = flattenTokenLines(lines);
+            if (placed.length !== required.length || new Set(placed).size !== placed.length) return false;
+            return required.every(function(id) { return placed.indexOf(id) !== -1; });
+        }
+
+        function cbaTokenLabel(choice) {
+            if (!choice) return '';
+            if (choice.kind === 'indent') return 'Indentation';
+            return choice.text.replace(/^\s+|\s+$/g, '') || '␠';
+        }
+
+        function cbaIndentColumns(choice) {
+            if (!choice) return 0;
+            var indentationText = choice.kind === 'indent' ? choice.text : choice.leadingIndent;
+            return Array.from(indentationText || '').reduce(function(total, character) {
+                return total + (character === '\t' ? 4 : 1);
+            }, 0);
+        }
+
+        function cbaIndentStyle(choice) {
+            return '--cba-indent-columns:' + Math.max(1, cbaIndentColumns(choice));
+        }
+
+        function cbaIndentMarker(choice) {
+            return '-'.repeat(Math.max(1, cbaIndentColumns(choice))) + '|';
+        }
+
+        function cbaTokenContent(choice) {
+            if (choice && choice.kind === 'indent') {
+                return '<span class="quiz-cba-indent-marker" aria-hidden="true">' + escapeHTML(cbaIndentMarker(choice)) + '</span>';
+            }
+            if (choice && choice.leadingIndent) {
+                return '<span class="quiz-cba-indent-marker" aria-hidden="true">' + escapeHTML(cbaIndentMarker(choice)) + '</span>' +
+                    '<span>' + escapeHTML(cbaTokenLabel(choice)) + '</span>';
+            }
+            return escapeHTML(cbaTokenLabel(choice));
+        }
+
+        function cbaTokenLayoutClass(choice) {
+            if (!choice) return '';
+            if (choice.kind === 'indent') return ' is-indent';
+            if (choice.leadingIndent) return ' has-leading-indent';
+            return '';
+        }
+
+        function cbaTokenLayoutAttributes(choice) {
+            if (!choice || (!choice.leadingIndent && choice.kind !== 'indent')) return '';
+            var label = choice.kind === 'indent' ? 'Indentation' : 'Code token with leading indentation';
+            return ' style="' + cbaIndentStyle(choice) + '" aria-label="' + label + '"';
+        }
+
+        function cbaChoiceMap(q) {
+            var map = {};
+            q.choices.forEach(function(choice) { map[choice.id] = choice; });
+            return map;
+        }
+
+        function getChoiceLayoutClass(choices) {
+            var texts = choices.map(function(choice) {
+                return String(choice.text || '').trim();
+            });
+            var count = texts.length;
+            var longest = 0;
+            var total = 0;
+            var hasMultiline = false;
+
+            for (var i = 0; i < texts.length; i++) {
+                var length = Array.from(texts[i]).length;
+                longest = Math.max(longest, length);
+                total += length;
+                if (/\r|\n/.test(texts[i])) hasMultiline = true;
+            }
+
+            if (hasMultiline || longest > 48 || (count && total / count > 32)) {
+                return 'quiz-choices-stack';
+            }
+
+            if (count >= 2 && count <= 6) {
+                var layout = 'quiz-choices-grid';
+                if (longest <= 24 && (count === 4 || total / count <= 18)) {
+                    layout += ' quiz-choices-compact';
+                }
+                if (count % 2 === 1) layout += ' quiz-choices-odd';
+                return layout;
+            }
+
+            return 'quiz-choices-stack';
+        }
+
+        function updateNav() {
+            var total = questions.length;
+            var current = currentIndex + 1;
+            if (progressText) progressText.textContent = current + ' of ' + total;
+            if (progressTrack) {
+                progressTrack.setAttribute('aria-valuemax', total);
+                progressTrack.setAttribute('aria-valuenow', current);
+            }
+            if (progressFill) progressFill.style.width = ((current / total) * 100) + '%';
+            if (prevBtn) prevBtn.disabled = currentIndex === 0;
+            if (nextBtn) nextBtn.disabled = currentIndex >= total - 1;
+        }
+
+        function cbaLineCapacity(q, lineIndex) {
+            return q.lines[lineIndex].choices.filter(function(choice) { return !choice.hint; }).length;
+        }
+
+        function removeCBAToken(lines, tokenId) {
+            for (var lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+                var position = lines[lineIndex].indexOf(tokenId);
+                if (position !== -1) lines[lineIndex].splice(position, 1);
+            }
+        }
+
+        function placeCBAToken(q, lines, tokenId, lineIndex, position) {
+            removeCBAToken(lines, tokenId);
+            var line = lines[lineIndex];
+            var capacity = cbaLineCapacity(q, lineIndex);
+            position = Math.max(0, Math.min(position, line.length));
+            if (line.length >= capacity && position < line.length) line.splice(position, 1, tokenId);
+            else if (line.length < capacity) line.splice(position, 0, tokenId);
+        }
+
+        function renderCBAWorkspace(q, tokenLines, resultsMode) {
+            var choiceMap = cbaChoiceMap(q);
+            var placedIds = flattenTokenLines(tokenLines);
+            var html = '<div class="quiz-cba-shell">';
+            html += '<section class="quiz-cba-workspace"><div class="quiz-cba-section-label"><span><i class="bi bi-code-square"></i> Code workspace</span><span>' + escapeHTML(q.language || 'code') + '</span></div>';
+            html += '<div class="quiz-cba-code" role="group" aria-label="Code assembly workspace">';
+            for (var li = 0; li < q.lines.length; li++) {
+                var line = q.lines[li];
+                var submittedLine = Array.isArray(tokenLines[li]) ? tokenLines[li] : [];
+                var movablePosition = 0;
+                html += '<div class="quiz-cba-line"><span class="quiz-cba-line-number">' + (li + 1) + '</span><div class="quiz-cba-line-slots" data-cba-line="' + li + '">';
+                for (var ei = 0; ei < line.choices.length; ei++) {
+                    var expected = line.choices[ei];
+                    if (expected.hint) {
+                        if (expected.kind === 'indent') {
+                            html += '<span class="quiz-cba-fixed-indent" style="' + cbaIndentStyle(expected) + '" aria-label="Indentation provided as a hint">' + escapeHTML(cbaIndentMarker(expected)) + '</span>';
+                        } else {
+                            html += '<span class="quiz-cba-token is-hint' + cbaTokenLayoutClass(expected) + '"' + cbaTokenLayoutAttributes(expected) + ' title="Provided hint">' + cbaTokenContent(expected) + '</span>';
+                        }
+                        continue;
+                    }
+                    var actualId = submittedLine[movablePosition];
+                    var actual = choiceMap[actualId];
+                    var resultClass = resultsMode && actual ? (cbaTokensEquivalent(actual, expected) ? ' correct-reveal' : ' wrong-reveal') : '';
+                    var indentSlotClass = expected.kind === 'indent' ? ' is-indent-slot' : '';
+                    var indentSlotStyle = expected.kind === 'indent' ? ' style="' + cbaIndentStyle(expected) + '"' : '';
+                    html += '<span class="quiz-cba-slot' + indentSlotClass + resultClass + '" data-cba-line="' + li + '" data-cba-position="' + movablePosition + '"' + indentSlotStyle + '>';
+                    if (actual) {
+                        var actualLayoutAttributes = cbaTokenLayoutAttributes(actual);
+                        var actualTitle = actual.kind === 'indent' ? ' title="Indent this code line"' : '';
+                        html += '<button type="button" class="quiz-cba-token' + cbaTokenLayoutClass(actual) + resultClass + '" data-token-id="' + escapeAttribute(actual.id) + '" data-placed="true"' + actualLayoutAttributes + actualTitle + (resultsMode ? ' disabled' : ' draggable="true"') + '>' + cbaTokenContent(actual) + '</button>';
+                    }
+                    html += '</span>';
+                    movablePosition++;
+                }
+                html += '</div></div>';
+            }
+            html += '</div></section>';
+            if (!resultsMode) {
+                var bank = q.choices.filter(function(choice) {
+                    return !choice.hint && placedIds.indexOf(choice.id) === -1;
+                }).reverse();
+                html += '<section class="quiz-cba-bank"><div class="quiz-cba-section-label"><span><i class="bi bi-grid-3x3-gap"></i> Token bank</span><span>Click or drag</span></div><div class="quiz-cba-bank-tokens" data-cba-bank="true">';
+                if (!bank.length) html += '<span class="quiz-cba-empty">All tokens are in the workspace.</span>';
+                bank.forEach(function(choice) {
+                    var layoutAttributes = cbaTokenLayoutAttributes(choice);
+                    var tokenTitle = choice.kind === 'indent' ? ' title="Indent this code line"' : '';
+                    html += '<button type="button" class="quiz-cba-token' + cbaTokenLayoutClass(choice) + '" data-token-id="' + escapeAttribute(choice.id) + '" data-placed="false" draggable="true"' + layoutAttributes + tokenTitle + '>' + cbaTokenContent(choice) + '</button>';
+                });
+                html += '</div></section>';
+            }
+            html += '</div>';
+            return html;
+        }
+
+        function bindCBAInteractions(q) {
+            var lines = answers[currentIndex];
+            var tokens = questionArea.querySelectorAll('.quiz-cba-token[data-token-id]');
+            tokens.forEach(function(token) {
+                token.addEventListener('click', function() {
+                    var tokenId = this.dataset.tokenId;
+                    if (this.dataset.placed === 'true') {
+                        removeCBAToken(lines, tokenId);
+                    } else {
+                        for (var li = 0; li < q.lines.length; li++) {
+                            if (lines[li].length < cbaLineCapacity(q, li)) {
+                                lines[li].push(tokenId);
+                                break;
+                            }
+                        }
+                    }
+                    renderQuestion();
+                });
+                token.addEventListener('dragstart', function(event) {
+                    event.dataTransfer.setData('text/plain', this.dataset.tokenId);
+                    event.dataTransfer.effectAllowed = 'move';
+                });
+            });
+            var slots = questionArea.querySelectorAll('.quiz-cba-slot');
+            slots.forEach(function(slot) {
+                slot.addEventListener('dragover', function(event) {
+                    event.preventDefault();
+                    this.classList.add('drag-over');
+                });
+                slot.addEventListener('dragleave', function() { this.classList.remove('drag-over'); });
+                slot.addEventListener('drop', function(event) {
+                    event.preventDefault();
+                    this.classList.remove('drag-over');
+                    placeCBAToken(q, lines, event.dataTransfer.getData('text/plain'), parseInt(this.dataset.cbaLine, 10), parseInt(this.dataset.cbaPosition, 10));
+                    renderQuestion();
+                });
+            });
+        }
+
+        function renderQuestion(focusChoiceIndex, focusDirection) {
             var q = questions[currentIndex];
             if (!q) return;
             var isMrq = q.type === 'mrq';
             var isSrt = q.type === 'srt';
-            var typeLabel = q.type === 'mrq' ? 'MRQ' : (q.type === 'srt' ? 'SRT' : (q.type === 'mcq' ? 'MCQ' : 'FRQ'));
-            var typeCSS = 'quiz-view-type-' + (q.type === 'frq' ? 'frq' : (q.type === 'srt' ? 'srt' : 'mcq'));
+            var typeLabel = q.type === 'cba' ? 'CODE' : (q.type === 'mrq' ? 'MRQ' : (q.type === 'srt' ? 'SRT' : (q.type === 'mcq' ? 'MCQ' : 'FRQ')));
+            var typeCSS = 'quiz-view-type-' + q.type;
+            var instruction = q.type === 'mrq' ? 'Select all that apply' :
+                (q.type === 'srt' ? 'Drag or use the arrow controls to arrange' :
+                (q.type === 'cba' ? 'Build the program one line at a time' :
+                (q.type === 'mcq' ? 'Select one answer' : 'Write your answer')));
             var html = '<div class="quiz-view-card">';
             html += '<div class="quiz-view-header">';
             html += '<span class="quiz-view-type ' + typeCSS + '">' + typeLabel + '</span>';
-            html += '<span class="quiz-view-number">Question ' + (currentIndex + 1) + ' of ' + questions.length + '</span>';
+            html += '<span class="quiz-view-instruction">' + instruction + '</span>';
             html += '</div><div class="quiz-view-body">';
-            html += '<div class="quiz-view-question markdown-body">' + marked.parse(q.question) + '</div>';
+            html += '<div class="quiz-view-question markdown-body">' + renderQuestionMarkdown(q.question) + '</div>';
 
-            if (q.type === 'srt') {
+            if (q.type === 'cba') {
+                html += renderCBAWorkspace(q, answers[currentIndex], false);
+            } else if (q.type === 'srt') {
                 // Sorting question: draggable items in display order (no correct answer revealed)
                 // Get student's current ordering, or use initial order
                 var order = answers[currentIndex];
@@ -541,19 +1294,24 @@
                     for (var ci2 = 0; ci2 < q.choices.length; ci2++) order.push(ci2);
                     answers[currentIndex] = order;
                 }
-                html += '<div class="quiz-view-choices" id="quiz-srt-area">';
+                html += '<div class="quiz-view-choices" id="quiz-srt-area" role="list">';
                 for (var oi = 0; oi < order.length; oi++) {
                     var ci = order[oi];
                     var choice = q.choices[ci];
-                    html += '<div class="quiz-view-choice quiz-view-srt-choice" data-choice-index="' + ci + '" draggable="true">';
-                    html += '<span class="quiz-view-srt-drag"><i class="bi bi-grip-vertical"></i></span>';
+                    var choiceText = choice.text || '(empty)';
+                    html += '<div class="quiz-view-choice quiz-view-srt-choice" data-choice-index="' + ci + '" draggable="true" tabindex="0" role="listitem" aria-label="Position ' + (oi + 1) + ': ' + escapeAttribute(choiceText) + '">';
+                    html += '<span class="quiz-view-srt-drag" aria-hidden="true"><i class="bi bi-grip-vertical"></i></span>';
                     html += '<span class="quiz-view-srt-num">' + (oi + 1) + '</span>';
-                    html += '<span class="quiz-view-choice-text">' + escapeHTML(choice.text || '(empty)') + '</span>';
+                    html += '<span class="quiz-view-choice-text">' + escapeHTML(choiceText) + '</span>';
+                    html += '<span class="quiz-view-srt-actions">';
+                    html += '<button type="button" class="quiz-srt-move" data-direction="-1" aria-label="Move ' + escapeAttribute(choiceText) + ' up"' + (oi === 0 ? ' disabled' : '') + '><i class="bi bi-arrow-up" aria-hidden="true"></i></button>';
+                    html += '<button type="button" class="quiz-srt-move" data-direction="1" aria-label="Move ' + escapeAttribute(choiceText) + ' down"' + (oi === order.length - 1 ? ' disabled' : '') + '><i class="bi bi-arrow-down" aria-hidden="true"></i></button>';
+                    html += '</span>';
                     html += '</div>';
                 }
                 html += '</div>';
             } else if (q.type === 'mcq' || q.type === 'mrq') {
-                html += '<div class="quiz-view-choices">';
+                html += '<div class="quiz-view-choices ' + getChoiceLayoutClass(q.choices) + '">';
                 var letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
                 var selectedSet = null;
                 if (isMrq) {
@@ -569,14 +1327,14 @@
                     } else {
                         sel = (answers[currentIndex] === ci) ? ' selected' : '';
                     }
-                    html += '<div class="quiz-view-choice' + sel + '" data-choice-index="' + ci + '">';
+                    html += '<button type="button" class="quiz-view-choice' + sel + '" data-choice-index="' + ci + '" aria-pressed="' + (sel ? 'true' : 'false') + '">';
                     if (isMrq) {
-                        html += '<div class="quiz-view-choice-checkbox">' + (selectedSet.indexOf(ci) !== -1 ? '<i class="bi bi-check-square-fill"></i>' : '<i class="bi bi-square"></i>') + '</div>';
+                        html += '<span class="quiz-view-choice-checkbox" aria-hidden="true">' + (selectedSet.indexOf(ci) !== -1 ? '<i class="bi bi-check-square-fill"></i>' : '<i class="bi bi-square"></i>') + '</span>';
                     } else {
-                        html += '<div class="quiz-view-choice-radio"></div>';
+                        html += '<span class="quiz-view-choice-radio" aria-hidden="true"></span>';
                     }
                     html += '<span class="quiz-view-choice-text"><span class="quiz-view-choice-letter">' + (letters[ci] || '') + '.</span> ' + escapeHTML(choice.text) + '</span>';
-                    html += '</div>';
+                    html += '</button>';
                 }
                 html += '</div>';
             } else {
@@ -585,7 +1343,9 @@
             html += '</div></div>';
             questionArea.innerHTML = html;
 
-            if (q.type === 'srt') {
+            if (q.type === 'cba') {
+                bindCBAInteractions(q);
+            } else if (q.type === 'srt') {
                 // Drag-and-drop reordering for sorting question
                 var srtItems = questionArea.querySelectorAll('.quiz-view-srt-choice');
                 for (var si = 0; si < srtItems.length; si++) {
@@ -623,7 +1383,25 @@
                         order.splice(fromPos, 1);
                         order.splice(toPos, 0, fromIdx);
                         answers[currentIndex] = order;
-                        renderQuestion();
+                        renderQuestion(fromIdx);
+                    });
+                }
+
+                var moveButtons = questionArea.querySelectorAll('.quiz-srt-move');
+                for (var mi = 0; mi < moveButtons.length; mi++) {
+                    moveButtons[mi].addEventListener('click', function(e) {
+                        e.stopPropagation();
+                        var item = this.closest('.quiz-view-srt-choice');
+                        var choiceIdx = parseInt(item.dataset.choiceIndex);
+                        var direction = parseInt(this.dataset.direction);
+                        var currentOrder = answers[currentIndex];
+                        var currentPos = currentOrder.indexOf(choiceIdx);
+                        var nextPos = currentPos + direction;
+                        if (currentPos === -1 || nextPos < 0 || nextPos >= currentOrder.length) return;
+                        currentOrder.splice(currentPos, 1);
+                        currentOrder.splice(nextPos, 0, choiceIdx);
+                        answers[currentIndex] = currentOrder;
+                        renderQuestion(choiceIdx, direction);
                     });
                 }
             } else if (q.type === 'mcq' || q.type === 'mrq') {
@@ -643,7 +1421,7 @@
                             if (answers[currentIndex] === ci) delete answers[currentIndex];
                             else answers[currentIndex] = ci;
                         }
-                        renderQuestion();
+                        renderQuestion(ci);
                     });
                 }
             } else {
@@ -651,6 +1429,19 @@
                 if (ta) ta.addEventListener('input', function() { answers[currentIndex] = this.value; });
             }
             updateNav();
+            if (focusChoiceIndex !== undefined && focusChoiceIndex !== null) {
+                var focusSelector = '.quiz-view-choice[data-choice-index="' + focusChoiceIndex + '"]';
+                if (focusDirection) {
+                    focusSelector += ' .quiz-srt-move[data-direction="' + focusDirection + '"]';
+                }
+                var focusTarget = questionArea.querySelector(focusSelector);
+                if (focusTarget && !focusTarget.disabled) {
+                    focusTarget.focus();
+                } else {
+                    var focusItem = questionArea.querySelector('.quiz-view-choice[data-choice-index="' + focusChoiceIndex + '"]');
+                    if (focusItem) focusItem.focus();
+                }
+            }
         }
 
         function goTo(idx) {
@@ -659,15 +1450,13 @@
             renderQuestion();
         }
 
-        if (prevBtnTop) prevBtnTop.addEventListener('click', function() { goTo(currentIndex - 1); });
-        if (nextBtnTop) nextBtnTop.addEventListener('click', function() { goTo(currentIndex + 1); });
-        if (prevBtnBot) prevBtnBot.addEventListener('click', function() { goTo(currentIndex - 1); });
-        if (nextBtnBot) nextBtnBot.addEventListener('click', function() { goTo(currentIndex + 1); });
+        if (prevBtn) prevBtn.addEventListener('click', function() { goTo(currentIndex - 1); });
+        if (nextBtn) nextBtn.addEventListener('click', function() { goTo(currentIndex + 1); });
 
         document.addEventListener('keydown', function(e) {
             var quizTab = document.getElementById('info');
             if (!quizTab || !quizTab.classList.contains('show')) return;
-            if (e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT') return;
+            if (e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT' || e.target.tagName === 'BUTTON') return;
             if (e.key === 'ArrowLeft') { e.preventDefault(); goTo(currentIndex - 1); }
             if (e.key === 'ArrowRight') { e.preventDefault(); goTo(currentIndex + 1); }
         });
@@ -686,10 +1475,10 @@
             try {
                 var subData = JSON.parse(submissionDataEl.value);
                 var subAnswers = subData.questions || [];
-                console.log('[QUIZ DEBUG] results-load: parsed submission answers =', JSON.stringify(subAnswers));
-                // Hide navigation
-                var quizNavBars = document.querySelectorAll('.quiz-nav-bar');
-                for (var nbi = 0; nbi < quizNavBars.length; nbi++) quizNavBars[nbi].style.display = 'none';
+                // Results are presented as one continuous review, without taking controls.
+                var takingChrome = document.querySelectorAll('.quiz-taking-chrome');
+                for (var nbi = 0; nbi < takingChrome.length; nbi++) takingChrome[nbi].style.display = 'none';
+                questionArea.classList.add('quiz-results-list');
                 // Render all questions
                 var html = '';
                 var letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
@@ -700,11 +1489,13 @@
                     var typeLabel = q.type.toUpperCase();
                     html += '<div class="quiz-view-card" style="margin-bottom:1.5rem;">';
                     html += '<div class="quiz-view-header">';
-                    html += '<span class="quiz-view-type quiz-view-type-' + (q.type === 'frq' ? 'frq' : 'mcq') + '">' + typeLabel + '</span>';
+                    html += '<span class="quiz-view-type quiz-view-type-' + q.type + '">' + typeLabel + '</span>';
                     html += '<span class="quiz-view-number">Question ' + (qi + 1) + '</span>';
                     var isAnswered = (q.type === 'mcq' && sa.selectedIndex !== undefined)
                                   || (q.type === 'mrq' && (sa.selectedIds || []).length > 0)
-                                  || (q.type === 'srt' && (sa.selectedIds || []).length > 0);
+                                  || (q.type === 'srt' && (sa.selectedIds || []).length > 0)
+                                  || (q.type === 'cba' && isCBAComplete(q, sa.tokenIds))
+                                  || (q.type === 'frq' && sa.text && sa.text.trim());
                     if (q.type === 'mcq') {
                         isCorrect = isAnswered && q.choices[sa.selectedIndex] && q.choices[sa.selectedIndex].isCorrect;
                     } else if (q.type === 'mrq') {
@@ -715,18 +1506,25 @@
                     } else if (q.type === 'srt') {
                         var sids2 = sa.selectedIds || [];
                         var correct2 = [];
-                        for (var ci2 = 0; ci2 < q.choices.length; ci2++) correct2.push(q.choices[ci2].sortPosition - 1);
+                        for (var ci2 = 0; ci2 < q.choices.length; ci2++) correct2.push(ci2);
+                        correct2.sort(function(a, b) {
+                            return q.choices[a].sortPosition - q.choices[b].sortPosition;
+                        });
                         isCorrect = sids2.length === correct2.length && sids2.every(function(id, idx) { return id === correct2[idx]; });
+                    } else if (q.type === 'cba') {
+                        isCorrect = isCBACorrect(q, sa.tokenIds);
                     }
-                    if (isAnswered) {
+                    if (q.type === 'frq') {
+                        html += '<span class="badge bg-secondary ms-auto">' + (isAnswered ? 'Answered' : 'Not Answered') + '</span>';
+                    } else if (isAnswered) {
                         html += '<span class="badge ' + (isCorrect ? 'bg-success' : 'bg-danger') + ' ms-auto">' + (isCorrect ? 'Correct' : 'Incorrect') + '</span>';
                     } else {
                         html += '<span class="badge bg-secondary ms-auto">Not Answered</span>';
                     }
                     html += '</div><div class="quiz-view-body">';
-                    html += '<div class="quiz-view-question markdown-body">' + marked.parse(q.question) + '</div>';
+                    html += '<div class="quiz-view-question markdown-body">' + renderQuestionMarkdown(q.question) + '</div>';
                     if (q.type === 'mcq' || q.type === 'mrq') {
-                        html += '<div class="quiz-view-choices">';
+                        html += '<div class="quiz-view-choices ' + getChoiceLayoutClass(q.choices) + '">';
                         for (var ci = 0; ci < q.choices.length; ci++) {
                             var c = q.choices[ci];
                             var sel = (q.type === 'mcq' && sa.selectedIndex === ci) || (q.type === 'mrq' && (sa.selectedIds || []).indexOf(ci) !== -1);
@@ -760,6 +1558,8 @@
                             html += '</div>';
                         }
                         html += '</div>';
+                    } else if (q.type === 'cba') {
+                        html += renderCBAWorkspace(q, Array.isArray(sa.tokenIds) ? sa.tokenIds : q.lines.map(function() { return []; }), true);
                     } else if (q.type === 'frq') {
                         html += '<div class="quiz-view-frq"><div class="frq-answer-box" style="background:var(--bg-primary);border:1px solid var(--border-color);border-radius:0.5rem;padding:0.75rem;white-space:pre-wrap;">' + escapeHTML(sa.text || '(no answer)') + '</div>';
                         if (q.refAnswer && q.refAnswer.trim()) {
@@ -780,14 +1580,176 @@
             renderQuestion();
         }
     }
+    function cbaTokensEquivalent(actual, expected) {
+        if (!actual || !expected || actual.kind !== expected.kind) return false;
+        if (actual.kind === 'indent') return actual.text === expected.text;
+        return (actual.leadingIndent || '') === (expected.leadingIndent || '')
+            && actual.text.replace(/^[ \t]+|[ \t]+$/g, '') === expected.text.replace(/^[ \t]+|[ \t]+$/g, '');
+    }
+
+    function isCBACorrect(q, tokenLines) {
+        if (!Array.isArray(tokenLines) || tokenLines.length !== q.lines.length) return false;
+        var allowed = new Map(q.choices.filter(function(choice) { return !choice.hint; })
+            .map(function(choice) { return [choice.id, choice]; }));
+        var seen = new Set();
+        return q.lines.every(function(line, lineIndex) {
+            var expected = line.choices.filter(function(choice) { return !choice.hint; });
+            var submitted = tokenLines[lineIndex];
+            if (!Array.isArray(submitted) || submitted.length !== expected.length) return false;
+            return expected.every(function(choice, index) {
+                var id = submitted[index];
+                if (!allowed.has(id) || seen.has(id)) return false;
+                seen.add(id);
+                return cbaTokensEquivalent(allowed.get(id), choice);
+            });
+        });
+    }
+
+    function splitQuizBlocks(md) {
+        var blocks = [];
+        var current = [];
+        var fenceChar = null;
+        md.replace(/\r\n?/g, '\n').split('\n').forEach(function(line) {
+            var fence = line.match(/^\s*(`{3,}|~{3,})/);
+            if (!fenceChar && /^## (?!#)/.test(line)) {
+                if (current.join('\n').trim()) blocks.push(current.join('\n'));
+                current = [line.replace(/^## /, '')];
+                return;
+            }
+            current.push(line);
+            if (fence) {
+                var marker = fence[1].charAt(0);
+                if (!fenceChar) fenceChar = marker;
+                else if (fenceChar === marker) fenceChar = null;
+            }
+        });
+        if (current.join('\n').trim()) blocks.push(current.join('\n'));
+        return blocks;
+    }
+
+    function defaultCBACuts(body) {
+        var points = Array.from(body);
+        if (!points.length) return [];
+        var cuts = [];
+        var tokenPattern = /(?:\/\/|#).*|(?:[rubf]{0,2})(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')|[\p{L}_$][\p{L}\p{N}_$]*|\d+(?:\.\d+)?|===|!==|>>>|<<=|>>=|\*\*|\/\/|==|!=|<=|>=|=>|:=|\+=|-=|\*=|\/=|%=|&&|\|\||<<|>>|\+\+|--|[^\s]/giu;
+        var match;
+        while ((match = tokenPattern.exec(body)) !== null) {
+            cuts.push(Array.from(body.slice(0, match.index + match[0].length)).length);
+        }
+        if (!cuts.length || cuts[cuts.length - 1] !== points.length) cuts.push(points.length);
+        return cuts.filter(function(end, index) {
+            return end > 0 && (index === 0 || end > cuts[index - 1]);
+        });
+    }
+
+    function parseCBA(questionText) {
+        var codeMatch = questionText.match(/(?:^|\n)```quiz-cba(?:[ \t]+([^\n]*))?\n([\s\S]*?)\n```[ \t]*(?=\n|$)/);
+        if (!codeMatch) return null;
+        var configMatch = questionText.match(/(?:^|\n)```quiz-cba-config[ \t]*\n([\s\S]*?)\n```[ \t]*(?=\n|$)/);
+        var config = null;
+        if (configMatch) {
+            try { config = JSON.parse(configMatch[1]); } catch (error) { config = null; }
+        }
+        var code = codeMatch[2];
+        var language = (codeMatch[1] || 'code').trim();
+        var rawLines = code.split('\n');
+        var configValid = config && config.v === 1
+            && config.language === language
+            && (config.indentation === 'visible' || config.indentation === 'sortable')
+            && Array.isArray(config.lines) && config.lines.length === rawLines.length
+            && config.lines.every(function(lineConfig, lineIndex) {
+                if (!lineConfig || !Array.isArray(lineConfig.cuts) || !Array.isArray(lineConfig.hints)) return false;
+                if (lineConfig.indentMerged !== undefined && typeof lineConfig.indentMerged !== 'boolean') return false;
+                if (lineConfig.indentHint !== undefined && typeof lineConfig.indentHint !== 'boolean') return false;
+                var rawLine = rawLines[lineIndex];
+                var indent = (rawLine.match(/^[ \t]*/) || [''])[0];
+                var bodyLength = Array.from(rawLine.slice(indent.length)).length;
+                var cuts = lineConfig.cuts;
+                return cuts.length === lineConfig.hints.length
+                    && lineConfig.hints.every(function(hint) { return typeof hint === 'boolean'; })
+                    && cuts.every(function(end, index) {
+                        return Number.isInteger(end) && end > (index ? cuts[index - 1] : 0) && end <= bodyLength;
+                    })
+                    && ((bodyLength === 0 && cuts.length === 0)
+                        || (bodyLength > 0 && cuts.length > 0 && cuts[cuts.length - 1] === bodyLength));
+            });
+        if (!configValid) {
+            config = {
+                v: 1,
+                language: language,
+                indentation: 'visible',
+                lines: rawLines.map(function(rawLine) {
+                    var indent = (rawLine.match(/^[ \t]*/) || [''])[0];
+                    var cuts = defaultCBACuts(rawLine.slice(indent.length));
+                    return {
+                        cuts: cuts,
+                        hints: cuts.map(function() { return false; }),
+                        indentMerged: false,
+                        indentHint: true
+                    };
+                })
+            };
+        }
+        var indentation = config.indentation;
+        var prompt = questionText.replace(codeMatch[0], '\n');
+        if (configMatch) prompt = prompt.replace(configMatch[0], '\n');
+        prompt = prompt.trim();
+        var choices = [];
+        var parsedLines = [];
+        rawLines.forEach(function(rawLine, lineIndex) {
+            var indentMatch = rawLine.match(/^[ \t]*/);
+            var indent = indentMatch ? indentMatch[0] : '';
+            var body = rawLine.slice(indent.length);
+            var bodyLength = Array.from(body).length;
+            var lineConfig = config.lines[lineIndex];
+            var cuts = lineConfig.cuts.slice();
+            var hints = lineConfig.hints.slice();
+            var lineChoices = [];
+            var indentMerged = Boolean(indent && cuts.length && lineConfig.indentMerged);
+            var indentHint = typeof lineConfig.indentHint === 'boolean'
+                ? lineConfig.indentHint
+                : indentation === 'visible';
+            if (indent && !indentMerged) {
+                var indentChoice = { id: 'l' + lineIndex + 'i', text: indent, line: lineIndex, kind: 'indent', hint: indentHint };
+                choices.push(indentChoice);
+                lineChoices.push(indentChoice);
+            }
+            var start = 0;
+            cuts.forEach(function(end, chunkIndex) {
+                var chunk = {
+                    id: 'l' + lineIndex + 'c' + chunkIndex,
+                    text: (indentMerged && chunkIndex === 0 ? indent : '') + Array.from(body).slice(start, end).join(''),
+                    line: lineIndex,
+                    kind: 'token',
+                    hint: indentMerged && chunkIndex === 0 ? Boolean(indentHint || hints[chunkIndex]) : hints[chunkIndex],
+                    leadingIndent: indentMerged && chunkIndex === 0 ? indent : ''
+                };
+                choices.push(chunk);
+                lineChoices.push(chunk);
+                start = end;
+            });
+            parsedLines.push({ raw: rawLine, indent: indent, indentMerged: indentMerged, choices: lineChoices });
+        });
+        return { type: 'cba', question: prompt || 'Assemble the code.', choices: choices, lines: parsedLines, language: language, code: code, indentation: indentation };
+    }
+
     function parseQuiz(md) {
         if (!md || !md.trim()) return [];
         var questions = [];
-        var blocks = md.split(/^## (?![#])/m);
+        var blocks = splitQuizBlocks(md);
 
         for (var i = 0; i < blocks.length; i++) {
             var block = blocks[i];
             if (!block) continue;
+
+            // CBA owns its complete fenced block.  Detect it before scanning
+            // legacy `>` choice markers because valid prompts/code may contain
+            // blockquotes or operators at column zero.
+            var cbaQuestion = parseCBA(block);
+            if (cbaQuestion) {
+                questions.push(cbaQuestion);
+                continue;
+            }
             var lines = block.split('\n');
             var firstChoiceIdx = -1;
             for (var j = 0; j < lines.length; j++) {

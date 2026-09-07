@@ -1,130 +1,51 @@
 {% extends 'base.html' %}
+{% load static %}
 {% load course_filters %}
 
-{% block title %}Manage {{ course.title }} - Teacher{% endblock %}
+{% block title %}Manage Students - {{ course.title }} - Teacher{% endblock %}
 
 {% block extra_css %}
-<style>
-#manageTabGroup .btn-check:checked + .tab-progress {
-    background-color: var(--primary-color);
-    border-color: var(--primary-color);
-    color: white;
-}
-#manageTabGroup .btn-check:checked + .tab-students {
-    background-color: var(--info-color);
-    border-color: var(--info-color);
-    color: white;
-}
-#manageTabGroup .btn-check:checked + .tab-assignments {
-    background-color: var(--warning-color);
-    border-color: var(--warning-color);
-    color: #000;
-}
-#manageTabGroup .tab-progress { color: var(--primary-color); border-color: var(--primary-color); }
-#manageTabGroup .tab-students { color: var(--info-color); border-color: var(--info-color); }
-#manageTabGroup .tab-assignments { color: var(--warning-color); border-color: var(--warning-color); }
-
-#manageTabGroup .tab-progress:hover { background-color: var(--primary-pale); color: var(--primary-color); }
-#manageTabGroup .tab-students:hover { background-color: rgba(23,162,184,0.08); color: var(--info-color); }
-#manageTabGroup .tab-assignments:hover { background-color: rgba(255,193,7,0.08); color: var(--warning-color); }
-
-/* Box plot styles */
-.box-plot {
-    position: relative;
-    height: 80px;
-    margin: 0 20px 30px 20px;
-}
-.box-plot-bar {
-    position: absolute;
-    top: 24px;
-    left: 0;
-    width: 100%;
-    height: 12px;
-    background: var(--bg-tertiary);
-    border-radius: 6px;
-}
-.box-plot-whisker {
-    position: absolute;
-    top: 24px;
-    height: 12px;
-    background: rgba(61,216,101,0.35);
-    border-radius: 6px;
-}
-.box-plot-box {
-    position: absolute;
-    top: 18px;
-    height: 24px;
-    background: var(--success-color);
-    border-radius: 4px;
-}
-.box-plot-median {
-    position: absolute;
-    top: 15px;
-    width: 3px;
-    height: 30px;
-    background: white;
-    border-radius: 2px;
-    box-shadow: 0 0 0 1px rgba(0,0,0,0.15);
-}
-.box-plot-tick {
-    position: absolute;
-    top: 20px;
-    width: 1px;
-    height: 20px;
-    background: var(--text-secondary);
-    opacity: 0.4;
-}
-.box-plot-tick-label {
-    position: absolute;
-    top: 42px;
-    font-size: 0.7rem;
-    color: var(--text-secondary);
-    transform: translateX(-50%);
-}
-.box-plot-val {
-    position: absolute;
-    top: 0;
-    font-size: 0.7rem;
-    font-weight: 600;
-    color: var(--success-color);
-    transform: translateX(-50%);
-    white-space: nowrap;
-}
-</style>
+<link rel="stylesheet" href="{% static 'css/teacher.css' %}">
 {% endblock %}
 
 {% block content %}
-<div class="container-fluid my-4">
+<div class="container my-5">
     <nav aria-label="breadcrumb">
         <ol class="breadcrumb">
             <li class="breadcrumb-item"><a href="{% url 'teacher:course_list' %}">Manage Courses</a></li>
             <li class="breadcrumb-item"><a href="{% url 'teacher:course_edit' course.id %}">{{ course.title }}</a></li>
-            <li class="breadcrumb-item active">Manage</li>
+            <li class="breadcrumb-item active">Manage Students</li>
         </ol>
     </nav>
 
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h2><i class="bi bi-people"></i> {{ course.title }}</h2>
+    <div class="teacher-page-header">
+        <div class="teacher-page-heading">
+            <span class="teacher-page-icon"><i class="bi bi-people"></i></span>
+            <div>
+                <h1 class="teacher-page-title">{{ course.title }}</h1>
+                <p class="teacher-page-subtitle">查看学习进度、管理学生与作业。</p>
+            </div>
+        </div>
         <a href="{% url 'teacher:course_edit' course.id %}" class="btn btn-outline-secondary">
             <i class="bi bi-arrow-left"></i> Back to Edit
         </a>
     </div>
 
     <!-- Tab Navigation -->
-    <div class="btn-group w-100 mb-4" role="group" id="manageTabGroup">
+    <div class="manage-tabs" role="group" id="manageTabGroup">
         <input type="radio" class="btn-check" name="manageTab" id="tabProgress"
                value="progress" checked>
-        <label class="btn tab-progress" for="tabProgress">
+        <label class="manage-tab" for="tabProgress">
             <i class="bi bi-graph-up"></i> Student Progress
         </label>
         <input type="radio" class="btn-check" name="manageTab" id="tabStudents"
                value="students">
-        <label class="btn tab-students" for="tabStudents">
+        <label class="manage-tab" for="tabStudents">
             <i class="bi bi-people-fill"></i> Student Management
         </label>
         <input type="radio" class="btn-check" name="manageTab" id="tabAssignments"
                value="assignments">
-        <label class="btn tab-assignments" for="tabAssignments">
+        <label class="manage-tab" for="tabAssignments">
             <i class="bi bi-clipboard-check"></i> Assignments
         </label>
     </div>
@@ -133,12 +54,12 @@
     <div id="panelProgress" class="manage-panel">
         {% if students_data %}
             <!-- Overall Statistics Box Plot -->
-            <div class="card shadow-sm mb-4">
-                <div class="card-header bg-primary text-white">
-                    <h5 class="mb-0">
+            <div class="card section-card mb-4">
+                <div class="card-header section-card-header">
+                    <h2 class="section-card-title">
                         <i class="bi bi-bar-chart"></i> Progress Overview
-                        <span class="badge bg-light text-dark ms-2">{{ stats.total_students }} students</span>
-                    </h5>
+                    </h2>
+                    <span class="section-count">{{ stats.total_students }} students</span>
                 </div>
                 <div class="card-body pt-4">
                     {% if stats.max > 0 %}
@@ -182,40 +103,40 @@
             </div>
 
             <!-- Individual Student Progress -->
-            <div class="card shadow-sm">
-                <div class="card-header bg-primary text-white">
-                    <h5 class="mb-0"><i class="bi bi-list-ul"></i> Individual Progress</h5>
+            <div class="card section-card">
+                <div class="card-header section-card-header">
+                    <h2 class="section-card-title"><i class="bi bi-list-ul"></i> Individual Progress</h2>
                 </div>
                 <div class="list-group list-group-flush">
                     {% for student in students_data %}
-                        <div class="list-group-item">
-                            <div class="d-flex justify-content-between align-items-center mb-2">
-                                <div>
-                                    <strong>{{ student.user.get_display_name }}</strong>
-                                    <small class="text-muted ms-2">{{ student.user.email }}</small>
+                        <div class="list-group-item student-row">
+                            <div class="student-identity">
+                                <span class="student-name">{{ student.user.get_display_name }}</span>
+                                <span class="student-email">{{ student.user.email }}</span>
+                            </div>
+                            <div class="student-progress">
+                                <div class="student-progress-top">
+                                    <span class="badge {% if student.progress_pct >= stats.median %}teacher-status teacher-status-published{% else %}teacher-status teacher-status-draft{% endif %}">{{ student.progress_pct }}%</span>
+                                    <span class="student-progress-meta">{{ student.read_episodes }}/{{ student.total_episodes }} episodes</span>
                                 </div>
-                                <span class="badge {% if student.progress_pct >= stats.median %}bg-success{% else %}bg-danger{% endif %}">{{ student.progress_pct }}%</span>
+                                <div class="progress teacher-progress">
+                                    <div class="progress-bar teacher-progress-bar"
+                                         role="progressbar"
+                                         style="width: {{ student.progress_pct }}%"
+                                         aria-valuenow="{{ student.progress_pct }}"
+                                         aria-valuemin="0"
+                                         aria-valuemax="100"></div>
+                                </div>
+                                <span class="student-progress-meta d-block mt-1">Enrolled {{ student.enrolled_at|date:"M d, Y" }}</span>
                             </div>
-                            <div class="progress" style="height: 10px;">
-                                <div class="progress-bar"
-                                     role="progressbar"
-                                     style="background: {% if student.progress_pct >= stats.median %}#28a745{% else %}#dc3545{% endif %} !important; width: {{ student.progress_pct }}%"
-                                     aria-valuenow="{{ student.progress_pct }}"
-                                     aria-valuemin="0"
-                                     aria-valuemax="100"></div>
-                            </div>
-                            <small class="text-muted mt-1 d-inline-block">
-                                {{ student.read_episodes }}/{{ student.total_episodes }} episodes
-                                &middot; Enrolled {{ student.enrolled_at|date:"M d, Y" }}
-                            </small>
                         </div>
                     {% endfor %}
                 </div>
             </div>
         {% else %}
-            <div class="alert alert-info text-center py-5">
-                <i class="bi bi-people" style="font-size: 3rem;"></i>
-                <h5 class="mt-3">No students enrolled yet</h5>
+            <div class="teacher-empty">
+                <i class="bi bi-people teacher-empty-icon"></i>
+                <h5 class="teacher-empty-title">No students enrolled yet</h5>
                 <p class="text-muted">Share the course code or open enrollment to attract students.</p>
             </div>
         {% endif %}
@@ -224,9 +145,10 @@
     <!-- Tab 2: Student Management -->
     <div id="panelStudents" class="manage-panel" style="display:none;">
         {% if students_data %}
-            <div class="card shadow-sm">
-                <div class="card-header bg-info text-white">
-                    <h5 class="mb-0"><i class="bi bi-people-fill"></i> Enrolled Students ({{ stats.total_students }})</h5>
+            <div class="card section-card">
+                <div class="card-header section-card-header">
+                    <h2 class="section-card-title"><i class="bi bi-people-fill"></i> Enrolled Students</h2>
+                    <span class="section-count">{{ stats.total_students }}</span>
                 </div>
                 <div class="table-responsive">
                     <table class="table table-hover mb-0">
@@ -245,14 +167,20 @@
                                     <td>{{ student.user.get_display_name }}</td>
                                     <td>{{ student.user.email }}</td>
                                     <td>{{ student.enrolled_at|date:"M d, Y" }}</td>
-                                    <td>{{ student.progress_pct }}%</td>
+                                    <td>
+                                        <span class="teacher-status {% if student.progress_pct >= stats.median %}teacher-status-published{% else %}teacher-status-draft{% endif %}">
+                                            {{ student.progress_pct }}%
+                                        </span>
+                                    </td>
                                     <td class="text-end">
-                                        <button type="button"
-                                                class="btn btn-outline-danger btn-sm remove-student-btn"
-                                                data-user-id="{{ student.user.id }}"
-                                                data-user-name="{{ student.user.get_display_name }}">
-                                            <i class="bi bi-x-circle"></i> Remove
-                                        </button>
+                                        <div class="table-actions">
+                                            <button type="button"
+                                                    class="btn btn-outline-danger btn-sm btn-action remove-student-btn"
+                                                    data-user-id="{{ student.user.id }}"
+                                                    data-user-name="{{ student.user.get_display_name }}">
+                                                <i class="bi bi-x-circle"></i> Remove
+                                            </button>
+                                        </div>
                                     </td>
                                 </tr>
                             {% endfor %}
@@ -261,9 +189,9 @@
                 </div>
             </div>
         {% else %}
-            <div class="alert alert-info text-center py-5">
-                <i class="bi bi-people" style="font-size: 3rem;"></i>
-                <h5 class="mt-3">No students enrolled yet</h5>
+            <div class="teacher-empty">
+                <i class="bi bi-people teacher-empty-icon"></i>
+                <h5 class="teacher-empty-title">No students enrolled yet</h5>
             </div>
         {% endif %}
     </div>
@@ -271,29 +199,29 @@
     <!-- Tab 3: Assignments -->
     <div id="panelAssignments" class="manage-panel" style="display:none;">
         {% if quiz_episodes %}
-            <div class="card shadow-sm">
-                <div class="card-header bg-warning text-dark">
-                    <h5 class="mb-0"><i class="bi bi-clipboard-check"></i> Assignments</h5>
+            <div class="card section-card">
+                <div class="card-header section-card-header">
+                    <h2 class="section-card-title"><i class="bi bi-clipboard-check"></i> Assignments</h2>
                 </div>
                 <div class="list-group list-group-flush">
                     {% for ep in quiz_episodes %}
                         <a href="{% url 'teacher:assignment_review' course.id ep.id %}"
-                           class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
-                            <div>
-                                <strong>{{ ep.title }}</strong>
-                                <small class="text-muted ms-2">{{ ep.section.title }}</small>
-                                <span class="badge {% if ep.type == 'quiz' %}bg-info{% else %}bg-success{% endif %} ms-1" style="font-size:0.65rem;">{{ ep.type|upper }}</span>
+                           class="list-group-item list-group-item-action assignment-link">
+                            <div class="assignment-main">
+                                <span class="assignment-title">{{ ep.title }}</span>
+                                <span class="assignment-section">{{ ep.section.title }}</span>
+                                <span class="teacher-status {% if ep.type == 'quiz' %}teacher-status-draft{% else %}teacher-status-published{% endif %} ms-1">{{ ep.type|upper }}</span>
                             </div>
-                            <span class="badge bg-primary">{{ ep.submission_count }}/{{ stats.total_students }}</span>
+                            <span class="section-count">{{ ep.submission_count }}/{{ stats.total_students }}</span>
                         </a>
                     {% endfor %}
                 </div>
             </div>
         {% else %}
-            <div class="card shadow-sm">
-                <div class="card-body text-center py-5">
-                    <i class="bi bi-clipboard-check" style="font-size: 4rem; color: var(--text-secondary);"></i>
-                    <h5 class="mt-3">No Assignments</h5>
+            <div class="card section-card">
+                <div class="teacher-empty">
+                    <i class="bi bi-clipboard-check teacher-empty-icon"></i>
+                    <h5 class="teacher-empty-title">No Assignments</h5>
                     <p class="text-muted">Create quiz or code episodes to collect submissions from students.</p>
                 </div>
             </div>

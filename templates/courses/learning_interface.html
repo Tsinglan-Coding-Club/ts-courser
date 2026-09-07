@@ -203,7 +203,7 @@
     min-height: 0;
 }
 
-/* Col-1: top & bottom panels split height equally */
+/* Leave more room for the map while retaining an inline console/input area. */
 .code-panel-top,
 .code-panel-bottom {
     flex: 1;
@@ -211,8 +211,11 @@
 }
 
 .code-panel-top {
+    flex: 3;
     border-bottom: 1px solid var(--border-color);
 }
+
+.code-panel-bottom { flex: 2; }
 
 /* Col-2/3/4: full-height panel */
 .code-panel-fill {
@@ -264,51 +267,19 @@
     font-size: 0.9rem;
 }
 
-.code-panel-body .markdown-body h1 { font-size: 1.3rem; }
-.code-panel-body .markdown-body h2 { font-size: 1.15rem; }
-.code-panel-body .markdown-body h3 { font-size: 1.05rem; }
-.code-panel-body .markdown-body pre {
+.code-panel-body .markdown-body:not(.reference-sheet) h1 { font-size: 1.3rem; }
+.code-panel-body .markdown-body:not(.reference-sheet) h2 { font-size: 1.15rem; }
+.code-panel-body .markdown-body:not(.reference-sheet) h3 { font-size: 1.05rem; }
+.code-panel-body .markdown-body:not(.reference-sheet) pre {
     padding: 0.5rem 0.75rem;
     font-size: 0.8rem;
 }
 
-/* Reference sheet — custom renderer */
-.ref-sheet { font-size: 0.82rem; }
-.ref-section { margin-bottom: 1rem; }
-.ref-heading {
-    font-size: 0.9rem; font-weight: 700; color: var(--primary-color);
-    border-bottom: 2px solid var(--primary-color);
-    padding-bottom: 0.2rem; margin: 0.75rem 0 0.4rem 0;
-}
-.ref-heading:first-child { margin-top: 0; }
-.ref-code-block {
-    background: #1e1e2e; color: #cdd6f4; border-radius: 0.35rem;
-    padding: 0.5rem 0.75rem; margin: 0 0 0.4rem 0;
-    font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
-    font-size: 0.78rem; line-height: 1.55; white-space: pre; overflow-x: auto;
-    tab-size: 4;
-}
-.ref-code-block code { font-family: inherit; font-size: inherit; }
-.ref-indent-0 { background: transparent; }
-.ref-indent-1 { background: rgba(100, 140, 255, 0.05); display: inline-block; width: 100%; }
-.ref-indent-2 { background: rgba(100, 140, 255, 0.10); display: inline-block; width: 100%; }
-.ref-indent-3 { background: rgba(100, 140, 255, 0.14); display: inline-block; width: 100%; }
-.ref-annotation {
-    font-size: 0.76rem; line-height: 1.45; padding: 0.1rem 0 0.1rem 0.75rem;
-    color: var(--text-secondary);
-}
-.ref-annotation code {
-    background: var(--bg-tertiary); padding: 0.1em 0.3em; border-radius: 0.15rem; font-size: 0.92em;
-}
-/* Python syntax tokens */
-.py-keyword { color: #c792ea; font-weight: 700; }
-.py-builtin { color: #82aaff; }
-.py-string { color: #c3e88d; }
-.py-comment { color: #676e95; font-style: italic; }
-.py-number { color: #f78c6c; }
 </style>
+<link rel="stylesheet" href="{% static 'css/reference-sheet.css' %}">
 {% if current_episode.type == 'code' %}
-<link rel="stylesheet" href="{% static 'css/console.css' %}">
+<link rel="stylesheet" href="{% static 'css/console.css' %}?v=2">
+<link rel="stylesheet" href="{% static 'css/interactive.css' %}?v=1">
 {% endif %}
 {% endblock %}
 
@@ -336,15 +307,17 @@
                     {% for section in sections %}
                         <div class="accordion-item">
                             <h2 class="accordion-header">
-                                <button class="accordion-button {% if not forloop.first %}collapsed{% endif %}"
+                                <button class="accordion-button{% if section.id != expanded_section_id %} collapsed{% endif %}"
                                         type="button"
                                         data-bs-toggle="collapse"
-                                        data-bs-target="#section{{ section.id }}">
+                                        data-bs-target="#section{{ section.id }}"
+                                        aria-expanded="{% if section.id == expanded_section_id %}true{% else %}false{% endif %}"
+                                        aria-controls="section{{ section.id }}">
                                     {{ section.title }}
                                 </button>
                             </h2>
                             <div id="section{{ section.id }}"
-                                 class="accordion-collapse collapse {% if forloop.first %}show{% endif %}"
+                                 class="accordion-collapse collapse{% if section.id == expanded_section_id %} show{% endif %}"
                                  data-bs-parent="#sectionsAccordion">
                                 <div class="accordion-body p-0">
                                     <div class="list-group list-group-flush">
@@ -405,22 +378,7 @@
                                 <i class="bi bi-upload"></i> Submit
                             </button>
                         {% elif current_episode.type == 'quiz' %}
-                            {% if quiz_submission %}
-                                {% if quiz_submission.released_at %}
-                                    <span class="btn btn-success" style="cursor: default;">
-                                        <i class="bi bi-check-circle-fill"></i> Reviewed
-                                    </span>
-                                {% else %}
-                                    <span class="btn btn-outline-warning" style="cursor: default;">
-                                        <i class="bi bi-hourglass-split"></i> Submitted
-                                    </span>
-                                {% endif %}
-                            {% else %}
-                                <button type="button" class="btn btn-success" id="quizSubmitHeaderBtn"
-                                        data-episode-id="{{ current_episode.id }}">
-                                    <i class="bi bi-send"></i> Submit
-                                </button>
-                            {% endif %}
+                            {# Quiz actions and status live in the quiz workspace below. #}
                         {% else %}
                             <button type="button" class="btn btn-outline-primary" id="markReadBtn"
                                     data-episode-id="{{ current_episode.id }}"
@@ -448,7 +406,7 @@
                     {% include 'courses/episodes/_tabs_quiz.html' %}
                 {% elif current_episode.type == 'code' %}
                     {% include 'courses/episodes/_tabs_code.html' %}
-                    <!-- OJ Results Panel -->
+                    <!-- Automated Code Testing Results Panel -->
                     <div id="oj-results-panel" class="mt-4" style="display:none;">
                         <div class="card shadow-sm">
                             <div class="card-header d-flex justify-content-between align-items-center">
@@ -494,7 +452,7 @@
 const csrftoken = document.querySelector('[name=csrfmiddlewaretoken]').value;
 
 // Markdown rendering
-{% if current_episode.info_page_content %}
+{% if current_episode.info_page_content and current_episode.type != 'quiz' %}
 const markdownContent = `{{ current_episode.info_page_content|escapejs }}`;
 const markdownEl = document.getElementById('markdown-content'); //当markdown不需要渲染的时候跳过
 if (markdownEl) {
@@ -502,18 +460,6 @@ if (markdownEl) {
 }
 
 {% endif %}
-
-// Quiz submit (header button)
-const quizSubmitHeaderBtn = document.getElementById('quizSubmitHeaderBtn');
-if (quizSubmitHeaderBtn) {
-    quizSubmitHeaderBtn.addEventListener('click', function() {
-        if (!window.__quizAnswers || !window.__quizQuestions) {
-            alert('No quiz data available. Please try reloading the page.');
-            return;
-        }
-        window.submitQuiz(this);
-    });
-}
 
 // Mark as read/unread functionality
 const markReadBtn = document.getElementById('markReadBtn');
@@ -700,11 +646,17 @@ document.getElementById('sidebarToggle').addEventListener('click', function(e) {
 <script src="{% static 'vs/loader.js' %}"></script>
 <!-- Pyodide Interpreter (Web Worker architecture) -->
 <script type="module">
-import PyodideInterpreter from '{% static "js/pyodide-interpreter.js" %}?v=4';
+import PyodideInterpreter from '{% static "js/pyodide-interpreter.js" %}?v=7';
+import { InteractivePanel } from '{% static "js/interactive-panel.mjs" %}?v=1';
+import { StdinPanel } from '{% static "js/stdin-panel.mjs" %}?v=1';
 
 // ---- Console Panel ----
 const consoleEl = document.getElementById('console-container');
 const consolePanel = new ConsolePanel(consoleEl);
+const stdinPanel = new StdinPanel(consoleEl);
+const interactiveEl = document.getElementById('interactive-container');
+const interactivePanel = interactiveEl ? new InteractivePanel(interactiveEl) : null;
+let hiddenInteractiveWarningShown = false;
 
 // ---- Monaco Editor (wait for AMD loader) ----
 let monacoEditor = null;
@@ -737,10 +689,15 @@ function initMonaco() {
             var currentTheme = htmlEl.getAttribute('data-theme') || 'light';
             var monacoTheme = currentTheme === 'dark' ? 'vs-dark' : 'vs';
 
-            // Prefer the most recent local save, then the last server upload.
+            // Prefer a real local draft, then the last server upload, then the
+            // teacher-provided starter code. The generic prompt is the default
+            // starter code and also supports episodes created before this field.
+            const fallbackStarterCode = '# Write your Python code here\n';
             const savedCode = localStorage.getItem('tscourser_code_{{ current_episode.id }}');
             const uploadedCode = '{{ code_submission.code|default:""|escapejs }}';
-            const initialValue = savedCode || uploadedCode || '# Write your Python code here\n';
+            const starterCode = '{{ current_episode.starter_code|default:""|escapejs }}' || fallbackStarterCode;
+            const usableSavedCode = savedCode === fallbackStarterCode ? '' : savedCode;
+            const initialValue = usableSavedCode || uploadedCode || starterCode;
 
             var editor = monaco.editor.create(container, {
                 value: initialValue,
@@ -834,6 +791,8 @@ runBtn.addEventListener('click', async () => {
     }
 
     _saveCode();
+    interactivePanel?.reset();
+    hiddenInteractiveWarningShown = false;
     setButtonToStop();
     consolePanel.writeln('', 'system');
 
@@ -848,7 +807,8 @@ runBtn.addEventListener('click', async () => {
         }
     } catch (err) {
         if (_hardStopTimer) { clearTimeout(_hardStopTimer); _hardStopTimer = null; }
-        consolePanel.writeln('Execution error: ' + err.message, 'stderr');
+        console.error('[code-runner] Python environment error:', err);
+        consolePanel.writeln('Python environment error.', 'stderr');
     }
 
     setButtonToRun();
@@ -910,15 +870,22 @@ async function init() {
     consolePanel.writeln('Starting Python environment...', 'system');
 
     try {
-        // Register example API (verifies the pipeline)
-        PyodideInterpreter.registerAPI('print_message');
-
         PyodideInterpreter.onOutput = (type, text) => {
             consolePanel.write(text, type);
         };
+        PyodideInterpreter.onInteractive = events => {
+            if (interactivePanel) interactivePanel.applyEvents(events);
+            else if (!hiddenInteractiveWarningShown) {
+                consolePanel.writeln('The Interactive Area is hidden for this lesson. Ask your teacher to enable it to see courser displays.', 'system');
+                hiddenInteractiveWarningShown = true;
+            }
+        };
+        PyodideInterpreter.onInputRequest = request => stdinPanel.show(request);
+        PyodideInterpreter.onInputClosed = () => stdinPanel.close();
 
         PyodideInterpreter.onError = (error) => {
-            consolePanel.writeln('Failed to load Python interpreter: ' + error.message, 'stderr');
+            console.error('[code-runner] Failed to load Python interpreter:', error);
+            consolePanel.writeln('Failed to load Python interpreter.', 'stderr');
             consolePanel.writeln('Please refresh the page or try a different browser.', 'system');
             setButtonToRun();
             runBtn.disabled = true;
@@ -929,19 +896,23 @@ async function init() {
         consolePanel.writeln('Python ' + PyodideInterpreter.version + ' — Ready.', 'system');
         setButtonToRun();
     } catch (error) {
+        console.error('[code-runner] Failed to initialize Python environment:', error);
         consolePanel.writeln('Failed to initialize Python environment.', 'stderr');
-        consolePanel.writeln(error.message, 'stderr');
         setButtonToRun();
         runBtn.disabled = true;
     }
 }
 
-// ---- Code Submit with OJ Judging ----
+// ---- Code Submit with Automated Testing ----
 const submitCodeBtn = document.getElementById('submitCodeBtn');
 if (submitCodeBtn) {
     submitCodeBtn.addEventListener('click', async function() {
         if (!monacoEditor || !PyodideInterpreter.isReady) {
             alert('Editor not ready. Please wait for Pyodide to load.');
+            return;
+        }
+        if (PyodideInterpreter.isRunning) {
+            consolePanel.writeln('Stop the running program before submitting.', 'system');
             return;
         }
         const code = monacoEditor.getValue();
@@ -961,6 +932,8 @@ if (submitCodeBtn) {
         this.disabled = true;
         this.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Submitting...';
 
+        // Reserve the runner while upload is in flight, before judging starts.
+        runBtn.disabled = true;
         try {
             await _uploadCode(code);
         } catch (error) {
@@ -968,10 +941,13 @@ if (submitCodeBtn) {
             this.disabled = false;
             this.innerHTML = originalHTML;
             return;
+        } finally {
+            runBtn.disabled = false;
         }
 
         let testResults = [];
         let allPassed = true;
+        let testingAborted = false;
 
         if (ojEnabled) {
             // Parse test cases
@@ -979,23 +955,36 @@ if (submitCodeBtn) {
             try { testCases = JSON.parse(testCasesJson); } catch(e) {}
 
             if (testCases.length > 0) {
-                this.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Judging...';
-                consolePanel.writeln('--- OJ Judging (' + testCases.length + ' test cases) ---', 'system');
+                this.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Testing...';
+                consolePanel.writeln('--- Automated Testing (' + testCases.length + ' test cases) ---', 'system');
 
                 // Show results panel
                 const resultsPanel = document.getElementById('oj-results-panel');
                 if (resultsPanel) resultsPanel.style.display = '';
+                const resultsBody = document.getElementById('oj-results-body');
+                const resultsSummary = document.getElementById('oj-results-summary');
+                if (resultsBody) {
+                    resultsBody.innerHTML = '<div class="p-3 text-muted">Testing...</div>';
+                }
+                if (resultsSummary) {
+                    resultsSummary.textContent = 'Testing...';
+                    resultsSummary.className = 'badge bg-secondary';
+                }
 
-                // Let the Run button function as Stop during judging
+                // Let the Run button function as Stop during testing
                 setButtonToStop();
 
                 try {
                     const result = await PyodideInterpreter.judgeCode(code, testCases);
+                    if (result.interrupted) {
+                        const interruptError = new Error('Execution interrupted');
+                        interruptError.name = 'ExecutionInterrupted';
+                        throw interruptError;
+                    }
                     testResults = result.results || [];
+                    if (testResults.some(tr => tr.interrupted)) testingAborted = true;
 
                     // Build results HTML
-                    const resultsBody = document.getElementById('oj-results-body');
-                    const resultsSummary = document.getElementById('oj-results-summary');
                     let passed = 0;
                     let html = '<div class="list-group list-group-flush">';
                     for (let i = 0; i < testResults.length; i++) {
@@ -1015,7 +1004,14 @@ if (submitCodeBtn) {
                         }
                         if (!tr.passed) {
                             html += '<div class="small mb-1"><strong>Expected:</strong> <code class="text-success">' + escapeHTML(tr.expected || '') + '</code></div>';
-                            html += '<div class="small mb-1"><strong>Got:</strong> <code class="text-danger">' + escapeHTML(tr.actual || (tr.error || '')) + '</code></div>';
+                            if (tr.error) {
+                                if (tr.actual) {
+                                    html += '<div class="small mb-1"><strong>Got:</strong> <code class="text-danger">' + escapeHTML(tr.actual) + '</code></div>';
+                                }
+                                html += '<div class="small mb-1"><strong>Error:</strong><pre class="text-danger mb-0 mt-1" style="white-space:pre-wrap">' + escapeHTML(tr.error) + '</pre></div>';
+                            } else {
+                                html += '<div class="small mb-1"><strong>Got:</strong> <code class="text-danger">' + escapeHTML(tr.actual || '') + '</code></div>';
+                            }
                         }
                         html += '</div>';
                     }
@@ -1027,14 +1023,39 @@ if (submitCodeBtn) {
                     }
                     consolePanel.writeln(passed + '/' + testResults.length + ' test cases passed.', allPassed ? 'stdout' : 'stderr');
                 } catch (err) {
-                    consolePanel.writeln('Judge error: ' + err.message, 'stderr');
+                    testingAborted = true;
                     allPassed = false;
+                    if (err.name === 'ExecutionInterrupted') {
+                        consolePanel.writeln('Execution interrupted.', 'system');
+                        if (resultsBody) {
+                            resultsBody.innerHTML = '<div class="p-3 text-muted">Testing interrupted.</div>';
+                        }
+                        if (resultsSummary) {
+                            resultsSummary.textContent = 'Interrupted';
+                            resultsSummary.className = 'badge bg-warning';
+                        }
+                    } else {
+                        console.error('[code-runner] Automated testing failed:', err);
+                        consolePanel.writeln('Python environment error.', 'stderr');
+                        if (resultsBody) {
+                            resultsBody.innerHTML = '<div class="p-3 text-danger">Python environment error.</div>';
+                        }
+                        if (resultsSummary) {
+                            resultsSummary.textContent = 'Error';
+                            resultsSummary.className = 'badge bg-danger';
+                        }
+                    }
                 }
 
                 // Restore Run button
                 setButtonToRun();
+                if (testingAborted) {
+                    this.disabled = false;
+                    this.innerHTML = originalHTML;
+                    return;
+                }
             } else {
-                consolePanel.writeln('OJ enabled but no test cases configured — submitting.', 'system');
+                consolePanel.writeln('Automated testing enabled but no test cases configured — submitting.', 'system');
             }
         }
 

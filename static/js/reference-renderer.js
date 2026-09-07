@@ -26,16 +26,15 @@ function escapeHTML(str) {
  * Highlight a single line of Python code after HTML-escaping.
  * Applies keyword, builtin, string, comment, and number coloring.
  * @param {string} line - raw text line
- * @param {number} indentLevel - 0-based indentation level
  * @returns {string} HTML for the line
  */
-function highlightLine(line, indentLevel) {
+function highlightLine(line) {
     // Compute indent level from leading spaces
-    var stripped = line.replace(/^ +/, function(m) { return m; });
+    var stripped = line.replace(/^ +/, '');
     var leading = line.length - stripped.length;
     var level = Math.floor(leading / 4);
     var html = escapeHTML(line);
-    var indentClass = 'ref-indent-' + (level % 3);
+    var indentClass = 'ref-indent-' + Math.min(level, 3);
 
     // Use sentinel markers to prevent later regexes from matching
     // inside already-inserted HTML attributes.

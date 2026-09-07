@@ -7,11 +7,13 @@ from django.conf import settings
 from django.utils import timezone
 from .models import UserProgress, EpisodeReadStatus, CourseEnrollment, QuizSubmission, CodeSubmission
 from courses.models import Episode, Course
-from ts_courser.utils import compress_image
+from ts_courser.utils import ImageUploadValidationError, validate_and_reencode_image
+from courses.quiz import validate_answers
+from progress.validation import validate_test_results
+from django.db import transaction
 import json
 import uuid
 import os
-import magic
 import secrets
 
 
@@ -22,6 +24,8 @@ def _get_accessible_episode(request, episode_id, episode_type=None):
         if episode_type:
             query = query.filter(type=episode_type)
         episode = query.get(id=episode_id)
+    except (ValueError, TypeError):
+        return None, JsonResponse({'success': False, 'error': 'Invalid episode ID'}, status=400)
     except Episode.DoesNotExist:
         label = 'Episode' if not episode_type else f'{episode_type.title()} episode'
         return None, JsonResponse({'success': False, 'error': f'{label} not found'}, status=404)
@@ -105,24 +109,12 @@ def vditor_upload(request):
     success_files = []
 
     for uploaded_file in uploaded_files:
-        # File validation
-        if uploaded_file.size > 10 * 1024 * 1024:  # 10MB limit
-            continue
-
-        # MIME type validation
         try:
-            mime = magic.Magic(mime=True)
-            file_mime = mime.from_buffer(uploaded_file.read(1024))
-            uploaded_file.seek(0)
-
-            # Only allow images
-            if not file_mime.startswith('image/'):
-                continue
-        except Exception:
+            uploaded_file = validate_and_reencode_image(
+                uploaded_file, max_size_bytes=10 * 1024 * 1024
+            )
+        except ImageUploadValidationError:
             continue
-
-        # Compress images larger than 1MB before saving
-        uploaded_file = compress_image(uploaded_file)
 
         # Generate unique filename
         ext = os.path.splitext(uploaded_file.name)[1]
@@ -252,41 +244,33 @@ def submit_quiz(request):
 
     course = episode.section.course
 
-    # Parse and validate answers
     try:
-        answers = json.loads(answers_json)
-    except json.JSONDecodeError:
-        return JsonResponse({'success': False, 'error': 'Invalid answers format'})
-
-    has_frq = any(q.get('type') == 'frq' for q in answers.get('questions', []))
-
-    # Get existing submission so we can preserve a manual teacher release
-    existing = QuizSubmission.objects.filter(
-        user=request.user, episode=episode
-    ).first()
-
-    # The episode may override the course default with manual or immediate release.
-    # The inherited course default retains its legacy behavior: FRQs need review.
+        answers = validate_answers(episode, json.loads(answers_json))
+    except (json.JSONDecodeError, ValueError) as error:
+        return JsonResponse({'success': False, 'error': str(error)}, status=400)
+    has_frq = any(q['type'] == 'frq' for q in answers['questions'])
     policy = episode.quiz_release_policy
-    if policy == 'immediate' or (
+    automatic = policy == 'immediate' or (
         policy == 'inherit' and course.auto_release_results and not has_frq
-    ):
-        released_at = timezone.now()
-    else:
-        released_at = None
-
-    # Preserve existing manual release if the new logic wouldn't auto-release
-    if not released_at and existing and existing.released_at:
-        released_at = existing.released_at
-
-    submission, created = QuizSubmission.objects.update_or_create(
-        user=request.user,
-        episode=episode,
-        defaults={
-            'answers': answers_json,
-            'released_at': released_at,
-        }
     )
+    answers_json = json.dumps(answers)
+    with transaction.atomic():
+        submission, created = QuizSubmission.objects.select_for_update().get_or_create(
+            user=request.user, episode=episode
+        )
+        try:
+            previous_answers = json.loads(submission.answers)
+        except (json.JSONDecodeError, TypeError):
+            previous_answers = None
+        changed = created or previous_answers != answers
+        if changed:
+            # A grade belongs to the previous answers, never to a replacement.
+            submission.frq_grades = '{}'
+            submission.released_at = timezone.now() if automatic else None
+            submission.submitted_at = timezone.now()
+        submission.answers = answers_json
+        submission.save()
+        released_at = submission.released_at
 
     # Mark episode as read on submission
     EpisodeReadStatus.objects.update_or_create(
@@ -333,7 +317,7 @@ def upload_code(request):
 @login_required
 @require_POST
 def submit_code(request):
-    """Record a formally submitted code upload and its browser-side OJ results."""
+    """Record a formally submitted code upload and its browser-side test results."""
     episode_id = request.POST.get('episode_id')
     code = request.POST.get('code', '')
     test_results_json = request.POST.get('test_results', '[]')
@@ -347,11 +331,12 @@ def submit_code(request):
 
     # Validate test_results JSON
     try:
-        json.loads(test_results_json)
-    except json.JSONDecodeError:
-        return JsonResponse({'success': False, 'error': 'Invalid test results format'})
+        test_results = validate_test_results(json.loads(test_results_json))
+    except (json.JSONDecodeError, ValueError) as error:
+        return JsonResponse({'success': False, 'error': str(error)}, status=400)
+    test_results_json = json.dumps(test_results)
 
-    # The client has already run the OJ and uploaded the source. Keep the
+    # The client has already run the tests and uploaded the source. Keep the
     # latest formal submission as the only teacher-visible record.
     CodeSubmission.objects.update_or_create(
         user=request.user,

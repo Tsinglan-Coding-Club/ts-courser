@@ -1,0 +1,335 @@
+/* ==========================================================================
+   TS-Courser global theme
+   --------------------------------------------------------------------------
+   This stylesheet replaces the previous inline <style> block in base.html.
+   It owns design tokens, theme overrides, and shared layout/navigation rules.
+   ========================================================================== */
+
+:root {
+    /* Purple Theme Colors - Light Mode */
+    --primary-color: #883890;
+    --primary-hover: #6d2d73;
+    --primary-light: #a855b8;
+    --primary-pale: #f3e8f5;
+
+    --bg-primary: #ffffff;
+    --bg-secondary: #f8f9fa;
+    --bg-tertiary: #e9ecef;
+
+    --text-primary: #212529;
+    --text-secondary: #6c757d;
+    --text-muted: #adb5bd;
+
+    --border-color: #dee2e6;
+    --shadow-color: rgba(0, 0, 0, 0.1);
+
+    --success-color: #28a745;
+    --warning-color: #ffc107;
+    --danger-color: #dc3545;
+    --info-color: #17a2b8;
+}
+
+[data-theme="dark"] {
+    /* Purple Theme Colors - Dark Mode */
+    --primary-color: #a855b8;
+    --primary-hover: #c084cc;
+    --primary-light: #d0a3db;
+    --primary-pale: #3d2e42;
+
+    --bg-primary: #1a1a1a;
+    --bg-secondary: #2d2d2d;
+    --bg-tertiary: #3a3a3a;
+
+    --text-primary: #e5e5e5;
+    --text-secondary: #b0b0b0;
+    --text-muted: #808080;
+
+    --border-color: #404040;
+    --shadow-color: rgba(0, 0, 0, 0.3);
+
+    --success-color: #3dd865;
+    --warning-color: #ffd54f;
+    --danger-color: #f56565;
+    --info-color: #4fc3f7;
+}
+
+/* ----------------------------- Layout ---------------------------------- */
+html,
+body {
+    height: 100%;
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+    transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+body {
+    display: flex;
+    flex-direction: column;
+}
+
+main {
+    flex: 1 0 auto;
+    background-color: var(--bg-primary);
+}
+
+footer {
+    flex-shrink: 0;
+    background-color: var(--bg-secondary) !important;
+    color: var(--text-secondary) !important;
+}
+
+/* --------------------------- Links ------------------------------------- */
+a {
+    color: var(--primary-color);
+}
+
+a:hover {
+    color: var(--primary-hover);
+}
+
+/* ---------------------- Bootstrap color overrides ----------------------- */
+.bg-primary {
+    background-color: var(--primary-color) !important;
+}
+
+.bg-light {
+    background-color: var(--bg-secondary) !important;
+}
+
+.text-muted {
+    color: var(--text-muted) !important;
+}
+
+.border {
+    border-color: var(--border-color) !important;
+}
+
+/* --------------------------- Cards -------------------------------------- */
+.card {
+    background-color: var(--bg-secondary);
+    color: var(--text-primary);
+    border-color: var(--border-color);
+}
+
+/* --------------------------- Tables ------------------------------------- */
+.table {
+    color: var(--text-primary);
+}
+
+.table-light {
+    background-color: var(--bg-tertiary) !important;
+    color: var(--text-primary) !important;
+}
+
+.table-hover tbody tr:hover {
+    background-color: var(--bg-tertiary);
+}
+
+/* --------------------------- Buttons ------------------------------------ */
+.btn {
+    -webkit-tap-highlight-color: rgba(168, 85, 184, 0.18);
+}
+
+.btn:active,
+.btn:focus:active {
+    background-color: var(--primary-light);
+}
+
+.btn-primary {
+    background-color: var(--primary-color);
+    border-color: var(--primary-color);
+}
+
+.btn-primary:hover {
+    background-color: var(--primary-hover);
+    border-color: var(--primary-hover);
+}
+
+.btn-outline-primary {
+    color: var(--primary-color);
+    border-color: var(--primary-color);
+}
+
+.btn-outline-primary:hover,
+.btn-outline-primary:active,
+.btn-outline-primary:focus:active {
+    background-color: var(--primary-color);
+    border-color: var(--primary-color);
+    color: white;
+}
+
+.btn-secondary {
+    background-color: var(--text-secondary);
+    border-color: var(--text-secondary);
+}
+
+.btn-secondary:hover {
+    background-color: var(--text-primary);
+    border-color: var(--text-primary);
+}
+
+.btn-success {
+    background-color: var(--success-color);
+    border-color: var(--success-color);
+}
+
+.btn-warning {
+    background-color: var(--warning-color);
+    border-color: var(--warning-color);
+}
+
+.btn-info {
+    background-color: var(--info-color);
+    border-color: var(--info-color);
+}
+
+/* --------------------- Shared row/action buttons ------------------------ */
+/* Keep table and card row actions visually consistent, regardless of whether
+   they are links or buttons, icon-only or icon + text. */
+.btn-action {
+    --bs-btn-padding-y: 0.25rem;
+    --bs-btn-padding-x: 0.625rem;
+    --bs-btn-font-size: 0.875rem;
+    --bs-btn-line-height: 1.5;
+    --bs-btn-border-radius: 0.375rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.375rem;
+    white-space: nowrap;
+}
+
+.btn-action .bi {
+    font-size: 1em;
+    line-height: 1;
+}
+
+.table-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.5rem;
+}
+
+/* --------------------------- Forms -------------------------------------- */
+.form-control,
+.form-select {
+    background-color: var(--bg-secondary);
+    color: var(--text-primary);
+    border-color: var(--border-color);
+}
+
+.form-control:focus,
+.form-select:focus {
+    background-color: var(--bg-secondary);
+    color: var(--text-primary);
+    border-color: var(--primary-color);
+}
+
+.form-control:focus,
+.form-select:focus,
+.form-check-input:focus {
+    box-shadow: 0 0 0 0.25rem rgba(136, 56, 144, 0.25);
+}
+
+/* --------------------------- Alerts ------------------------------------- */
+.alert {
+    background-color: var(--bg-tertiary);
+    border-color: var(--border-color);
+    color: var(--text-primary);
+}
+
+/* --------------------------- Dropdowns ---------------------------------- */
+.dropdown-menu {
+    background-color: var(--bg-secondary);
+    border-color: var(--border-color);
+}
+
+.dropdown-item {
+    color: var(--text-primary);
+}
+
+.dropdown-item:hover {
+    background-color: var(--bg-tertiary);
+}
+
+/* --------------------------- Navigation --------------------------------- */
+.nav-link {
+    color: var(--text-primary);
+}
+
+.nav-link:hover {
+    color: var(--primary-color);
+}
+
+.navbar-dark .nav-link {
+    color: rgba(255, 255, 255, 0.85);
+}
+
+.navbar-dark .nav-link:hover {
+    color: white;
+}
+
+.theme-toggle {
+    background: none;
+    border: none;
+    color: white;
+    font-size: 1.2rem;
+    cursor: pointer;
+    padding: 0.5rem;
+    margin-left: 0.5rem;
+    transition: transform 0.2s;
+}
+
+.theme-toggle:hover {
+    transform: scale(1.1);
+}
+
+/* --------------------------- Breadcrumbs -------------------------------- */
+.breadcrumb {
+    background-color: transparent;
+}
+
+.breadcrumb-item a {
+    color: var(--primary-color);
+    text-decoration: none;
+}
+
+.breadcrumb-item a:hover {
+    color: var(--primary-hover);
+    text-decoration: underline;
+}
+
+.breadcrumb-item.active {
+    color: var(--text-secondary);
+}
+
+/* --------------------------- Progress ----------------------------------- */
+.progress-bar {
+    background-color: var(--primary-color) !important;
+}
+
+/* --------------------------- List groups -------------------------------- */
+.list-group-item-action:hover:not(.active) {
+    background-color: var(--bg-tertiary);
+}
+
+/* --------------------------- Modal -------------------------------------- */
+.modal-content {
+    background-color: var(--bg-secondary);
+    color: var(--text-primary);
+}
+
+.modal-header,
+.modal-footer {
+    border-color: var(--border-color);
+}
+
+.btn-close {
+    filter: var(--bs-btn-close-filter, invert(1) grayscale(100%) brightness(200%));
+}
+
+[data-theme="light"] .btn-close {
+    filter: none;
+}
