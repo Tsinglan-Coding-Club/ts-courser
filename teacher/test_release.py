@@ -1,10 +1,13 @@
 """Regression coverage for release hardening in teacher management views."""
 
+from io import BytesIO
 import json
+import tempfile
 
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import Client, TestCase
+from django.test import Client, TestCase, override_settings
 from django.urls import reverse
+from PIL import Image
 
 from accounts.models import User
 from courses.models import Course, Episode, Section
@@ -248,6 +251,31 @@ class TeacherReleaseRegressionTests(TestCase):
 
         self.assertRedirects(response, reverse('teacher:course_create'))
         self.assertEqual(Course.objects.filter(creator=self.teacher).count(), initial_count)
+
+    def test_course_thumbnail_uploads_are_cropped_to_16_by_9(self):
+        image_bytes = BytesIO()
+        Image.new('RGB', (160, 160), 'green').save(image_bytes, format='PNG')
+        upload = SimpleUploadedFile(
+            'thumbnail.png', image_bytes.getvalue(), content_type='image/png'
+        )
+
+        with tempfile.TemporaryDirectory() as media_root:
+            with override_settings(MEDIA_ROOT=media_root):
+                response = self.client.post(
+                    reverse('teacher:course_create'),
+                    {
+                        'title': 'Cropped thumbnail',
+                        'description': 'Description',
+                        'thumbnail': upload,
+                    },
+                )
+
+                course = Course.objects.get(title='Cropped thumbnail')
+                self.assertRedirects(
+                    response, reverse('teacher:course_edit', args=[course.id])
+                )
+                with Image.open(course.thumbnail.path) as thumbnail:
+                    self.assertEqual(thumbnail.size, (160, 90))
 
     def create_frq_submission(self, answer='First answer'):
         section = self.section('FRQ section')

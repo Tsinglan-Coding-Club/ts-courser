@@ -139,6 +139,10 @@ STATICFILES_DIRS = [
     BASE_DIR / 'static',
     BASE_DIR / 'node_modules' / 'monaco-editor' / 'min',
     BASE_DIR / 'node_modules' / 'pyodide',
+    (
+        'vendor/webgl-fluid',
+        BASE_DIR / 'node_modules' / 'webgl-fluid' / 'dist',
+    ),
 ]
 
 # Media files (User uploads)

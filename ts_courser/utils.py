@@ -30,6 +30,7 @@ def validate_and_reencode_image(
     max_pixels=16_000_000,
     max_width=4096,
     max_height=4096,
+    crop_aspect_ratio=None,
 ):
     """Validate and re-encode a raster upload using its detected file format.
 
@@ -37,7 +38,9 @@ def validate_and_reencode_image(
     filename and content type are not trusted: Pillow identifies the format,
     then the image is decoded and written to a fresh file with a safe
     extension and MIME type. Invalid, oversized, or excessively large images
-    raise :class:`ImageUploadValidationError`.
+    raise :class:`ImageUploadValidationError`. When ``crop_aspect_ratio`` is
+    supplied as ``(width, height)``, images taller than that ratio are cropped
+    vertically around their centre. The original width is always preserved.
     """
     if not uploaded_file or uploaded_file.size > max_size_bytes:
         raise ImageUploadValidationError(
@@ -82,6 +85,22 @@ def validate_and_reencode_image(
         raise ImageUploadValidationError('Upload is not a valid image file.')
     finally:
         uploaded_file.seek(0)
+
+    if crop_aspect_ratio is not None:
+        try:
+            ratio_width, ratio_height = crop_aspect_ratio
+            if ratio_width <= 0 or ratio_height <= 0:
+                raise ValueError
+        except (TypeError, ValueError):
+            raise ValueError(
+                'crop_aspect_ratio must contain two positive numbers.'
+            ) from None
+
+        width, height = image.size
+        target_height = round(width * ratio_height / ratio_width)
+        if 0 < target_height < height:
+            top = (height - target_height) // 2
+            image = image.crop((0, top, width, top + target_height))
 
     extension, content_type = ALLOWED_IMAGE_FORMATS[image_format]
     if image_format == 'JPEG':

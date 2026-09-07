@@ -8,6 +8,11 @@ urlpatterns = [
     path('logout/', views.logout_view, name='logout'),
     path('microsoft/login/', views.microsoft_login, name='microsoft_login'),
     path('microsoft/callback/', views.microsoft_callback, name='microsoft_callback'),
+    path(
+        'microsoft/select-role/',
+        views.microsoft_role_selection,
+        name='microsoft_role_selection',
+    ),
     path('teacher-pending/', views.teacher_pending, name='teacher_pending'),
     path(
         'first-login/change-credentials/',

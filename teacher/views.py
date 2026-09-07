@@ -24,6 +24,8 @@ from progress.validation import validate_test_results
 
 logger = logging.getLogger(__name__)
 
+COURSE_THUMBNAIL_ASPECT_RATIO = (16, 9)
+
 
 @teacher_required
 def course_list(request):
@@ -52,7 +54,9 @@ def course_create(request):
         if 'thumbnail' in request.FILES:
             try:
                 thumbnail = validate_and_reencode_image(
-                    request.FILES['thumbnail'], max_size_bytes=10 * 1024 * 1024
+                    request.FILES['thumbnail'],
+                    max_size_bytes=10 * 1024 * 1024,
+                    crop_aspect_ratio=COURSE_THUMBNAIL_ASPECT_RATIO,
                 )
             except ImageUploadValidationError as error:
                 messages.error(request, str(error))
@@ -65,7 +69,7 @@ def course_create(request):
             is_published=is_published
         )
 
-        # Handle thumbnail upload (compress if > 1MB)
+        # Save the validated and centre-cropped thumbnail.
         if thumbnail:
             course.thumbnail = thumbnail
             course.save()
@@ -102,11 +106,13 @@ def course_edit(request, course_id):
         if request.POST.get('regenerate_code') == '1' and course.enrollment_mode == 'code':
             course.course_code = course._generate_code()
 
-        # Handle thumbnail upload (compress if > 1MB)
+        # Validate and centre-crop a replacement thumbnail.
         if 'thumbnail' in request.FILES:
             try:
                 course.thumbnail = validate_and_reencode_image(
-                    request.FILES['thumbnail'], max_size_bytes=10 * 1024 * 1024
+                    request.FILES['thumbnail'],
+                    max_size_bytes=10 * 1024 * 1024,
+                    crop_aspect_ratio=COURSE_THUMBNAIL_ASPECT_RATIO,
                 )
             except ImageUploadValidationError as error:
                 messages.error(request, str(error))

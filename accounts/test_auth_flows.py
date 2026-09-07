@@ -497,7 +497,14 @@ class MicrosoftAccountFlowTests(TestCase):
         claims.update(overrides)
         return claims
 
-    def complete_microsoft_sign_in(self, *, role, claims, next_url=None):
+    def complete_microsoft_sign_in(
+        self,
+        *,
+        claims,
+        role=None,
+        next_url=None,
+        start_data=None,
+    ):
         app = Mock()
         app.initiate_auth_code_flow.return_value = {
             'auth_uri': 'https://login.microsoftonline.test/authorize',
@@ -507,7 +514,7 @@ class MicrosoftAccountFlowTests(TestCase):
         app.acquire_token_by_auth_code_flow.return_value = {
             'id_token': 'signed-id-token',
         }
-        login_data = {'role': role}
+        login_data = dict(start_data or {})
         if next_url is not None:
             login_data['next'] = next_url
 
@@ -529,7 +536,81 @@ class MicrosoftAccountFlowTests(TestCase):
             'https://login.microsoftonline.test/authorize',
             fetch_redirect_response=False,
         )
+        if (
+            role is not None
+            and callback_response.status_code == 302
+            and callback_response.url
+            == reverse('accounts:microsoft_role_selection')
+        ):
+            return self.client.post(
+                reverse('accounts:microsoft_role_selection'),
+                {'role': role},
+            )
         return callback_response
+
+    def test_login_page_has_one_microsoft_entry_and_no_role_selector(self):
+        response = self.client.get(reverse('accounts:login'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Sign in with your school account')
+        self.assertContains(response, 'Sign in with username and password')
+        self.assertContains(response, 'auth-fluid-background')
+        self.assertContains(response, 'vendor/webgl-fluid/webgl-fluid.umd.js')
+        self.assertContains(response, 'js/auth-fluid.js')
+        self.assertContains(response, '<details class="local-login-panel">')
+        self.assertNotContains(response, '<details class="local-login-panel" open>')
+        self.assertNotContains(response, 'Welcome back')
+        self.assertNotContains(response, 'Teacher access requires')
+        self.assertNotContains(response, 'name="role"')
+
+    def test_new_identity_selects_role_only_after_microsoft_verification(self):
+        response = self.complete_microsoft_sign_in(
+            claims=self.claims(
+                object_id='88888888-2222-3333-4444-555555555555',
+                username='new.student@tsinglan.org',
+                name='New Student',
+            ),
+        )
+
+        self.assertRedirects(
+            response,
+            reverse('accounts:microsoft_role_selection'),
+            fetch_redirect_response=False,
+        )
+        self.assertFalse(User.objects.exists())
+        self.assertFalse(ExternalIdentity.objects.exists())
+
+        selection_page = self.client.get(
+            reverse('accounts:microsoft_role_selection'),
+        )
+        self.assertContains(selection_page, 'Microsoft school account verified')
+        self.assertContains(selection_page, 'new.student@tsinglan.org')
+        self.assertContains(selection_page, 'name="role" value="student"')
+        self.assertContains(selection_page, 'name="role" value="teacher"')
+
+        selection_response = self.client.post(
+            reverse('accounts:microsoft_role_selection'),
+            {'role': 'student'},
+        )
+        self.assertRedirects(
+            selection_response,
+            reverse('courses:course_list'),
+            fetch_redirect_response=False,
+        )
+        self.assertEqual(User.objects.get().role, 'student')
+        self.assertEqual(ExternalIdentity.objects.count(), 1)
+
+    def test_role_selection_requires_a_verified_microsoft_identity(self):
+        response = self.client.get(
+            reverse('accounts:microsoft_role_selection'),
+        )
+
+        self.assertRedirects(
+            response,
+            reverse('accounts:login'),
+            fetch_redirect_response=False,
+        )
+        self.assertFalse(User.objects.exists())
 
     def test_student_identity_is_created_once_and_reused(self):
         object_id = '11111111-2222-3333-4444-555555555555'
@@ -611,7 +692,6 @@ class MicrosoftAccountFlowTests(TestCase):
             with self.subTest(case=label):
                 self.client = Client()
                 response = self.complete_microsoft_sign_in(
-                    role='student',
                     claims=claims,
                 )
 
@@ -642,13 +722,13 @@ class MicrosoftAccountFlowTests(TestCase):
         for claims in (missing_acct, wrong_audience):
             with self.subTest(claims=claims):
                 self.client = Client()
-                response = self.complete_microsoft_sign_in(role='student', claims=claims)
+                response = self.complete_microsoft_sign_in(claims=claims)
                 self.assertEqual(response.status_code, 403)
 
         self.assertFalse(User.objects.exists())
         self.assertFalse(ExternalIdentity.objects.exists())
 
-    def test_existing_identity_cannot_change_role_from_login_page(self):
+    def test_login_page_role_input_cannot_change_existing_identity(self):
         object_id = '77777777-2222-3333-4444-555555555555'
         claims = self.claims(
             object_id=object_id,
@@ -658,9 +738,17 @@ class MicrosoftAccountFlowTests(TestCase):
         self.complete_microsoft_sign_in(role='student', claims=claims)
         self.client.post(reverse('accounts:logout'))
 
-        response = self.complete_microsoft_sign_in(role='teacher', claims=claims)
+        response = self.complete_microsoft_sign_in(
+            role='teacher',
+            claims=claims,
+            start_data={'role': 'teacher'},
+        )
 
-        self.assertEqual(response.status_code, 403)
+        self.assertRedirects(
+            response,
+            reverse('courses:course_list'),
+            fetch_redirect_response=False,
+        )
         user = User.objects.get()
         self.assertEqual(user.role, 'student')
         self.assertFalse(user.is_verified_teacher)
