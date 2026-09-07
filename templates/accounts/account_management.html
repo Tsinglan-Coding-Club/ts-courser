@@ -1,0 +1,43 @@
+{% extends 'base.html' %}
+
+{% block title %}Account management - TS-Courser{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h1 class="mb-1">Account management</h1>
+            <p class="text-muted mb-0">Issue student accounts and review first-time teacher sign-ins.</p>
+        </div>
+        <a class="btn btn-primary" href="{% url 'accounts:create_local_student' %}">
+            <i class="bi bi-person-plus"></i> Create local student
+        </a>
+    </div>
+
+    <div class="card shadow-sm">
+        <div class="card-header"><strong>Teachers awaiting approval</strong></div>
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead><tr><th>Name</th><th>School account</th><th>Requested</th><th></th></tr></thead>
+                <tbody>
+                    {% for teacher in pending_teachers %}
+                        <tr>
+                            <td>{{ teacher.get_display_name }}</td>
+                            <td>{{ teacher.email }}</td>
+                            <td>{{ teacher.created_at|date:"Y-m-d H:i" }}</td>
+                            <td class="text-end">
+                                <form method="post" action="{% url 'accounts:approve_teacher' teacher.id %}">
+                                    {% csrf_token %}
+                                    <button class="btn btn-sm btn-success" type="submit">Approve</button>
+                                </form>
+                            </td>
+                        </tr>
+                    {% empty %}
+                        <tr><td colspan="4" class="text-center text-muted py-4">No teachers are waiting.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

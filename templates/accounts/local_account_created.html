@@ -1,0 +1,26 @@
+{% extends 'base.html' %}
+
+{% block title %}Local account created - TS-Courser{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row justify-content-center mt-4">
+        <div class="col-md-7">
+            <div class="alert alert-warning"><strong>Save or print this now.</strong> The initial password cannot be shown again.</div>
+            <div class="card shadow-sm">
+                <div class="card-body p-4">
+                    <h1 class="h3">Student account created</h1>
+                    <dl class="row mt-4">
+                        <dt class="col-sm-4">Student</dt><dd class="col-sm-8">{{ created_user.get_display_name }}</dd>
+                        <dt class="col-sm-4">Temporary username</dt><dd class="col-sm-8"><code>{{ created_user.username }}</code></dd>
+                        <dt class="col-sm-4">Initial password</dt><dd class="col-sm-8"><code>{{ initial_password }}</code></dd>
+                        <dt class="col-sm-4">Expires</dt><dd class="col-sm-8">{{ created_user.initial_password_expires_at|date:"Y-m-d H:i T" }}</dd>
+                    </dl>
+                    <button class="btn btn-outline-secondary" type="button" onclick="window.print()">Print</button>
+                    <a class="btn btn-primary" href="{% url 'accounts:create_local_student' %}">Create another</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

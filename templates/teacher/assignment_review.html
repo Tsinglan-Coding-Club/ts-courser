@@ -77,6 +77,9 @@
     background: rgba(220,53,69,0.08);
     border: 1px solid rgba(220,53,69,0.2);
 }
+.choice-row.student-selected {
+    box-shadow: inset 3px 0 0 var(--primary-color);
+}
 .choice-row.correct-answer {
     background: rgba(40,167,69,0.05);
     border: 1px dashed rgba(40,167,69,0.3);
@@ -94,6 +97,74 @@
     display: flex;
     align-items: center;
     gap: 0.5rem;
+}
+.cba-review {
+    overflow: hidden;
+    background: #111827;
+    border: 1px solid rgba(148, 163, 184, 0.28);
+    border-radius: 0.65rem;
+    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.12);
+}
+.cba-review-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.55rem 0.8rem;
+    color: #cbd5e1;
+    background: #1e293b;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+    font-size: 0.75rem;
+}
+.cba-review-code {
+    display: block;
+    margin: 0;
+    padding: 0.7rem 0;
+    overflow-x: auto;
+    color: #e2e8f0;
+    font-family: var(--bs-font-monospace);
+    font-size: 0.84rem;
+    line-height: 1.9;
+}
+.cba-review-line {
+    display: flex;
+    min-width: max-content;
+    padding: 0 0.8rem 0 0;
+}
+.cba-review-line-number {
+    width: 2.75rem;
+    margin-right: 0.65rem;
+    color: #64748b;
+    text-align: right;
+    user-select: none;
+}
+.cba-review-token {
+    display: inline-block;
+    position: relative;
+    white-space: pre;
+    border-bottom: 2px solid transparent;
+}
+.cba-review-token.correct {
+    background: rgba(34, 197, 94, 0.12);
+    border-bottom-color: #22c55e;
+}
+.cba-review-token.incorrect {
+    background: rgba(239, 68, 68, 0.15);
+    border-bottom-color: #ef4444;
+}
+.cba-review-token.hint {
+    color: #93c5fd;
+    background: rgba(59, 130, 246, 0.12);
+    border-bottom-color: #60a5fa;
+}
+.cba-indent-token {
+    min-width: 1.5rem;
+    color: #94a3b8;
+    letter-spacing: 0.08em;
+}
+.cba-invalid-answer {
+    margin: 0.75rem;
+    color: #fca5a5;
+    font-size: 0.78rem;
 }
 .release-bar {
     display: flex;
@@ -156,7 +227,7 @@
         <!-- Right: Submission Content -->
         <div class="review-main">
             {% if selected_submission %}
-                <!-- Release Bar -->
+                <!-- Submission Info Bar -->
                 <div class="release-bar mb-3 rounded">
                     <div>
                         <strong>{{ selected_submission.user.get_display_name }}</strong>
@@ -165,38 +236,46 @@
                         </small>
                     </div>
                     <div class="d-flex align-items-center gap-2">
-                        {% if selected_submission.released_at %}
-                            <span class="badge bg-success">
-                                <i class="bi bi-check-circle"></i> Released {{ selected_submission.released_at|date:"M d" }}
-                            </span>
-                            {% if not episode.quiz_show_results %}
-                            <button type="button" class="btn btn-sm btn-outline-warning cancel-release-btn"
-                                    data-submission-id="{{ selected_submission.id }}">
-                                <i class="bi bi-arrow-counterclockwise"></i> Cancel Release
-                            </button>
+                        {% if episode.type == 'quiz' %}
+                            {% if selected_submission.released_at %}
+                                <span class="badge bg-success">
+                                    <i class="bi bi-check-circle"></i> Released {{ selected_submission.released_at|date:"M d" }}
+                                </span>
+                                {% if episode.quiz_release_policy != 'immediate' %}
+                                <button type="button" class="btn btn-sm btn-outline-warning btn-action cancel-release-btn"
+                                        data-submission-id="{{ selected_submission.id }}">
+                                    <i class="bi bi-arrow-counterclockwise"></i> Cancel Release
+                                </button>
+                                {% endif %}
+                                <button type="button" class="btn btn-sm btn-outline-danger btn-action reset-submission-btn"
+                                        data-submission-id="{{ selected_submission.id }}">
+                                    <i class="bi bi-arrow-repeat"></i> Return for Redo
+                                </button>
+                            {% else %}
+                                <button type="button" class="btn btn-sm btn-success btn-action release-btn"
+                                        data-submission-id="{{ selected_submission.id }}"
+                                        {% if not all_frq_graded %}disabled{% endif %}>
+                                    <i class="bi bi-send"></i> Release
+                                </button>
+                                <button type="button" class="btn btn-sm btn-outline-danger btn-action reset-submission-btn"
+                                        data-submission-id="{{ selected_submission.id }}">
+                                    <i class="bi bi-arrow-repeat"></i> Return for Redo
+                                </button>
+                                {% if not all_frq_graded %}
+                                    <small class="text-warning">All FRQs must be graded first</small>
+                                {% endif %}
                             {% endif %}
-                            <button type="button" class="btn btn-sm btn-outline-danger reset-submission-btn"
-                                    data-submission-id="{{ selected_submission.id }}">
-                                <i class="bi bi-arrow-repeat"></i> Return for Redo
-                            </button>
                         {% else %}
-                            <button type="button" class="btn btn-sm btn-success release-btn"
-                                    data-submission-id="{{ selected_submission.id }}"
-                                    {% if not all_frq_graded %}disabled{% endif %}>
-                                <i class="bi bi-send"></i> Release
-                            </button>
-                            <button type="button" class="btn btn-sm btn-outline-danger reset-submission-btn"
-                                    data-submission-id="{{ selected_submission.id }}">
-                                <i class="bi bi-arrow-repeat"></i> Return for Redo
-                            </button>
-                            {% if not all_frq_graded %}
-                                <small class="text-warning">All FRQs must be graded first</small>
-                            {% endif %}
+                            {# Code episode: no release mechanism needed #}
+                            <span class="badge bg-info">
+                                <i class="bi bi-code-slash"></i> Code
+                            </span>
                         {% endif %}
                     </div>
                 </div>
 
-                <!-- Questions -->
+                {% if episode.type == 'quiz' %}
+                <!-- Quiz Questions -->
                 {% for q in selected_questions %}
                     <div class="question-card" id="q{{ q.index }}">
                         <div class="question-header">
@@ -218,44 +297,69 @@
                             </span>
                         </div>
                         <div class="question-body">
-                            <div class="quiz-view-question markdown-body mb-3">{{ q.question_html|safe }}</div>
+                            <div class="quiz-view-question markdown-body mb-3">{{ q.question_html|linebreaksbr }}</div>
                             {% if q.type == 'mcq' %}
                                 {% for choice in q.choices %}
-                                    <div class="choice-row {{ choice.rowClass }}">
+                                    <div class="choice-row {{ choice.rowClass }}" role="group"
+                                         aria-label="{% if choice.isSelected %}Selected by student; {% if choice.isCorrect %}correct{% else %}incorrect{% endif %}{% elif choice.isCorrect %}Correct answer, not selected by student{% else %}Not selected by student{% endif %}">
                                         <span class="badge bg-secondary me-2">{{ choice.letter }}</span>
-                                        {% if choice.isCorrect %}<i class="bi bi-check-circle text-success me-1"></i>
-                                        {% elif choice.isSelected %}<i class="bi bi-x-circle text-danger me-1"></i>
-                                        {% else %}<i class="bi bi-circle me-1"></i>{% endif %}
+                                        {% if choice.isSelected and choice.isCorrect %}<i class="bi bi-check-circle-fill text-success me-1" aria-hidden="true"></i>
+                                        {% elif choice.isSelected %}<i class="bi bi-x-circle-fill text-danger me-1" aria-hidden="true"></i>
+                                        {% elif choice.isCorrect %}<i class="bi bi-check-circle text-success me-1" aria-hidden="true"></i>
+                                        {% else %}<i class="bi bi-circle me-1" aria-hidden="true"></i>{% endif %}
                                         {{ choice.text|default:"(empty)" }}
-                                        {% if choice.isCorrect %}<small class="text-success ms-auto">answer</small>{% endif %}
+                                        <span class="ms-auto d-flex gap-2">
+                                            {% if choice.isSelected %}<small class="text-primary fw-bold">student choice</small>{% endif %}
+                                            {% if choice.isCorrect %}<small class="text-success">answer</small>{% endif %}
+                                        </span>
                                     </div>
                                 {% endfor %}
                             {% elif q.type == 'mrq' %}
                                 {% for choice in q.choices %}
-                                    <div class="choice-row {{ choice.rowClass }}">
-                                        {% if choice.isCorrect %}
-                                            <i class="bi bi-check-square text-success me-1"></i>
+                                    <div class="choice-row {{ choice.rowClass }}" role="group"
+                                         aria-label="{% if choice.isSelected %}Selected by student; {% if choice.isCorrect %}correct{% else %}incorrect{% endif %}{% elif choice.isCorrect %}Correct answer, not selected by student{% else %}Not selected by student{% endif %}">
+                                        {% if choice.isSelected and choice.isCorrect %}
+                                            <i class="bi bi-check-square-fill text-success me-1" aria-hidden="true"></i>
                                         {% elif choice.isSelected %}
-                                            <i class="bi bi-x-square text-danger me-1"></i>
+                                            <i class="bi bi-x-square-fill text-danger me-1" aria-hidden="true"></i>
+                                        {% elif choice.isCorrect %}
+                                            <i class="bi bi-check-square text-success me-1" aria-hidden="true"></i>
                                         {% else %}
-                                            <i class="bi bi-square me-1"></i>
+                                            <i class="bi bi-square me-1" aria-hidden="true"></i>
                                         {% endif %}
                                         {{ choice.text|default:"(empty)" }}
-                                        {% if choice.isCorrect %}<small class="text-success ms-auto">answer</small>{% endif %}
+                                        <span class="ms-auto d-flex gap-2">
+                                            {% if choice.isSelected %}<small class="text-primary fw-bold">student choice</small>{% endif %}
+                                            {% if choice.isCorrect %}<small class="text-success">answer</small>{% endif %}
+                                        </span>
                                     </div>
                                 {% endfor %}
                             {% elif q.type == 'srt' %}
-                                {% for choice in q.choices %}
-                                    <div class="choice-row">
+                                {% for choice in q.student_choices %}
+                                    <div class="choice-row {% if choice.positionCorrect %}student-selected correct{% else %}student-selected wrong-student{% endif %}" role="group"
+                                         aria-label="Student position {{ choice.studentPos }}; {% if choice.positionCorrect %}correct{% else %}incorrect{% endif %}">
                                         <span class="badge bg-secondary me-2">{{ choice.studentPos }}</span>
                                         {{ choice.text|default:"(empty)" }}
-                                        {% if choice.sortPosition == choice.studentPos %}
-                                            <i class="bi bi-check-circle text-success ms-auto"></i>
+                                        {% if choice.positionCorrect %}
+                                            <i class="bi bi-check-circle text-success ms-auto" aria-hidden="true"></i>
                                         {% else %}
-                                            <i class="bi bi-x-circle text-danger ms-auto"></i>
+                                            <i class="bi bi-x-circle text-danger ms-auto" aria-hidden="true"></i>
                                         {% endif %}
                                     </div>
+                                {% empty %}
+                                    <p class="text-muted">No submitted order.</p>
                                 {% endfor %}
+                            {% elif q.type == 'cba' %}
+                                <div class="cba-review" role="group" aria-label="Student code assembly">
+                                    <div class="cba-review-toolbar">
+                                        <span><i class="bi bi-braces" aria-hidden="true"></i> Student assembly</span>
+                                        <span>{{ q.language|default:"code" }}</span>
+                                    </div>
+                                    <pre class="cba-review-code"><code>{% for line in q.student_lines %}<span class="cba-review-line"><span class="cba-review-line-number" aria-hidden="true">{{ line.number }}</span><span>{% for token in line.tokens %}<span class="cba-review-token {% if token.hint %}hint{% elif token.positionCorrect %}correct{% else %}incorrect{% endif %} {% if token.kind == 'indent' %}cba-indent-token{% endif %}" title="{% if token.hint %}Provided hint{% elif token.positionCorrect %}Correct position{% else %}Incorrect position{% endif %}">{% if token.kind == 'indent' %}{{ token.displayText }}{% else %}{{ token.text }}{% endif %}</span>{% empty %}<span class="text-secondary">(empty line)</span>{% endfor %}</span></span>{% endfor %}</code></pre>
+                                    {% if not q.answer_valid %}
+                                        <div class="cba-invalid-answer"><i class="bi bi-shield-exclamation" aria-hidden="true"></i> Invalid submission payload.</div>
+                                    {% endif %}
+                                </div>
                             {% elif q.type == 'frq' %}
                                 <div class="frq-answer-box">{{ q.student_answer.text|default:"(no answer)" }}</div>
                                 {% if q.refAnswer %}
@@ -267,7 +371,7 @@
                                 <div class="frq-grade-section">
                                     <span class="small fw-bold">Grade:</span>
                                     <button type="button"
-                                            class="btn btn-sm btn-outline-success grade-frq-btn
+                                            class="btn btn-sm btn-outline-success btn-action grade-frq-btn
                                                    {% if q.frq_correct == True %}active{% endif %}"
                                             data-submission-id="{{ selected_submission.id }}"
                                             data-question-index="{{ q.index }}"
@@ -275,7 +379,7 @@
                                         <i class="bi bi-check"></i> Correct
                                     </button>
                                     <button type="button"
-                                            class="btn btn-sm btn-outline-danger grade-frq-btn
+                                            class="btn btn-sm btn-outline-danger btn-action grade-frq-btn
                                                    {% if q.frq_correct == False %}active{% endif %}"
                                             data-submission-id="{{ selected_submission.id }}"
                                             data-question-index="{{ q.index }}"
@@ -289,6 +393,66 @@
                 {% empty %}
                     <p class="text-muted">No answers to display.</p>
                 {% endfor %}
+                {% else %}
+                <!-- Code Submission Review -->
+                <div class="card mb-3">
+                    <div class="card-header">
+                        <h6 class="mb-0"><i class="bi bi-code-slash"></i> Submitted Code</h6>
+                    </div>
+                    <div class="card-body p-0">
+                        <pre style="margin:0;padding:1rem;background:var(--bg-secondary);border-radius:0;max-height:400px;overflow:auto;font-size:0.85rem;"><code>{{ selected_code }}</code></pre>
+                    </div>
+                </div>
+
+                {% if oj_enabled %}
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h6 class="mb-0"><i class="bi bi-check2-square"></i> Test Results</h6>
+                        <span class="badge {% if passed_count == total_count and total_count > 0 %}bg-success{% else %}bg-danger{% endif %}">
+                            {{ passed_count }}/{{ total_count }} passed
+                        </span>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="list-group list-group-flush">
+                            {% for tr in test_results %}
+                            <div class="list-group-item">
+                                <div class="d-flex align-items-center mb-1">
+                                    {% if tr.passed %}
+                                        <i class="bi bi-check-circle-fill text-success me-2"></i>
+                                        <span class="badge bg-success">Passed</span>
+                                    {% else %}
+                                        <i class="bi bi-x-circle-fill text-danger me-2"></i>
+                                        <span class="badge bg-danger">Failed</span>
+                                    {% endif %}
+                                    <strong class="ms-2">Test Case {{ forloop.counter }}</strong>
+                                </div>
+                                {% if tr.input %}
+                                <div class="small text-muted mb-1"><strong>Input:</strong> <code>{{ tr.input }}</code></div>
+                                {% endif %}
+                                {% if not tr.passed %}
+                                <div class="small mb-1"><strong>Expected:</strong> <code class="text-success">{{ tr.expected }}</code></div>
+                                {% if tr.error %}
+                                    {% if tr.actual %}
+                                        <div class="small mb-1"><strong>Got:</strong> <code class="text-danger">{{ tr.actual }}</code></div>
+                                    {% endif %}
+                                    <div class="small mb-1"><strong>Error:</strong><pre class="text-danger mb-0 mt-1" style="white-space: pre-wrap;">{{ tr.error }}</pre></div>
+                                {% else %}
+                                    <div class="small mb-1"><strong>Got:</strong> <code class="text-danger">{{ tr.actual }}</code></div>
+                                {% endif %}
+                                {% endif %}
+                            </div>
+                            {% empty %}
+                            <div class="list-group-item text-muted">No test results available.</div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+                {% else %}
+                <div class="alert alert-info">
+                    <i class="bi bi-info-circle"></i> Automated testing was not enabled for this episode. Submission accepted without test-case checking.
+                </div>
+                {% endif %}
+                {% endif %}
             {% else %}
                 <div class="empty-state">
                     <i class="bi bi-inbox" style="font-size: 4rem;"></i>
@@ -313,6 +477,7 @@ document.querySelectorAll('.grade-frq-btn').forEach(btn => {
         try {
             const formData = new FormData();
             formData.append('submission_id', submissionId);
+        formData.append('submission_version', '{{ submission_version|escapejs }}');
             formData.append('question_index', questionIndex);
             formData.append('is_correct', isCorrect);
 
@@ -368,6 +533,7 @@ async function doPost(url, submissionId) {
     try {
         const formData = new FormData();
         formData.append('submission_id', submissionId);
+        formData.append('submission_version', '{{ submission_version|escapejs }}');
         const response = await fetch(url, {
             method: 'POST',
             headers: { 'X-CSRFToken': '{{ csrf_token }}' },

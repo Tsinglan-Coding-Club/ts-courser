@@ -1,130 +1,77 @@
-# How to Add a New Episode Type
+# Adding an Episode Type
 
-This guide describes every file you need to touch when adding a new episode type
-(e.g. `'exam'`, `'lab'`, `'video'`).  Follow these steps in order.
+Checked against the working tree on 2026-09-05. Current types are `material`, `quiz`, `code`, and `paper`. Adding a display-only lesson and adding a lesson with submissions have different scopes.
 
----
+## Content and authoring checklist
 
-## Checklist (N places to update)
+| File | Change |
+| --- | --- |
+| `courses/models.py` | Add to `Episode.TYPE_CHOICES`; introduce any required content/settings fields |
+| `courses/templatetags/course_filters.py` | Add badge, icon, and label to `EPISODE_TYPE_CONFIG` |
+| `templates/courses/episodes/_tabs_<type>.html` | Create the learning layout, using a suitable existing tab include |
+| `templates/courses/learning_interface.html` | Add the type include branch; check type-specific header actions and runtime initialization |
+| `templates/teacher/episode_edit.html` | Update `TYPE_CARD_VISIBILITY`; add new cards to `ALL_TYPE_RELEVANT_CARDS` and wire their inputs |
+| `teacher/views.py` | Check creation/edit validation, saved fields, and template context for the new type |
+| `courses/views.py` | Supply the learning context needed by the new layout |
+| `courses/migrations/` | Generate and inspect migrations for choices/field changes |
 
-| # | File | What to change |
-|---|------|----------------|
-| 1 | `courses/models.py` | Add the new type to `Episode.TYPE_CHOICES` |
-| 2 | `courses/templatetags/course_filters.py` | Add display config to `EPISODE_TYPE_CONFIG` |
-| 3 | `templates/courses/episodes/_tabs_<type>.html` | **Create** the learning-interface tabs include |
-| 4 | `templates/courses/learning_interface.html` | Add an `{% elif %}` branch for the new type |
-| 5 | `templates/teacher/episode_edit.html` | Add entry to `TYPE_CARD_VISIBILITY` JS object |
-| 6 | Run `makemigrations` + `migrate` | Apply the DB schema change |
+The current form cards are:
 
----
+| Card | Purpose |
+| --- | --- |
+| `episodeInfoCard` | Episode title/type; ordering is managed on the course editor |
+| `infoContentCard` | Markdown information |
+| `pdfFilesCard` | Content and answer PDF uploads |
+| `quizEditorCard`, `quizConfigCard` | Visual quiz editor and submission/release options |
+| `codeLayoutCard` | Interactive/reference panel visibility |
+| `starterCodeCard` | Initial Python code |
+| `codeOJCard` | Optional input/output test cases |
+| `referenceSheetCard` | Markdown reference sheet |
 
-## Step-by-step
-
-### 1. Model — `courses/models.py`
-
-Add the new choice tuple to `Episode.TYPE_CHOICES`:
-
-```python
-TYPE_CHOICES = [
-    ('material', 'Material'),
-    ('quiz',     'Quiz'),
-    ('code',     'Code'),
-    ('paper',    'Paper'),
-    # ('newexam',  'New Exam'),   ← example
-]
-```
-
-If the new type uses `answer_pdf`, update its `help_text` accordingly.
-
-### 2. Display config — `course_filters.py`
-
-Add an entry to `EPISODE_TYPE_CONFIG`.  This dict controls the badge colour,
-Bootstrap Icon, and human-readable label shown in every template:
-
-```python
-EPISODE_TYPE_CONFIG = {
-    'material': {'badge': 'bg-primary', 'icon': 'bi-file-text',       'label': 'Material'},
-    'quiz':     {'badge': 'bg-success', 'icon': 'bi-question-circle', 'label': 'Quiz'},
-    'code':     {'badge': 'bg-info',    'icon': 'bi-code',            'label': 'Code'},
-    'paper':    {'badge': 'bg-warning', 'icon': 'bi-file-earmark-pdf','label': 'Paper'},
-    # 'newexam':  {'badge': 'bg-danger',  'icon': 'bi-pencil-square',   'label': 'Exam'},
-}
-```
-
-- `badge` — Bootstrap background class (`bg-primary`, `bg-success`, …)
-- `icon` — Bootstrap Icons class (`bi-file-text`, `bi-code`, …)
-- `label` — Human-readable name
-
-All templates that show episode icons (`learning_interface.html`,
-`course_overview.html`, `course_edit.html`) read from this config via the
-`episode_type_config` filter, so you **do not** need to update them separately.
-
-### 3. Learning-interface tabs — `templates/courses/episodes/_tabs_<type>.html`
-
-Create a new file named `_tabs_<type>.html` (e.g. `_tabs_exam.html`).
-
-The file should contain a `<div class="card">` with:
-- **Tab headers** (`card-header > ul.nav-tabs`) — at minimum the Info tab;
-  optionally Material PDF and/or Answer PDF tabs.
-- **Tab content** (`card-body > .tab-content`) — matching `.tab-pane` divs.
-
-Copy an existing file (e.g. `_tabs_material.html`) as a starting point.
-
-### 4. Learning interface — `learning_interface.html`
-
-In the `{% if current_episode.type … %}` block, add a new branch:
-
-```django
-{% elif current_episode.type == 'newexam' %}
-    {% include 'courses/episodes/_tabs_newexam.html' %}
-```
-
-### 5. Teacher edit form — `episode_edit.html`
-
-The JS object `TYPE_CARD_VISIBILITY` controls which form cards are shown for
-each type.  Three card IDs are available:
-
-| Card ID | Description |
-|---------|-------------|
-| `episodeInfoCard` | Title & order (always visible) |
-| `infoContentCard` | Markdown editor |
-| `pdfFilesCard` | PDF uploads (content + answer) |
-
-Add your type with the cards it needs:
+Current visibility:
 
 ```js
 const TYPE_CARD_VISIBILITY = {
     material: { cards: ['episodeInfoCard', 'infoContentCard', 'pdfFilesCard'] },
-    quiz:     { cards: ['episodeInfoCard', 'infoContentCard'] },
-    code:     { cards: ['episodeInfoCard', 'infoContentCard'] },
-    paper:    { cards: ['episodeInfo', 'pdfFilesCard'] },
-    // newexam:  { cards: ['episodeInfoCard', 'pdfFilesCard'] },
+    quiz: { cards: ['episodeInfoCard', 'quizEditorCard', 'quizConfigCard'] },
+    code: { cards: ['episodeInfoCard', 'infoContentCard', 'codeLayoutCard', 'starterCodeCard', 'codeOJCard', 'referenceSheetCard'] },
+    paper: { cards: ['episodeInfoCard', 'pdfFilesCard'] },
 };
 ```
 
-When `pdfFilesCard` is present, both `content_pdf` **and** `answer_pdf` inputs
-are enabled automatically.
+`pdfFilesCard` enables both PDF inputs. Explicitly decide which files the new student layout displays and which the server accepts; hiding a field is not server validation. Existing icon consumers use `episode_type_config`, so they usually need no separate badge changes.
 
-### 6. Database migration
+## If the type accepts student work
+
+Check these additional responsibilities instead of assuming all episode types automatically support submissions:
+
+- `progress/models.py`, `progress/views.py`, and `progress/urls.py`: storage, submission validation, enrollment/type checks, and read-status semantics.
+- `teacher/views.py`: `course_manage` currently lists only quiz/code assignments; `assignment_review` has type-specific review logic.
+- `templates/teacher/course_manage.html` and `assignment_review.html`: assignment lists, detail rendering, and review actions.
+- Student tab and learning header: save/submit behavior, pending state, and released results.
+
+Define whether work is a draft or formal submission, whether attempts are retained, how feedback is released, and what counts as completion. Add regression coverage for those rules and unauthorized/cross-course requests.
+
+## Quiz-format changes are a separate workflow
+
+Adding a quiz question type does not necessarily require a new Episode type. Update:
+
+1. `static/js/quiz-editor.js`: question metadata, parser, serializer, editor controls.
+2. `courses/quiz.py`: canonical parser, answer validation, student-safe question projection, and review normalization.
+3. `templates/courses/episodes/_tabs_quiz.html`: structured-data rendering, answer collection, and results.
+4. `teacher/views.py` and `templates/teacher/assignment_review.html`: correctness/review and any new teacher actions.
+5. Relevant Python/JavaScript tests for authoring round-trips, required answers, answer-key exclusion, and review.
+
+The student template no longer parses raw quiz Markdown. The teacher view imports the parser from `courses/quiz.py`. Preserve fenced-code handling and CBA token/solution separation.
+
+## Validation
 
 ```bash
 uv run python manage.py makemigrations
 uv run python manage.py migrate
 uv run python manage.py check
+uv run python manage.py test courses progress teacher
+npm test
 ```
 
----
-
-## Summary
-
-| What | How many files |
-|------|---------------|
-| Model choice | 1 (`models.py`) |
-| Display config | 1 (`course_filters.py`) |
-| New tab include | 1 (new file) |
-| Include branch | 1 (`learning_interface.html`) |
-| Edit-form cards | 1 (`episode_edit.html`) |
-| **Total files** | **5** |
-
-Everything else (course overview, course edit list, sidebar icons, etc.) uses
-the centralised `EPISODE_TYPE_CONFIG` and requires **no changes**.
+For runtime/library changes also run `uv run python -m unittest discover -s tests`. Verify the new type through teacher creation/editing, published-course student access, navigation, refresh, and any submission/review cycle. See [CLAUDE.md](../CLAUDE.md) for release checks and conventions.

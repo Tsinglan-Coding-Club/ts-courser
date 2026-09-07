@@ -1,0 +1,31 @@
+{% extends 'base.html' %}
+
+{% block title %}Create local student - TS-Courser{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row justify-content-center mt-4">
+        <div class="col-md-7">
+            <div class="card shadow-sm">
+                <div class="card-body p-4">
+                    <h1 class="h3">Create local student account</h1>
+                    <p class="text-muted">The generated password is shown once. The student must change both username and password at first sign-in.</p>
+                    <form method="post" novalidate>
+                        {% csrf_token %}
+                        {% for field in form %}
+                            <div class="mb-3">
+                                <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+                                {{ field }}
+                                {% if field.help_text %}<div class="form-text">{{ field.help_text }}</div>{% endif %}
+                                {% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                            </div>
+                        {% endfor %}
+                        <button class="btn btn-primary" type="submit">Create account</button>
+                        <a class="btn btn-link" href="{% url 'accounts:account_management' %}">Cancel</a>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

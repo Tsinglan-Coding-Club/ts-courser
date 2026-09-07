@@ -1,243 +1,119 @@
-![alt text](docs/image.png)
-
 # TS-Courser
 
-An MVP-version online learning platform inspired by Khan Academy, designed for students to browse courses, track learning progress, and practice with quizzes.
+![TS-Courser learning interface](docs/image.png)
 
-## Project Description
+TS-Courser is a Django learning platform for small school classes. Students enroll in courses, read materials, answer quizzes, and run Python in the browser. Teachers author lessons, monitor progress, and review submissions.
 
-TS-Courser is a web-based learning management system that provides:
-- **For Students**: Browse courses by tags/tracks (AP/A-Level), track reading progress, access learning materials and quizzes with PDF support
-- **For Teachers**: Create and edit courses, manage sections and episodes, upload materials with markdown editor and PDF files
-- **For Admins**: Manage all courses, users, and verify teacher accounts
+This README describes the current working tree as of **2026-09-07**.
 
-The platform supports two types of learning episodes:
-- **Material Episodes**: Learning content with markdown-rendered info pages or PDF documents
-- **Quiz Episodes**: Practice problems with optional answer PDFs
+## Current features
 
-## Tech Stack
+| Area | Implemented behavior |
+| --- | --- |
+| Accounts | Single-tenant Microsoft Entra login for `tsinglan.org`, administrator-issued local student/admin accounts, mandatory first-login username/password replacement, teacher approval, profiles, avatars, and favorite tags |
+| Courses | Published course catalog with track/subject filters; open or eight-character code enrollment; enrollment closure; course dashboard, My Courses, and resume learning |
+| Authoring | Course/section/episode creation and editing, Markdown editor, PDF uploads, thumbnails, tags, and section/episode drag-and-drop ordering |
+| Progress | Last visited episode, read/unread status, per-student completion percentages, and a teacher progress distribution |
+| Quizzes | Single choice (MCQ), multiple response (MRQ), free response (FRQ), sorting (SRT), and code assembly (CBA); visual authoring, required-answer validation, objective-answer checking, FRQ grading, and result release |
+| Python practice | Monaco editor, Pyodide worker, run/stop, `input()`, local drafts, server upload, formal submission, optional input/output test cases, starter code, and reference sheets |
+| Interactive output | The `courser` Python library displays values and maps in the lesson's interactive panel |
+| Teacher review | Submission lists, quiz review and release/cancel/reset actions, and inspection of submitted code and browser-reported test results |
+| Administration | Django admin for users, teacher approval, and course data |
 
-### Backend
-- **Framework**: Django 5.x
-- **Database**: SQLite (local development)
-- **Python Package Manager**: uv
-- **Authentication**: Django built-in auth system with custom User model
+### Episode types
 
-### Frontend
-- **UI Framework**: Bootstrap 5
-- **JavaScript**: Native Fetch API (no jQuery)
-- **Markdown Editor**: [Vditor](https://github.com/Vanessa219/vditor) (WYSIWYG editor for teachers)
-- **Markdown Rendering**: marked.js
-- **PDF Viewer**: PDF.js
-- **Template Engine**: Django Templates
+- **Material** (`material`): Markdown information and optional content PDF.
+- **Quiz** (`quiz`): Interactive questions authored in quiz Markdown or the visual editor.
+- **Code** (`code`): Python editor, optional tests, starter code, interactive display, and reference panel.
+- **Paper** (`paper`): Paper PDF and optional answer PDF.
 
-## Database Schema
+New sections and episodes append to their parent. Reorder them on the course editing page; the episode editor has no numeric order input. Teachers edit their own courses; admins bypass ownership checks.
 
-### User Model (Extended AbstractUser)
-```
-- email (unique, for login)
-- role (student/teacher/admin)
-- is_verified_teacher (boolean, for teacher approval)
-- + Django built-in fields (username, password, etc.)
-```
+### Submission and progress semantics
 
-### Tag Model
-```
-- name (unique)
-- category (track/subject)
-```
+Read progress indicates completion activity, not demonstrated mastery. Quiz and formal code submission mark an episode as read.
 
-### Course Model
-```
-- title
-- description
-- thumbnail (optional)
-- creator (FK to User)
-- tags (M2M to Tag)
-- is_published (boolean)
-- created_at, updated_at
-```
+Quiz release is configured per episode: inherit the course default, require manual release, or release immediately. Inherited automatic release excludes quizzes containing FRQs. Immediate release also applies to FRQs; a reference answer is not a teacher grade. Manual release requires all FRQs to be graded. Changing submitted answers clears earlier manual grades and recalculates release status; stale teacher review requests are rejected. Unreleased student question data omits answer keys and code-assembly solution positions.
 
-### Section Model
-```
-- course (FK to Course)
-- title
-- order (integer for sorting)
-```
+Code saves automatically to browser local storage every 60 seconds. **Upload** saves the latest code to the server without making it a formal teacher-visible submission. **Submit** records code and test results for teacher review. There is currently one code record per student/episode: uploading again resets its formal submission state. Quiz submissions also retain only one current record, rather than attempt history.
 
-### Episode Model
-```
-- section (FK to Section)
-- title
-- type (material/quiz)
-- order (integer for sorting)
-- info_page_content (markdown text, optional)
-- content_pdf (file upload, optional)
-- answer_pdf (file upload, optional, quiz only)
-- created_at, updated_at
-```
+## Local setup
 
-### UserProgress Model
-```
-- user (FK to User)
-- course (FK to Course)
-- current_episode (FK to Episode, nullable)
-- updated_at
-- Unique together: (user, course)
-```
+Requirements: Python 3.13+, [uv](https://docs.astral.sh/uv/), Node.js/npm (CI uses Node 22), and libmagic on non-Windows systems. On macOS use `brew install libmagic`; on Debian/Ubuntu install `libmagic1`. Windows uses the Python dependency `python-magic-bin`.
 
-### EpisodeReadStatus Model
-```
-- user (FK to User)
-- episode (FK to Episode)
-- is_read (boolean)
-- marked_at
-- Unique together: (user, episode)
-```
-
-## Business Logic
-
-### Student Workflow
-1. **Registration/Login**: Email-based registration (verification code printed to console for MVP)
-2. **Course Browsing**: View published courses, filter by tags (track/subject)
-3. **Course Overview**: View course details and personal progress
-4. **Learning Interface**:
-   - Left sidebar: Section/Episode navigation with progress indicators
-   - Main area: Markdown content rendering OR PDF viewer
-   - AJAX progress tracking (auto-save current position, manual mark as read/unread)
-
-### Teacher Workflow
-1. **Registration/Verification**: Register as teacher, wait for admin approval (is_verified_teacher=True)
-2. **Course Management**: Create new courses, edit any existing courses
-3. **Content Creation**:
-   - Create sections and episodes
-   - Edit markdown content with Vditor WYSIWYG editor
-   - Upload PDF files (with file validation and content screening)
-4. **Preview Mode**: Access same learning interface as students with additional edit buttons
-
-### Admin Workflow
-- Use Django Admin interface to:
-  - Approve teacher verification requests
-  - Manage all courses, sections, episodes
-  - Manage all user accounts
-
-## URL Structure
-
-```
-/accounts/
-    register/          # User registration
-    login/             # User login
-    logout/            # User logout
-
-/courses/
-    /                  # Course list with tag filters
-    <id>/overview/     # Course overview with progress
-    <id>/learn/        # Learning interface (redirects to last episode)
-    <id>/learn/<eid>/  # Specific episode view
-
-/teacher/
-    courses/                    # Teacher course list
-    courses/create/             # Create new course
-    courses/<id>/edit/          # Edit course
-    sections/create/            # Create section
-    episodes/create/            # Create episode
-    episodes/<id>/edit/         # Edit episode (with Vditor)
-
-/api/
-    progress/update/   # AJAX: Update current episode
-    progress/mark/     # AJAX: Toggle read/unread status
-    upload/            # File upload for Vditor images
-
-/admin/                # Django admin panel
-```
-
-## Permission System
-
-### Decorators/Mixins
-- **Student Access**: `@login_required` + `role in ['student', 'teacher', 'admin']`
-- **Teacher Access**: `@login_required` + `role == 'teacher'` + `is_verified_teacher == True`
-- **Admin Access**: `@login_required` + `is_staff == True`
-
-## File Upload Strategy
-
-1. Receive file → Validate MIME type
-2. Content screening (check file headers, virus scan placeholder)
-3. Rename with unique identifier: `{uuid}_{timestamp}.{ext}`
-4. Store in `MEDIA_ROOT/episode_pdfs/` or `answer_pdfs/`
-5. Save file path to database FileField
-
-## Setup Instructions
-
-### Prerequisites
-- Python 3.13+
-- uv package manager
-
-### Installation
-
-1. Clone the repository:
 ```bash
-# if using https mode
 git clone https://github.com/Tsinglan-Coding-Club/ts-courser.git
-cd TS-Courser
-```
-
-2. Install dependencies with uv:
-```bash
+cd ts-courser
 uv sync
-```
-
-3. Run migrations:
-```bash
+npm install
 uv run python manage.py migrate
-```
-
-4. Create superuser (admin):
-```bash
 uv run python manage.py createsuperuser
-```
-
-SECURITY CHECK！Make sure you change the SECRET_KEY in settings.py to a random value for production use.
-
-5. Run development server:
-```bash
 uv run python manage.py runserver
 ```
 
-6. Access the application:
-- Main site: http://localhost:8000
-- Admin panel: http://localhost:8000/admin
+The bare `runserver` command is customized to use **8712**. Open [the application](http://localhost:8712/) or [Django admin](http://localhost:8712/admin/). To choose a port explicitly:
 
-## Features & Development Status
+```bash
+uv run python manage.py runserver 8000
+```
 
-### Implemented Features (MVP)
-- [x] Database schema design with Django ORM
-- [x] User authentication system (email-based login)
-- [x] Role-based access control (student/teacher/admin)
-- [x] Course browsing with tag filtering (track/subject)
-- [x] Course overview with personal progress tracking
-- [x] Learning interface with sidebar navigation
-- [x] AJAX-based progress tracking (current episode, read status)
-- [x] Teacher course management (create/edit courses)
-- [x] Section and episode management with drag-and-drop reordering
-- [x] Markdown editor (Vditor) for content creation
-- [x] PDF file upload and viewing (PDF.js)
-- [x] Tag creation modal with AJAX support
-- [x] File upload with MIME type validation
-- [x] Admin approval workflow for teachers
+Create a course from the teacher interface using an admin or verified teacher account, add episodes, and publish it for student access. There is no automatic demo-data import during setup.
 
-### Future Enhancements
-- [ ] User progress tracking (enhanced)
-- [ ] Email verification with real SMTP service (SSO of teams accounts)
-- [ ] Advanced quiz features (interactive questions, auto-grading, etc., need ask Mr. Cao)
-- [ ] Student discussion forums (or course comments)
-- [ ] Course rating and review system (maybe, or student can share solutions to question)
-- [ ] Mobile responsive improvements
-- [ ] PostgreSQL migration for production deployment (currently using SQLite for simplicity)
+`uv sync` installs the Python dependencies, including Django and MSAL from `uv.lock`. Microsoft login is disabled locally until `MS_ENTRA_CLIENT_SECRET` is provided; its production redirect URI is intentionally fixed in the deployment configuration. `npm install` supplies Monaco and Pyodide assets used by Django staticfiles. Bootstrap, Vditor, marked.js, and PDF.js are used by the templates; local setup is not a fully offline bundle.
 
-## Contributing
+## Development and checks
 
-This is an MVP project. Contributions welcome for bug fixes and feature enhancements.
+Use `uv`, not pip or Poetry. See [CLAUDE.md](CLAUDE.md) for implementation conventions.
 
-## License
+```bash
+uv run python manage.py check
+uv run python manage.py test
+npm test
+uv run python -m unittest discover -s tests
+uv run python manage.py makemigrations --check --dry-run
+uv run python manage.py collectstatic --noinput --dry-run
+```
 
-TBD
+The independent Python tests under `tests/` require the separate unittest command. JavaScript tests include runtime/Pyodide coverage. CI runs these checks plus the production settings check; see [.github/workflows/checks.yml](.github/workflows/checks.yml).
+
+## Repository map
+
+| Path | Responsibility |
+| --- | --- |
+| `accounts/` | Local and Microsoft authentication, external identity mapping, teacher approval, first-login credential setup, profiles, and account administration |
+| `courses/` | Course hierarchy, catalog and learning views, canonical server quiz parser/validation in `quiz.py` |
+| `progress/` | Enrollment, read progress, quiz/code submissions, test-result payload validation |
+| `teacher/` | Authoring, ordering, student management, assignment review, ownership decorators |
+| `templates/` | Django pages; lesson tabs under `courses/episodes/` |
+| `static/js/`, `static/python/` | Quiz editor, Python execution and interactive display, bundled `courser` library |
+| `ts_courser/` | Settings, routes, upload utilities, cross-origin isolation middleware |
+| `docs/`, `tests/` | Guides/design records and standalone Python tests |
+
+## Deployment and current boundaries
+
+Use [DEPLOYMENT.md](docs/DEPLOYMENT.md) and `.env.example` for production settings, HTTPS/static assets, and backups. `.env` is **not loaded automatically**. The production profile requires environment-provided secret and hostnames; changing the development settings file is not the deployment procedure.
+
+The current classroom scope retains these documented boundaries:
+
+- Python tests execute in the student's browser. The server validates the result payload's structure but does not independently rerun code; results are classroom feedback, not tamper-proof grades.
+- Teacher-authored Markdown is rendered as HTML under the assumption that verified teachers are trusted. Sanitization for untrusted/imported content remains deferred.
+- Image uploads decode and re-encode JPEG/PNG/GIF/WebP with size and pixel limits. The inline upload endpoint requires login; its content-author ownership policy remains undecided.
+- Microsoft sign-in currently validates the fixed tenant, application audience, v2 issuer, school principal-name domain, and required `acct=0` member claim. Entra disable/removal synchronization and automatic account linking are intentionally not in the first release.
+
+## Documentation and planned work
+
+- [Contributor guide](CLAUDE.md)
+- [Adding an episode type](docs/ADD_EPISODE_TYPE.md)
+- [Interactive Python API and example](docs/INTERACTIVE_AREA.md)
+- [Deployment](docs/DEPLOYMENT.md)
+- [Prelaunch review and subsequent repair status](docs/PRELAUNCH_REVIEW_2026-09-05.md)
+- [School account upgrade plan](docs/ACCOUNT_SYSTEM_UPGRADE_PLAN.md)
+- [Account administration UI specification](docs/ACCOUNT_ADMIN_UI_SPEC.md)
+- [Microsoft identity research](docs/MICROSOFT_IDENTITY_RESEARCH.md)
+- [Functional assessment and proposed priorities](docs/FUNCTIONAL_ROADMAP.md)
+
+## Contributing and license
+
+Follow [AGENTS.md](AGENTS.md) and [CLAUDE.md](CLAUDE.md), include migrations for model changes, and add regression coverage for new views/business logic. Use Conventional Commit prefixes and `feat/<topic>` feature branches.
+
+A repository-wide license has not yet been established. The `ISC` metadata in `package.json` does not replace a project license file.

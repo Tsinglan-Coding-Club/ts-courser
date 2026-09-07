@@ -50,6 +50,19 @@
     cursor: pointer;
 }
 
+/* Show actions when their relevant editing area is active. */
+.hover-action {
+    opacity: 0;
+    transition: opacity 0.15s ease-in-out;
+}
+
+.section-card > .card-header:hover .hover-action,
+.section-card > .card-header:focus-within .hover-action,
+.episode-list-item:hover .hover-action,
+.episode-list-item:focus-within .hover-action {
+    opacity: 1;
+}
+
 .collapsible-header {
     cursor: pointer;
     user-select: none;
@@ -258,10 +271,8 @@
                             <div class="mb-2 form-check">
                                 <input type="checkbox" class="form-check-input" id="auto_release_results" name="auto_release_results"
                                        {% if course.auto_release_results %}checked{% endif %}>
-                                <label class="form-check-label small" for="auto_release_results">
-                                    Auto-release quiz results
-                                </label>
-                                <div class="form-text">Immediately show scores after submission (FRQ always requires manual grading).</div>
+                                <label class="form-check-label small" for="auto_release_results">Auto-release quiz results by default</label>
+                                <div class="form-text">Inherited quizzes release automatically unless they contain FRQs. Episodes can explicitly require review or release immediately.</div>
                             </div>
 
                             <button type="submit" class="btn btn-primary btn-sm w-100">
@@ -278,18 +289,20 @@
             <div class="d-flex justify-content-between align-items-center mb-3">
                 <h3><i class="bi bi-pencil"></i> Sections & Episodes</h3>
                 <div class="d-flex gap-2">
-                    <button class="btn btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#addSectionModal">
+                    <button class="btn btn-success btn-sm btn-action" data-bs-toggle="modal" data-bs-target="#addSectionModal">
                         <i class="bi bi-plus-circle"></i> Add Section
                     </button>
-                    <a href="{% url 'courses:learning_interface' course.id %}" class="btn btn-outline-primary btn-sm" target="_blank">
+                    <a href="{% url 'courses:learning_interface' course.id %}" class="btn btn-outline-primary btn-sm btn-action" target="_blank">
                         <i class="bi bi-eye"></i> Preview
                     </a>
-                    <button class="btn btn-outline-danger btn-sm" onclick="confirmDelete('course', {{ course.id }}, '{{ course.title|escapejs }}')">
+                    <button class="btn btn-outline-danger btn-sm btn-action" onclick="confirmDelete('course', {{ course.id }}, '{{ course.title|escapejs }}')">
                         <i class="bi bi-trash"></i> Delete
                     </button>
                 </div>
             </div>
 
+            <p class="text-muted small">Drag sections or episodes to reorder them. New items are added at the end.</p>
+            <p id="orderSaveStatus" class="small text-muted" role="status" aria-live="polite"></p>
             <div id="sectionsContainer">
             {% for section in sections %}
                 <div class="card section-card mb-3" draggable="true" data-section-id="{{ section.id }}">
@@ -301,11 +314,11 @@
                             <strong>{{ section.title }}</strong>
                             <span class="badge bg-secondary ms-2">{{ section.episodes.all|length }} episodes</span>
                         </div>
-                        <div>
-                            <button class="btn btn-sm btn-outline-danger me-1" onclick="event.stopPropagation(); confirmDelete('section', {{ section.id }}, '{{ section.title|escapejs }}')" title="Delete section">
-                                <i class="bi bi-trash"></i>
+                        <div class="d-flex gap-1 align-items-center">
+                            <button class="btn btn-sm btn-outline-danger btn-action hover-action" onclick="event.stopPropagation(); confirmDelete('section', {{ section.id }}, '{{ section.title|escapejs }}')" title="Delete section">
+                                <i class="bi bi-trash"></i> Delete
                             </button>
-                            <button class="btn btn-sm btn-primary" onclick="event.stopPropagation(); addEpisode({{ section.id }})">
+                            <button class="btn btn-sm btn-outline-primary btn-action" onclick="event.stopPropagation(); addEpisode({{ section.id }})">
                                 <i class="bi bi-plus"></i> Add Episode
                             </button>
                             <i class="bi bi-chevron-down"></i>
@@ -342,11 +355,11 @@
                                             {% endif %}
                                         </span>
                                     </div>
-                                    <div class="d-flex gap-1">
-                                        <button class="btn btn-sm btn-outline-danger" onclick="event.stopPropagation(); confirmDelete('episode', {{ episode.id }}, '{{ episode.title|escapejs }}')" title="Delete episode">
-                                            <i class="bi bi-trash"></i>
+                                    <div class="table-actions">
+                                        <button class="btn btn-sm btn-outline-danger btn-action hover-action" onclick="event.stopPropagation(); confirmDelete('episode', {{ episode.id }}, '{{ episode.title|escapejs }}')" title="Delete episode">
+                                            <i class="bi bi-trash"></i> Delete
                                         </button>
-                                        <a href="{% url 'teacher:episode_edit' episode.id %}" class="btn btn-sm btn-outline-primary">
+                                        <a href="{% url 'teacher:episode_edit' episode.id %}" class="btn btn-sm btn-outline-primary btn-action hover-action">
                                             <i class="bi bi-pencil"></i> Edit
                                         </a>
                                     </div>
@@ -466,174 +479,87 @@ document.querySelectorAll('.collapsible-header').forEach(header => {
     });
 });
 
-// ========== Drag and Drop for Sections ==========
-let draggedSection = null;
-
-document.querySelectorAll('.section-card').forEach(card => {
-    card.addEventListener('dragstart', function(e) {
-        // Don't allow drag from buttons or links
-        if (e.target.tagName === 'BUTTON' ||
-            e.target.tagName === 'A' ||
-            e.target.closest('button') ||
-            e.target.closest('a')) {
-            e.preventDefault();
-            return;
+// Each list saves a complete sibling order. Failed saves restore the visible order.
+let reorderSaving = false;
+function initializeOrdering(container, selector, url, payloadKey, idKey) {
+    if (!container) return;
+    let dragged = null;
+    const items = () => Array.from(container.children).filter(item => item.matches(selector));
+    async function saveOrder(previous) {
+        reorderSaving = true;
+        const status = document.getElementById('orderSaveStatus');
+        status.className = 'small text-muted';
+        status.textContent = 'Saving order…';
+        try {
+            const payload = items().map((row, index) => ({
+                id: Number(row.dataset[idKey]), order: index
+            }));
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrftoken},
+                body: JSON.stringify({[payloadKey]: payload})
+            });
+            const data = await response.json();
+            if (!response.ok || !data.success) throw new Error(data.error || 'Unable to save order.');
+            status.className = 'small text-success';
+            status.textContent = 'Order saved.';
+        } catch (error) {
+            previous.forEach(row => container.appendChild(row));
+            status.className = 'small text-danger';
+            status.textContent = 'Order was not saved. ' + error.message;
+        } finally {
+            reorderSaving = false;
         }
-        draggedSection = this;
-        this.classList.add('dragging');
-        e.dataTransfer.effectAllowed = 'move';
-        e.dataTransfer.setData('text/html', this.innerHTML);
-    });
-
-    card.addEventListener('dragend', function() {
-        this.classList.remove('dragging');
-        document.querySelectorAll('.section-card').forEach(c => c.classList.remove('drag-over'));
-    });
-
-    card.addEventListener('dragover', function(e) {
-        e.preventDefault();
-        if (this === draggedSection) return;
-        this.classList.add('drag-over');
-    });
-
-    card.addEventListener('dragleave', function() {
-        this.classList.remove('drag-over');
-    });
-
-    card.addEventListener('drop', function(e) {
-        e.preventDefault();
-        if (this === draggedSection) return;
-
-        const container = document.getElementById('sectionsContainer');
-        const allCards = [...container.querySelectorAll('.section-card')];
-        const draggedIndex = allCards.indexOf(draggedSection);
-        const targetIndex = allCards.indexOf(this);
-
-        if (draggedIndex < targetIndex) {
-            this.parentNode.insertBefore(draggedSection, this.nextSibling);
-        } else {
-            this.parentNode.insertBefore(draggedSection, this);
-        }
-
-        this.classList.remove('drag-over');
-        saveSectionOrder();
-    });
-});
-
-async function saveSectionOrder() {
-    const sections = document.querySelectorAll('.section-card');
-    const sectionOrders = [];
-    sections.forEach((section, index) => {
-        sectionOrders.push({
-            id: parseInt(section.dataset.sectionId),
-            order: index
-        });
-    });
-
-    try {
-        const response = await fetch('{% url "teacher:section_reorder" %}', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRFToken': csrftoken
-            },
-            body: JSON.stringify({ section_orders: sectionOrders })
-        });
-
-        const data = await response.json();
-        if (data.success) {
-            console.log('Section order saved successfully');
-        }
-    } catch (error) {
-        console.error('Error saving section order:', error);
     }
-}
-
-// ========== Drag and Drop for Episodes ==========
-document.querySelectorAll('.episodes-container').forEach(container => {
-    let draggedEpisode = null;
-
-    container.querySelectorAll('.episode-list-item').forEach(item => {
-        item.addEventListener('dragstart', function(e) {
-            // Don't allow drag from buttons or links
-            if (e.target.tagName === 'BUTTON' ||
-                e.target.tagName === 'A' ||
-                e.target.closest('button') ||
-                e.target.closest('a')) {
-                e.preventDefault();
+    items().forEach(item => {
+        item.addEventListener('dragstart', event => {
+            event.stopPropagation();
+            if (reorderSaving || event.target.closest('button, a, input')) {
+                event.preventDefault();
                 return;
             }
-            draggedEpisode = this;
-            this.classList.add('dragging');
-            e.dataTransfer.effectAllowed = 'move';
-            e.dataTransfer.setData('text/html', this.innerHTML);
+            dragged = item;
+            item.classList.add('dragging');
+            event.dataTransfer.effectAllowed = 'move';
+            event.dataTransfer.setData('text/plain', item.dataset[idKey]);
         });
-
-        item.addEventListener('dragend', function() {
-            this.classList.remove('dragging');
-            container.querySelectorAll('.episode-list-item').forEach(i => i.classList.remove('drag-over'));
+        item.addEventListener('dragend', event => {
+            event.stopPropagation();
+            item.classList.remove('dragging');
+            items().forEach(other => other.classList.remove('drag-over'));
+            dragged = null;
         });
-
-        item.addEventListener('dragover', function(e) {
-            e.preventDefault();
-            if (this === draggedEpisode) return;
-            this.classList.add('drag-over');
+        item.addEventListener('dragover', event => {
+            if (!dragged) return;
+            event.stopPropagation();
+            if (dragged === item || reorderSaving) return;
+            event.preventDefault();
+            item.classList.add('drag-over');
         });
-
-        item.addEventListener('dragleave', function() {
-            this.classList.remove('drag-over');
+        item.addEventListener('dragleave', event => {
+            if (!dragged) return;
+            event.stopPropagation();
+            item.classList.remove('drag-over');
         });
-
-        item.addEventListener('drop', function(e) {
-            e.preventDefault();
-            if (this === draggedEpisode) return;
-
-            const allItems = [...container.querySelectorAll('.episode-list-item')];
-            const draggedIndex = allItems.indexOf(draggedEpisode);
-            const targetIndex = allItems.indexOf(this);
-
-            if (draggedIndex < targetIndex) {
-                this.parentNode.insertBefore(draggedEpisode, this.nextSibling);
-            } else {
-                this.parentNode.insertBefore(draggedEpisode, this);
-            }
-
-            this.classList.remove('drag-over');
-            saveEpisodeOrder(container.dataset.sectionId);
+        item.addEventListener('drop', async event => {
+            if (!dragged) return;
+            event.stopPropagation();
+            event.preventDefault();
+            if (dragged === item || reorderSaving) return;
+            const previous = items();
+            const after = previous.indexOf(dragged) < previous.indexOf(item);
+            container.insertBefore(dragged, after ? item.nextSibling : item);
+            items().forEach(other => other.classList.remove('drag-over'));
+            await saveOrder(previous);
         });
     });
-});
-
-async function saveEpisodeOrder(sectionId) {
-    const container = document.querySelector(`.episodes-container[data-section-id="${sectionId}"]`);
-    const episodes = container.querySelectorAll('.episode-list-item');
-    const episodeOrders = [];
-
-    episodes.forEach((episode, index) => {
-        episodeOrders.push({
-            id: parseInt(episode.dataset.episodeId),
-            order: index
-        });
-    });
-
-    try {
-        const response = await fetch('{% url "teacher:episode_reorder" %}', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRFToken': csrftoken
-            },
-            body: JSON.stringify({ episode_orders: episodeOrders })
-        });
-
-        const data = await response.json();
-        if (data.success) {
-            console.log('Episode order saved successfully');
-        }
-    } catch (error) {
-        console.error('Error saving episode order:', error);
-    }
 }
+initializeOrdering(document.getElementById('sectionsContainer'), '.section-card',
+    '{% url "teacher:section_reorder" %}', 'section_orders', 'sectionId');
+document.querySelectorAll('.episodes-container').forEach(container => {
+    initializeOrdering(container, '.episode-list-item',
+        '{% url "teacher:episode_reorder" %}', 'episode_orders', 'episodeId');
+});
 // ---- Enrollment Settings ----
 const emRadios = document.querySelectorAll('input[name="enrollment_mode"]');
 const courseCodeSection = document.getElementById('courseCodeSection');

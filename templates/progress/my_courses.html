@@ -2,6 +2,33 @@
 
 {% block title %}My Courses{% endblock %}
 
+{% block extra_css %}
+<style>
+    .course-description {
+        display: -webkit-box;
+        height: 4.5em;
+        overflow: hidden;
+        line-height: 1.5;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 3;
+    }
+
+    .course-tags {
+        display: flex;
+        min-height: 1.5rem;
+        overflow-x: auto;
+        overflow-y: hidden;
+        padding-bottom: 0.125rem;
+        scrollbar-width: thin;
+        white-space: nowrap;
+    }
+
+    .course-tags .badge {
+        flex: 0 0 auto;
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="container my-5">
     <div class="d-flex justify-content-between align-items-center mb-4">
@@ -28,18 +55,16 @@
                             </p>
 
                             <!-- Course Description -->
-                            <p class="card-text text-muted mb-3">
-                                {{ data.course.description|truncatewords:20 }}
+                            <p class="card-text text-muted mb-3 course-description">
+                                {{ data.course.description }}
                             </p>
 
                             <!-- Tags -->
-                            {% if data.course.tags.all %}
-                                <div class="mb-3">
-                                    {% for tag in data.course.tags.all|slice:":3" %}
-                                        <span class="badge bg-secondary me-1">{{ tag.name }}</span>
-                                    {% endfor %}
-                                </div>
-                            {% endif %}
+                            <div class="mb-3 course-tags" aria-label="Course tags" tabindex="0">
+                                {% for tag in data.course.tags.all %}
+                                    <span class="badge bg-secondary me-1">{{ tag.name }}</span>
+                                {% endfor %}
+                            </div>
 
                             <!-- Progress Bar -->
                             <div class="mb-3">
@@ -69,20 +94,20 @@
                             <div class="d-flex gap-2">
                                 {% if data.current_episode %}
                                     <a href="{% url 'courses:learning_interface_episode' data.course.id data.current_episode.id %}"
-                                       class="btn btn-success flex-fill">
+                                       class="btn btn-outline-primary flex-fill">
                                         <i class="bi bi-play-circle"></i> Continue Learning
                                     </a>
                                 {% else %}
                                     <a href="{% url 'courses:learning_interface' data.course.id %}"
-                                       class="btn btn-success flex-fill">
+                                       class="btn btn-outline-primary flex-fill">
                                         <i class="bi bi-play-circle"></i> Start Learning
                                     </a>
                                 {% endif %}
                                 <button type="button"
-                                        class="btn btn-outline-danger unenroll-btn"
+                                        class="btn btn-outline-danger btn-action unenroll-btn"
                                         data-course-id="{{ data.course.id }}"
                                         data-course-title="{{ data.course.title }}">
-                                    <i class="bi bi-x-circle"></i>
+                                    <i class="bi bi-x-circle"></i> Unenroll
                                 </button>
                             </div>
                         </div>

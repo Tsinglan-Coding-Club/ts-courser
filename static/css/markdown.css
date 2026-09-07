@@ -1,0 +1,20 @@
+/* Shared rules for HTML produced by Markdown renderers. */
+
+/*
+ * Inline code intentionally has padding. Fenced code already sits inside a
+ * padded <pre>, so its nested <code> must not add a second inset that looks
+ * like a leading space.
+ */
+.markdown-body pre > code,
+.md-preview pre > code,
+.quiz-view-question pre > code {
+    display: block;
+    margin: 0;
+    padding: 0;
+    background: transparent;
+    border-radius: 0;
+    color: inherit;
+    font-family: inherit;
+    font-size: inherit;
+    line-height: inherit;
+}

@@ -5,14 +5,44 @@ from django.views.decorators.http import require_POST
 from django.core.files.storage import default_storage
 from django.conf import settings
 from django.utils import timezone
-from .models import UserProgress, EpisodeReadStatus, CourseEnrollment, QuizSubmission
+from .models import UserProgress, EpisodeReadStatus, CourseEnrollment, QuizSubmission, CodeSubmission
 from courses.models import Episode, Course
-from ts_courser.utils import compress_image
+from ts_courser.utils import ImageUploadValidationError, validate_and_reencode_image
+from courses.quiz import validate_answers
+from progress.validation import validate_test_results
+from django.db import transaction
 import json
 import uuid
 import os
-import magic
 import secrets
+
+
+def _get_accessible_episode(request, episode_id, episode_type=None):
+    """Return an episode only when it is accessible under the current course policy."""
+    try:
+        query = Episode.objects.select_related('section__course')
+        if episode_type:
+            query = query.filter(type=episode_type)
+        episode = query.get(id=episode_id)
+    except (ValueError, TypeError):
+        return None, JsonResponse({'success': False, 'error': 'Invalid episode ID'}, status=400)
+    except Episode.DoesNotExist:
+        label = 'Episode' if not episode_type else f'{episode_type.title()} episode'
+        return None, JsonResponse({'success': False, 'error': f'{label} not found'}, status=404)
+
+    course = episode.section.course
+    is_enrolled = CourseEnrollment.objects.filter(
+        user=request.user, course=course
+    ).exists()
+    is_privileged = request.user.is_teacher or request.user.is_admin
+
+    if not course.is_published or (not is_enrolled and not is_privileged):
+        return None, JsonResponse(
+            {'success': False, 'error': 'You do not have access to this course'},
+            status=403,
+        )
+
+    return episode, None
 
 
 @login_required
@@ -24,18 +54,18 @@ def update_progress(request):
     if not episode_id:
         return JsonResponse({'success': False, 'error': 'Episode ID required'})
 
-    try:
-        episode = Episode.objects.get(id=episode_id)
-        progress, created = UserProgress.objects.get_or_create(
-            user=request.user,
-            course=episode.section.course
-        )
-        progress.current_episode = episode
-        progress.save()
+    episode, error_response = _get_accessible_episode(request, episode_id)
+    if error_response:
+        return error_response
 
-        return JsonResponse({'success': True})
-    except Episode.DoesNotExist:
-        return JsonResponse({'success': False, 'error': 'Episode not found'})
+    progress, created = UserProgress.objects.get_or_create(
+        user=request.user,
+        course=episode.section.course
+    )
+    progress.current_episode = episode
+    progress.save()
+
+    return JsonResponse({'success': True})
 
 
 @login_required
@@ -48,18 +78,18 @@ def mark_episode(request):
     if not episode_id:
         return JsonResponse({'success': False, 'error': 'Episode ID required'})
 
-    try:
-        episode = Episode.objects.get(id=episode_id)
-        read_status, created = EpisodeReadStatus.objects.get_or_create(
-            user=request.user,
-            episode=episode
-        )
-        read_status.is_read = is_read
-        read_status.save()
+    episode, error_response = _get_accessible_episode(request, episode_id)
+    if error_response:
+        return error_response
 
-        return JsonResponse({'success': True, 'is_read': is_read})
-    except Episode.DoesNotExist:
-        return JsonResponse({'success': False, 'error': 'Episode not found'})
+    read_status, created = EpisodeReadStatus.objects.get_or_create(
+        user=request.user,
+        episode=episode
+    )
+    read_status.is_read = is_read
+    read_status.save()
+
+    return JsonResponse({'success': True, 'is_read': is_read})
 
 
 @login_required
@@ -79,24 +109,12 @@ def vditor_upload(request):
     success_files = []
 
     for uploaded_file in uploaded_files:
-        # File validation
-        if uploaded_file.size > 10 * 1024 * 1024:  # 10MB limit
-            continue
-
-        # MIME type validation
         try:
-            mime = magic.Magic(mime=True)
-            file_mime = mime.from_buffer(uploaded_file.read(1024))
-            uploaded_file.seek(0)
-
-            # Only allow images
-            if not file_mime.startswith('image/'):
-                continue
-        except Exception:
+            uploaded_file = validate_and_reencode_image(
+                uploaded_file, max_size_bytes=10 * 1024 * 1024
+            )
+        except ImageUploadValidationError:
             continue
-
-        # Compress images larger than 1MB before saving
-        uploaded_file = compress_image(uploaded_file)
 
         # Generate unique filename
         ext = os.path.splitext(uploaded_file.name)[1]
@@ -220,55 +238,39 @@ def submit_quiz(request):
     if not episode_id:
         return JsonResponse({'success': False, 'error': 'Episode ID required'})
 
-    try:
-        episode = Episode.objects.get(id=episode_id, type='quiz')
-    except Episode.DoesNotExist:
-        return JsonResponse({'success': False, 'error': 'Quiz episode not found'})
+    episode, error_response = _get_accessible_episode(request, episode_id, 'quiz')
+    if error_response:
+        return error_response
 
     course = episode.section.course
 
-    # Check enrollment
-    is_enrolled = CourseEnrollment.objects.filter(
-        user=request.user, course=course
-    ).exists()
-    if not is_enrolled and not (request.user.is_teacher or request.user.is_admin):
-        return JsonResponse({'success': False, 'error': 'You must be enrolled to submit'})
-
-    # Parse and validate answers
     try:
-        answers = json.loads(answers_json)
-    except json.JSONDecodeError:
-        return JsonResponse({'success': False, 'error': 'Invalid answers format'})
-
-    # Determine if there are FRQ questions
-    has_frq = any(q.get('type') == 'frq' for q in answers.get('questions', []))
-
-    # Get existing submission so we can preserve a manual teacher release
-    existing = QuizSubmission.objects.filter(
-        user=request.user, episode=episode
-    ).first()
-
-    # Auto-release: episode-level quiz_show_results (immediate, even with FRQ)
-    # or course-level auto_release_results (only for non-FRQ)
-    if episode.quiz_show_results:
-        released_at = timezone.now()
-    elif course.auto_release_results and not has_frq:
-        released_at = timezone.now()
-    else:
-        released_at = None
-
-    # Preserve existing manual release if the new logic wouldn't auto-release
-    if not released_at and existing and existing.released_at:
-        released_at = existing.released_at
-
-    submission, created = QuizSubmission.objects.update_or_create(
-        user=request.user,
-        episode=episode,
-        defaults={
-            'answers': answers_json,
-            'released_at': released_at,
-        }
+        answers = validate_answers(episode, json.loads(answers_json))
+    except (json.JSONDecodeError, ValueError) as error:
+        return JsonResponse({'success': False, 'error': str(error)}, status=400)
+    has_frq = any(q['type'] == 'frq' for q in answers['questions'])
+    policy = episode.quiz_release_policy
+    automatic = policy == 'immediate' or (
+        policy == 'inherit' and course.auto_release_results and not has_frq
     )
+    answers_json = json.dumps(answers)
+    with transaction.atomic():
+        submission, created = QuizSubmission.objects.select_for_update().get_or_create(
+            user=request.user, episode=episode
+        )
+        try:
+            previous_answers = json.loads(submission.answers)
+        except (json.JSONDecodeError, TypeError):
+            previous_answers = None
+        changed = created or previous_answers != answers
+        if changed:
+            # A grade belongs to the previous answers, never to a replacement.
+            submission.frq_grades = '{}'
+            submission.released_at = timezone.now() if automatic else None
+            submission.submitted_at = timezone.now()
+        submission.answers = answers_json
+        submission.save()
+        released_at = submission.released_at
 
     # Mark episode as read on submission
     EpisodeReadStatus.objects.update_or_create(
@@ -281,6 +283,82 @@ def submit_quiz(request):
         'success': True,
         'message': 'Quiz submitted successfully!',
         'auto_released': released_at is not None,
+    })
+
+
+@login_required
+@require_POST
+def upload_code(request):
+    """Upload code to the server without making it visible as a submission."""
+    episode_id = request.POST.get('episode_id')
+    code = request.POST.get('code', '')
+
+    if not episode_id:
+        return JsonResponse({'success': False, 'error': 'Episode ID required'})
+
+    episode, error_response = _get_accessible_episode(request, episode_id, 'code')
+    if error_response:
+        return error_response
+
+    CodeSubmission.objects.update_or_create(
+        user=request.user,
+        episode=episode,
+        defaults={
+            'code': code,
+            'test_results': '[]',
+            'is_submitted': False,
+            'submitted_at': None,
+        },
+    )
+
+    return JsonResponse({'success': True, 'message': 'Code uploaded successfully.'})
+
+
+@login_required
+@require_POST
+def submit_code(request):
+    """Record a formally submitted code upload and its browser-side test results."""
+    episode_id = request.POST.get('episode_id')
+    code = request.POST.get('code', '')
+    test_results_json = request.POST.get('test_results', '[]')
+
+    if not episode_id:
+        return JsonResponse({'success': False, 'error': 'Episode ID required'})
+
+    episode, error_response = _get_accessible_episode(request, episode_id, 'code')
+    if error_response:
+        return error_response
+
+    # Validate test_results JSON
+    try:
+        test_results = validate_test_results(json.loads(test_results_json))
+    except (json.JSONDecodeError, ValueError) as error:
+        return JsonResponse({'success': False, 'error': str(error)}, status=400)
+    test_results_json = json.dumps(test_results)
+
+    # The client has already run the tests and uploaded the source. Keep the
+    # latest formal submission as the only teacher-visible record.
+    CodeSubmission.objects.update_or_create(
+        user=request.user,
+        episode=episode,
+        defaults={
+            'code': code,
+            'test_results': test_results_json,
+            'is_submitted': True,
+            'submitted_at': timezone.now(),
+        },
+    )
+
+    # Mark episode as read on submission
+    EpisodeReadStatus.objects.update_or_create(
+        user=request.user,
+        episode=episode,
+        defaults={'is_read': True}
+    )
+
+    return JsonResponse({
+        'success': True,
+        'message': 'Code submitted successfully!',
     })
 
 

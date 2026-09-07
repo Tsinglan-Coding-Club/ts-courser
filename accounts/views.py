@@ -1,168 +1,323 @@
-from django.shortcuts import render, redirect, get_object_or_404
-from django.contrib.auth import login, logout, authenticate
-from django.contrib.auth.decorators import login_required
-from django.contrib import messages
-from django.db import IntegrityError
-from django.http import JsonResponse
-from django.core.files.storage import default_storage
-from django.views.decorators.http import require_POST
-from django.utils import timezone
 from datetime import timedelta
-from .models import User
+
+from django.conf import settings
+from django.contrib import messages
+from django.contrib.auth import authenticate, login, logout
+from django.contrib.auth.decorators import login_required
+from django.db import IntegrityError, transaction
+from django.http import JsonResponse
+from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
+from django.utils import timezone
+from django.utils.crypto import constant_time_compare
+from django.utils.http import url_has_allowed_host_and_scheme
+from django.views.decorators.http import require_POST
+from msal.exceptions import MsalError
+from requests.exceptions import RequestException
+
 from courses.models import Tag
-from ts_courser.utils import compress_image
-import os
-import random
-import string
+from ts_courser.utils import ImageUploadValidationError, validate_and_reencode_image
+
+from .forms import FirstLoginCredentialsForm, LocalStudentCreationForm
+from .microsoft import (
+    MicrosoftIdentityError,
+    build_msal_app,
+    get_or_create_microsoft_user,
+    validate_claims,
+    verify_id_token,
+)
+from .models import User
+from .services import issue_local_student
 
 
-def generate_verification_code():
-    """Generate a 6-digit verification code."""
-    return ''.join(random.choices(string.digits, k=6))
+PREAUTH_USER_KEY = 'credential_change_user_id'
+PREAUTH_HASH_KEY = 'credential_change_password_hash'
+PREAUTH_TIME_KEY = 'credential_change_started_at'
+PREAUTH_NEXT_KEY = 'credential_change_next'
 
 
-@require_POST
-def send_verification_code(request):
-    """Send verification code to email (MVP: print to console)."""
-    email = request.POST.get('email')
-
-    if not email:
-        return JsonResponse({'success': False, 'error': 'Email is required'})
-
-    # Check if email already exists
-    if User.objects.filter(email=email).exists():
-        return JsonResponse({'success': False, 'error': 'Email already registered'})
-
-    # Generate verification code
-    code = generate_verification_code()
-
-    # Store code in session (temporary storage for MVP)
-    request.session['verification_code'] = code
-    request.session['verification_email'] = email
-    request.session['code_sent_at'] = timezone.now().isoformat()
-
-    # MVP: Print to console (replace with email sending in production)
-    print(f"\n{'='*50}")
-    print(f"VERIFICATION CODE for {email}: {code}")
-    print(f"Code expires in 10 minutes")
-    print(f"{'='*50}\n")
-
-    return JsonResponse({
-        'success': True,
-        'message': 'Verification code sent! (Check console in MVP mode)'
-    })
+def _safe_next(request, candidate=None):
+    candidate = candidate or request.GET.get('next') or request.POST.get('next')
+    if candidate and url_has_allowed_host_and_scheme(
+        candidate,
+        allowed_hosts={request.get_host()},
+        require_https=request.is_secure(),
+    ):
+        return candidate
+    return reverse('courses:course_list')
 
 
-def register(request):
-    """User registration view with email verification code."""
-    if request.method == 'POST':
-        # Get form data
-        email = request.POST.get('email')
-        verification_code = request.POST.get('verification_code')
-        username = request.POST.get('username')
-        password = request.POST.get('password')
-        password_confirm = request.POST.get('password_confirm')
-        role = request.POST.get('role', 'student')
-
-        # Validation
-        if not all([email, verification_code, username, password, password_confirm]):
-            messages.error(request, 'All fields are required.')
-            return render(request, 'accounts/register.html')
-
-        # Verify email matches session
-        session_email = request.session.get('verification_email')
-        if not session_email or session_email != email:
-            messages.error(request, 'Email verification required. Please request a new code.')
-            return render(request, 'accounts/register.html')
-
-        # Verify code matches and hasn't expired
-        session_code = request.session.get('verification_code')
-        code_sent_at = request.session.get('code_sent_at')
-
-        if not session_code or session_code != verification_code:
-            messages.error(request, 'Invalid verification code.')
-            return render(request, 'accounts/register.html')
-
-        # Check code expiration (10 minutes)
-        if code_sent_at:
-            sent_time = timezone.datetime.fromisoformat(code_sent_at)
-            if timezone.now() - sent_time > timedelta(minutes=10):
-                messages.error(request, 'Verification code expired. Please request a new one.')
-                # Clear session
-                request.session.pop('verification_code', None)
-                request.session.pop('verification_email', None)
-                request.session.pop('code_sent_at', None)
-                return render(request, 'accounts/register.html')
-
-        # Validate passwords
-        if password != password_confirm:
-            messages.error(request, 'Passwords do not match.')
-            return render(request, 'accounts/register.html')
-
-        try:
-            # Create user
-            user = User.objects.create_user(
-                username=username,
-                email=email,
-                password=password,
-                role=role
-            )
-            user.is_email_verified = True
-            user.save()
-
-            # Clear session
-            request.session.pop('verification_code', None)
-            request.session.pop('verification_email', None)
-            request.session.pop('code_sent_at', None)
-
-            if role == 'teacher':
-                messages.success(
-                    request,
-                    'Teacher account created! Please wait for admin verification.'
-                )
-            else:
-                messages.success(request, 'Account created successfully!')
-
-            # Auto-login after registration
-            login(request, user)
-            return redirect('courses:course_list')
-
-        except IntegrityError:
-            messages.error(request, 'Username or email already exists.')
-            return render(request, 'accounts/register.html')
-
-    return render(request, 'accounts/register.html')
+def _clear_preauth(request):
+    for key in (
+        PREAUTH_USER_KEY, PREAUTH_HASH_KEY, PREAUTH_TIME_KEY, PREAUTH_NEXT_KEY,
+    ):
+        request.session.pop(key, None)
 
 
 def login_view(request):
-    """User login view."""
+    """Local username/password login for administrator-issued accounts."""
     if request.method == 'POST':
-        username = request.POST.get('username')
+        username = request.POST.get('username', '').strip()
         password = request.POST.get('password')
-
         user = authenticate(request, username=username, password=password)
 
-        if user is not None:
+        if user is not None and user.local_login_enabled:
+            next_url = _safe_next(request)
+            if user.must_change_credentials:
+                if (
+                    not user.initial_password_expires_at
+                    or user.initial_password_expires_at <= timezone.now()
+                ):
+                    messages.error(
+                        request,
+                        'The initial password has expired. Ask an administrator for a new one.',
+                    )
+                    return render(request, 'accounts/login.html')
+                logout(request)
+                request.session.cycle_key()
+                request.session[PREAUTH_USER_KEY] = user.pk
+                request.session[PREAUTH_HASH_KEY] = user.password
+                request.session[PREAUTH_TIME_KEY] = timezone.now().isoformat()
+                request.session[PREAUTH_NEXT_KEY] = next_url
+                return redirect('accounts:first_login_credentials')
             login(request, user)
             messages.success(request, f'Welcome back, {user.username}!')
-
-            # Redirect based on role
-            next_url = request.GET.get('next')
-            if next_url:
-                return redirect(next_url)
-            return redirect('courses:course_list')
+            return redirect(next_url)
         else:
             messages.error(request, 'Invalid username or password.')
 
     return render(request, 'accounts/login.html')
 
 
-@login_required
+@require_POST
 def logout_view(request):
     """User logout view."""
     logout(request)
+    _clear_preauth(request)
     messages.success(request, 'You have been logged out successfully.')
     return redirect('accounts:login')
+
+
+@require_POST
+def microsoft_login(request):
+    requested_role = request.POST.get('role')
+    if requested_role not in {'student', 'teacher'}:
+        messages.error(request, 'Choose Student or Teacher before continuing.')
+        return redirect('accounts:login')
+    if not settings.MS_ENTRA_ENABLED:
+        messages.error(request, 'Microsoft sign-in is not configured on this server.')
+        return redirect('accounts:login')
+
+    try:
+        flow = build_msal_app().initiate_auth_code_flow(
+            scopes=[],
+            redirect_uri=settings.MS_ENTRA_REDIRECT_URI,
+            prompt='select_account',
+        )
+    except (MicrosoftIdentityError, MsalError, RequestException, RuntimeError, ValueError):
+        messages.error(request, 'Microsoft sign-in could not be started.')
+        return redirect('accounts:login')
+    if 'auth_uri' not in flow:
+        messages.error(request, 'Microsoft sign-in could not be started.')
+        return redirect('accounts:login')
+
+    request.session['microsoft_auth_flow'] = flow
+    request.session['microsoft_requested_role'] = requested_role
+    request.session['microsoft_next'] = _safe_next(request)
+    return redirect(flow['auth_uri'])
+
+
+def microsoft_callback(request):
+    flow = request.session.pop('microsoft_auth_flow', None)
+    requested_role = request.session.pop('microsoft_requested_role', None)
+    next_url = request.session.pop('microsoft_next', None)
+    if not flow or requested_role not in {'student', 'teacher'}:
+        return render(
+            request,
+            'accounts/microsoft_error.html',
+            {'message': 'This sign-in request is missing or has already been used.'},
+            status=400,
+        )
+
+    try:
+        result = build_msal_app().acquire_token_by_auth_code_flow(
+            flow,
+            request.GET.dict(),
+        )
+    except (MicrosoftIdentityError, MsalError, RequestException, RuntimeError, ValueError):
+        result = {}
+    id_token = result.get('id_token') if isinstance(result, dict) else None
+    if not id_token:
+        return render(
+            request,
+            'accounts/microsoft_error.html',
+            {'message': 'Microsoft sign-in was cancelled or could not be verified.'},
+            status=403,
+        )
+
+    try:
+        claims = verify_id_token(id_token, flow.get('nonce'))
+        principal = validate_claims(claims)
+        try:
+            user, _created = get_or_create_microsoft_user(principal, requested_role)
+        except IntegrityError:
+            # A simultaneous first sign-in can win the unique username/identity
+            # insert. Retry once after the failed transaction has rolled back.
+            try:
+                user, _created = get_or_create_microsoft_user(principal, requested_role)
+            except IntegrityError as exc:
+                raise MicrosoftIdentityError(
+                    'This Microsoft account could not be created safely. Try again.'
+                ) from exc
+    except MicrosoftIdentityError as exc:
+        return render(
+            request,
+            'accounts/microsoft_error.html',
+            {'message': str(exc)},
+            status=403,
+        )
+
+    login(request, user, backend='accounts.backends.EntraSessionBackend')
+    if user.role == 'teacher' and not user.is_verified_teacher:
+        return redirect('accounts:teacher_pending')
+    return redirect(next_url if next_url and url_has_allowed_host_and_scheme(
+        next_url,
+        allowed_hosts={request.get_host()},
+        require_https=request.is_secure(),
+    ) else reverse('courses:course_list'))
+
+
+@login_required
+def teacher_pending(request):
+    if request.user.role != 'teacher' or request.user.is_verified_teacher:
+        return redirect('courses:course_list')
+    return render(request, 'accounts/teacher_pending.html')
+
+
+def first_login_credentials(request):
+    user_id = request.session.get(PREAUTH_USER_KEY)
+    password_hash = request.session.get(PREAUTH_HASH_KEY)
+    started_at = request.session.get(PREAUTH_TIME_KEY)
+    if not all((user_id, password_hash, started_at)):
+        messages.error(request, 'Sign in with the issued account before changing it.')
+        return redirect('accounts:login')
+    try:
+        started = timezone.datetime.fromisoformat(started_at)
+        user = User.objects.get(pk=user_id, is_active=True)
+    except (ValueError, TypeError, User.DoesNotExist):
+        _clear_preauth(request)
+        return redirect('accounts:login')
+    if (
+        timezone.now() - started > timedelta(minutes=10)
+        or not user.local_login_enabled
+        or not user.must_change_credentials
+        or not constant_time_compare(user.password, password_hash)
+        or not user.initial_password_expires_at
+        or user.initial_password_expires_at <= timezone.now()
+    ):
+        _clear_preauth(request)
+        messages.error(request, 'This credential-change session is no longer valid.')
+        return redirect('accounts:login')
+
+    form = FirstLoginCredentialsForm(request.POST or None, user=user)
+    if request.method == 'POST' and form.is_valid():
+        try:
+            with transaction.atomic():
+                locked_user = User.objects.select_for_update().get(pk=user.pk)
+                if (
+                    not locked_user.is_active
+                    or not locked_user.local_login_enabled
+                    or not locked_user.must_change_credentials
+                    or timezone.now() - started > timedelta(minutes=10)
+                    or not locked_user.initial_password_expires_at
+                    or locked_user.initial_password_expires_at <= timezone.now()
+                    or not constant_time_compare(locked_user.password, password_hash)
+                ):
+                    _clear_preauth(request)
+                    messages.error(request, 'This credential-change session is no longer valid.')
+                    return redirect('accounts:login')
+                locked_user.username = form.cleaned_data['username']
+                locked_user.set_password(form.cleaned_data['password1'])
+                locked_user.must_change_credentials = False
+                locked_user.initial_password_expires_at = None
+                locked_user.password_changed_at = timezone.now()
+                locked_user.save(update_fields=(
+                    'username', 'password', 'must_change_credentials',
+                    'initial_password_expires_at', 'password_changed_at',
+                ))
+        except IntegrityError:
+            form.add_error('username', 'This username is already in use.')
+            return render(
+                request,
+                'accounts/first_login_credentials.html',
+                {'form': form},
+                status=409,
+            )
+        next_url = request.session.get(PREAUTH_NEXT_KEY)
+        _clear_preauth(request)
+        login(request, locked_user, backend='accounts.backends.LocalAccountBackend')
+        messages.success(request, 'Your username and password have been updated.')
+        return redirect(next_url if next_url and url_has_allowed_host_and_scheme(
+            next_url,
+            allowed_hosts={request.get_host()},
+            require_https=request.is_secure(),
+        ) else reverse('courses:course_list'))
+
+    return render(request, 'accounts/first_login_credentials.html', {'form': form})
+
+
+def _admin_required(view_func):
+    @login_required
+    def wrapped(request, *args, **kwargs):
+        if not request.user.is_admin:
+            return JsonResponse({'success': False, 'error': 'Administrator required.'}, status=403)
+        return view_func(request, *args, **kwargs)
+    return wrapped
+
+
+@_admin_required
+def account_management(request):
+    pending_teachers = User.objects.filter(
+        role='teacher', is_verified_teacher=False, is_active=True,
+    ).select_related('external_identity').order_by('created_at')
+    return render(
+        request,
+        'accounts/account_management.html',
+        {'pending_teachers': pending_teachers},
+    )
+
+
+@_admin_required
+def create_local_student(request):
+    form = LocalStudentCreationForm(request.POST or None)
+    if request.method == 'POST' and form.is_valid():
+        user, initial_password = issue_local_student(
+            creator=request.user,
+            **form.cleaned_data,
+        )
+        response = render(
+            request,
+            'accounts/local_account_created.html',
+            {'created_user': user, 'initial_password': initial_password},
+        )
+        response['Cache-Control'] = 'no-store'
+        return response
+    return render(request, 'accounts/create_local_student.html', {'form': form})
+
+
+@_admin_required
+@require_POST
+def approve_teacher(request, user_id):
+    teacher = get_object_or_404(User, pk=user_id, role='teacher', is_active=True)
+    if not teacher.is_verified_teacher:
+        teacher.is_verified_teacher = True
+        teacher.teacher_reviewed_at = timezone.now()
+        teacher.teacher_reviewed_by = request.user
+        teacher.save(update_fields=(
+            'is_verified_teacher', 'teacher_reviewed_at', 'teacher_reviewed_by',
+        ))
+    messages.success(request, f'{teacher.get_display_name} has been approved as a teacher.')
+    return redirect('accounts:account_management')
 
 
 @login_required
@@ -210,23 +365,14 @@ def profile_edit(request):
         user.display_name = request.POST.get('display_name', '').strip()
         user.bio = request.POST.get('bio', '').strip()
 
-        # Handle avatar upload (compress if > 1MB)
+        # Handle avatar upload using a decoded, sanitized raster image.
         if 'avatar' in request.FILES:
             avatar_file = request.FILES['avatar']
-
-            # Validate file size (2MB max)
-            if avatar_file.size > 2 * 1024 * 1024:
-                messages.error(request, 'Avatar file size must be less than 2MB.')
+            try:
+                avatar_file = validate_and_reencode_image(avatar_file)
+            except ImageUploadValidationError as exc:
+                messages.error(request, str(exc))
                 return redirect('accounts:profile_edit')
-
-            # Validate file type
-            allowed_types = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
-            if avatar_file.content_type not in allowed_types:
-                messages.error(request, 'Avatar must be a valid image file (JPEG, PNG, GIF, or WebP).')
-                return redirect('accounts:profile_edit')
-
-            # Compress large images with Pillow before saving
-            avatar_file = compress_image(avatar_file)
 
             # Delete old avatar if exists
             if user.avatar:

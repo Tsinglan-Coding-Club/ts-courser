@@ -1,7 +1,7 @@
 {# LeetCode-style grid layout for episode type: code #}
 {# Columns flex-ratio:   has_ref → 1:1:1:2 (4col)  |  no_ref → 1:1:2 (3col) #}
 {# Col-2 height:         has_int → split top/bottom |  no_int → console fills #}
-{% load course_filters %}
+{% load course_filters static %}
 
 {% with show_ref=current_episode.show_reference show_int=current_episode.show_interactive %}
 {% with col1=show_ref|yesno:'code-col-1of5,code-col-1of4' col2=show_ref|yesno:'code-col-2of5,code-col-2of4' %}
@@ -32,9 +32,7 @@
                 <div class="code-panel-header">
                     <i class="bi bi-display"></i> Interactive
                 </div>
-                <div class="code-panel-body code-panel-placeholder">
-                    <span class="text-muted">Interactive area — coming soon</span>
-                </div>
+                <div class="code-panel-body" id="interactive-container"></div>
             </div>
             <div class="code-panel code-panel-bottom">
                 <div class="code-panel-body code-console-container" id="console-container"></div>
@@ -53,8 +51,15 @@
             <div class="code-panel-header">
                 <i class="bi bi-book"></i> Reference
             </div>
-            <div class="code-panel-body code-panel-placeholder">
-                <span class="text-muted">Reference materials — coming soon</span>
+            <div class="code-panel-body">
+                {% if current_episode.reference_sheet_content %}
+                    <textarea id="reference-raw-data" style="display:none;">{{ current_episode.reference_sheet_content|force_escape }}</textarea>
+                    <div id="reference-content" class="markdown-body reference-sheet"></div>
+                {% else %}
+                    <div class="code-panel-placeholder">
+                        <span class="text-muted">No reference sheet available for this episode.</span>
+                    </div>
+                {% endif %}
             </div>
         </div>
     </div>
@@ -74,3 +79,17 @@
 
 {% endwith %}
 {% endwith %}
+
+<script src="{% static 'js/reference-renderer.js' %}?v=2"></script>
+<script>
+(function() {
+    var refRaw = document.getElementById('reference-raw-data');
+    var refContent = document.getElementById('reference-content');
+    if (refRaw && refContent) {
+        var md = refRaw.value;
+        if (md && md.trim() && md !== 'None') {
+            refContent.innerHTML = window.renderReferenceSheet(md);
+        }
+    }
+})();
+</script>
