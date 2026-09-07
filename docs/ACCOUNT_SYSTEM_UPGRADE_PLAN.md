@@ -70,7 +70,7 @@ flowchart TD
 
 **第一层：身份来源。** 使用固定 tenant authority，验证 token 来自配置的租户和应用。单租户仍允许本租户中的 guest，因此不能把“同一个租户”或“同一个邮箱后缀”当作在校证明。[Single-tenant apps](https://learn.microsoft.com/en-us/entra/identity-platform/single-and-multi-tenant-apps)
 
-**第二层：学校准入。** 推荐学校 IT 给该应用定义 `Student`、`Teacher` 两个 app role，将合格用户分配到角色，并启用 Enterprise application 的 Assignment required。应用本身仍校验允许的角色和校内成员资格，拒绝 guest、未分配人员、缺失/冲突角色；不从 Entra 的目录管理员身份推导平台管理员。[App roles](https://learn.microsoft.com/en-us/entra/identity-platform/howto-add-app-roles-in-apps)
+**第二层：学校准入。** 推荐学校 IT 给该应用定义 `Student`、`Teacher` 两个 app role，将合格用户分配到角色，并启用 Enterprise application 的 Assignment required。应用本身仍校验允许的角色和本地准入状态；不从 Entra 的目录管理员身份推导平台管理员。[App roles](https://learn.microsoft.com/en-us/entra/identity-platform/howto-add-app-roles-in-apps)
 
 若学校无法持续维护 app role，可选本地准入名单模式：管理员通过产品界面确认已验证的 `(tenant_id, object_id, 本地角色)`，获准后才进入业务页面。也支持文件导入，但不强制提前准备整校名单。
 
@@ -78,7 +78,7 @@ flowchart TD
 
 若采用首次登录待审核或学校成员准入模式，Entra 的 Assignment required 设置必须与之配合：未被分配的普通用户会在回到本站前被 Entra 阻止。学校可先为合格成员分配 Default Access，或在明确采用本站准入策略时关闭该开关。不能同时要求未分配账号被 Entra 阻止，又期待这些账号能够进入本站的审核页面。
 
-本方案默认排除 guest：学校在 ID token 中配置可选 `acct` claim，应用明确要求 `acct == 0`，值为 `1` 或缺失都拒绝；不能假定普通 ID token 必然包含 `userType`。这个要求同样适用于本地准入名单模式。即使是目录 member，是否属于实际在校人员仍由学校授权名单负责。若学校确实把校内教师登记为 guest，需要在实施前单独核实业务规则。[Optional claims](https://learn.microsoft.com/en-us/entra/identity-platform/optional-claims-reference)
+本项目不再通过 ID token 的 `acct` claim 或邮箱域名区分 guest/member。Entra 应用已配置为仅允许本组织目录，平台只继续验证固定租户、应用 audience、issuer 和对象 ID；通过该身份来源的 guest 可继续走平台的角色选择和教师审核流程。
 
 组分配的 P1/P2 许可与逐个用户分配有所区别，应先核实学校已有许可和维护方式。Assignment required 还有 Global Administrator 等例外，因此本站必须自行检查教师/学生准入，不能只依赖该开关。[Enterprise app access](https://learn.microsoft.com/en-us/entra/identity/enterprise-apps/what-is-access-management)、[Assignment required 例外](https://learn.microsoft.com/en-us/troubleshoot/entra/entra-id/app-integration/error-code-aadsts50105-user-not-assigned-role)
 
@@ -106,7 +106,7 @@ flowchart TD
 | 应用和环境 | 测试、生产建议使用独立应用注册，各自保存 Tenant ID、Client ID、凭据及到期责任人 |
 | Web 回调 | 生产为 `https://<正式域名>/accounts/microsoft/callback/`；测试域名单独登记；本地开发登记对应 localhost Web URI |
 | 认证流程 | 使用服务端授权码流程；不启用 implicit token 返回，不作为 SPA/public client 配置 |
-| 身份与角色 | 固定学校租户；启用 ID-token `acct`；显式选定 app roles、本地准入名单或学校成员准入＋本地教师审核策略 |
+| 身份与角色 | 固定学校租户；显式选定 app roles、本地准入名单或学校成员准入＋本地教师审核策略 |
 | 企业应用 | 配置用户分配及必要的管理员同意，使用测试师生和未分配人员验证实际结果 |
 | 凭据 | 服务器证书或 client secret；秘密进入部署机密存储，管理页只显示状态与到期信息 |
 | 服务器配置 | cloud/authority、Tenant ID、Client ID、credential 引用、固定 callback URI、授权策略模式；发现/JWKS 端点从已知学校云获取 |

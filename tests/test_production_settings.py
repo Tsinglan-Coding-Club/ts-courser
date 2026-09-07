@@ -15,7 +15,7 @@ class ProductionSettingsFailClosedTests(unittest.TestCase):
         for name in (
             'DJANGO_SECRET_KEY', 'DJANGO_ALLOWED_HOSTS', 'MS_ENTRA_TENANT_ID',
             'MS_ENTRA_CLIENT_ID', 'MS_ENTRA_CLIENT_SECRET',
-            'MS_ENTRA_SCHOOL_DOMAIN', 'MS_ENTRA_REDIRECT_URI',
+            'MS_ENTRA_REDIRECT_URI',
         ):
             environment.pop(name, None)
         environment.update(updates)
@@ -64,7 +64,6 @@ class ProductionSettingsFailClosedTests(unittest.TestCase):
             MS_ENTRA_TENANT_ID='7222912a-435d-423b-b22b-74b909c3bf8b',
             MS_ENTRA_CLIENT_ID='5910709e-99db-4cc0-9468-88497aa32f23',
             MS_ENTRA_CLIENT_SECRET='test-only-secret',
-            MS_ENTRA_SCHOOL_DOMAIN='tsinglan.org',
             MS_ENTRA_REDIRECT_URI=(
                 'https://courser.tsinglan.top/accounts/microsoft/callback/'
             ),
@@ -78,7 +77,6 @@ class ProductionSettingsFailClosedTests(unittest.TestCase):
             MS_ENTRA_TENANT_ID='aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
             MS_ENTRA_CLIENT_ID='5910709e-99db-4cc0-9468-88497aa32f23',
             MS_ENTRA_CLIENT_SECRET='test-only-secret',
-            MS_ENTRA_SCHOOL_DOMAIN='tsinglan.org',
             MS_ENTRA_REDIRECT_URI=(
                 'https://courser.tsinglan.top/accounts/microsoft/callback/'
             ),

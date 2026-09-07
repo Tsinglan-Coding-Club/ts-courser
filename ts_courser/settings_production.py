@@ -40,7 +40,6 @@ DEBUG = False
 MS_ENTRA_TENANT_ID = _required('MS_ENTRA_TENANT_ID')
 MS_ENTRA_CLIENT_ID = _required('MS_ENTRA_CLIENT_ID')
 MS_ENTRA_CLIENT_SECRET = _required('MS_ENTRA_CLIENT_SECRET')
-MS_ENTRA_SCHOOL_DOMAIN = _required('MS_ENTRA_SCHOOL_DOMAIN').lower()
 MS_ENTRA_REDIRECT_URI = _required('MS_ENTRA_REDIRECT_URI')
 MS_ENTRA_AUTHORITY = f'https://login.microsoftonline.com/{MS_ENTRA_TENANT_ID}'
 MS_ENTRA_ENABLED = True
@@ -69,9 +68,6 @@ if (
     raise ImproperlyConfigured(
         'MS_ENTRA_REDIRECT_URI must be the registered production callback'
     )
-if MS_ENTRA_SCHOOL_DOMAIN != 'tsinglan.org':
-    raise ImproperlyConfigured('MS_ENTRA_SCHOOL_DOMAIN must be tsinglan.org')
-
 CSRF_TRUSTED_ORIGINS = [
     origin.strip()
     for origin in os.environ.get('DJANGO_CSRF_TRUSTED_ORIGINS', '').split(',')

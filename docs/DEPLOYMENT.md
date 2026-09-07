@@ -74,12 +74,10 @@ In the Entra app registration:
 1. Select **Accounts in this organizational directory only**.
 2. Add the exact redirect above under **Authentication > Web**. Do not enable
    implicit access-token or ID-token issuance.
-3. Under **Token configuration**, add the optional ID-token claim `acct`. The
-   application fails closed unless `acct=0`, which excludes guest accounts.
-4. Create a client secret (or replace it with a certificate in a later release)
+3. Create a client secret (or replace it with a certificate in a later release)
    and place it in the deployment secret store. Never add it to `.env.example`
    or the repository.
-5. If **Assignment required** is enabled on the enterprise application, assign
+4. If **Assignment required** is enabled on the enterprise application, assign
    all eligible students and teachers; otherwise Entra blocks their first login
    before the platform can create a student account or teacher approval request.
 
@@ -92,7 +90,6 @@ export DJANGO_CSRF_TRUSTED_ORIGINS=https://courser.tsinglan.top
 export MS_ENTRA_TENANT_ID=7222912a-435d-423b-b22b-74b909c3bf8b
 export MS_ENTRA_CLIENT_ID=5910709e-99db-4cc0-9468-88497aa32f23
 export MS_ENTRA_CLIENT_SECRET='<from the deployment secret store>'
-export MS_ENTRA_SCHOOL_DOMAIN=tsinglan.org
 export MS_ENTRA_REDIRECT_URI=https://courser.tsinglan.top/accounts/microsoft/callback/
 ```
 
