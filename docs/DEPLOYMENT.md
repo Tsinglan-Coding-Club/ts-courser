@@ -16,6 +16,12 @@ sets `X-Forwarded-Proto: https`; otherwise leave it disabled. Add the public
 HTTPS origins to `DJANGO_CSRF_TRUSTED_ORIGINS` when requests come from a
 separate origin.
 
+Do not configure the reverse proxy to serve `/protected-media/` directly from
+disk. That route must reach Django so authentication, pending-account, and
+course-enrollment checks run before uploaded PDFs, answer keys, thumbnails, or
+avatars are returned. Only public static assets under `/static/` should bypass
+Django.
+
 Configure a production WSGI server to load `ts_courser.wsgi:application`;
 `manage.py runserver` is only for development. After exporting the production
 environment, run the release checks before starting the service:
@@ -51,4 +57,55 @@ database before relying on the backup. The application does not configure
 external object storage or database services; those choices remain deployment
 specific.
 
-Microsoft login is not part of this release configuration and remains pending.
+## Microsoft Entra ID sign-in
+
+The production app is registered in the Microsoft global cloud as a
+single-tenant **Web** application. Use these non-secret values:
+
+| Setting | Value |
+| --- | --- |
+| Tenant ID | `7222912a-435d-423b-b22b-74b909c3bf8b` |
+| Client ID | `5910709e-99db-4cc0-9468-88497aa32f23` |
+| School sign-in domain | `tsinglan.org` |
+| Redirect URI | `https://courser.tsinglan.top/accounts/microsoft/callback/` |
+
+In the Entra app registration:
+
+1. Select **Accounts in this organizational directory only**.
+2. Add the exact redirect above under **Authentication > Web**. Do not enable
+   implicit access-token or ID-token issuance.
+3. Under **Token configuration**, add the optional ID-token claim `acct`. The
+   application fails closed unless `acct=0`, which excludes guest accounts.
+4. Create a client secret (or replace it with a certificate in a later release)
+   and place it in the deployment secret store. Never add it to `.env.example`
+   or the repository.
+5. If **Assignment required** is enabled on the enterprise application, assign
+   all eligible students and teachers; otherwise Entra blocks their first login
+   before the platform can create a student account or teacher approval request.
+
+Set the following production environment values in addition to the Django
+settings above:
+
+```bash
+export DJANGO_ALLOWED_HOSTS=courser.tsinglan.top
+export DJANGO_CSRF_TRUSTED_ORIGINS=https://courser.tsinglan.top
+export MS_ENTRA_TENANT_ID=7222912a-435d-423b-b22b-74b909c3bf8b
+export MS_ENTRA_CLIENT_ID=5910709e-99db-4cc0-9468-88497aa32f23
+export MS_ENTRA_CLIENT_SECRET='<from the deployment secret store>'
+export MS_ENTRA_SCHOOL_DOMAIN=tsinglan.org
+export MS_ENTRA_REDIRECT_URI=https://courser.tsinglan.top/accounts/microsoft/callback/
+```
+
+Create the first platform administrator only from the deployment shell:
+
+```bash
+uv run python manage.py createsuperuser
+```
+
+The custom user manager marks this account as a local platform administrator.
+There is no public registration or automatic "first visitor" promotion.
+Administrators issue local student accounts at `/accounts/manage/`; each initial
+password is displayed once and expires after seven days by default. Teachers
+appear on the same page after their first Microsoft sign-in and cannot enter the
+platform until approved. Directory disable/removal synchronization is outside
+the first release, so administrators must also deactivate departed users locally.

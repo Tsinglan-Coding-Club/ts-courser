@@ -61,6 +61,7 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'ts_courser.middleware.AccountStateMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
@@ -141,11 +142,16 @@ STATICFILES_DIRS = [
 ]
 
 # Media files (User uploads)
-MEDIA_URL = 'media/'
+MEDIA_URL = 'protected-media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
 # Custom User Model
 AUTH_USER_MODEL = 'accounts.User'
+
+AUTHENTICATION_BACKENDS = [
+    'accounts.backends.LocalAccountBackend',
+    'accounts.backends.EntraSessionBackend',
+]
 
 # Login/Logout redirects
 LOGIN_URL = 'accounts:login'
@@ -156,3 +162,31 @@ LOGOUT_REDIRECT_URL = 'accounts:login'
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# Microsoft Entra ID (global cloud, single school tenant). Tenant/client IDs and
+# the callback are public identifiers; the client secret must only come from the
+# deployment environment.
+MS_ENTRA_TENANT_ID = os.environ.get(
+    'MS_ENTRA_TENANT_ID',
+    '7222912a-435d-423b-b22b-74b909c3bf8b',
+).strip()
+MS_ENTRA_CLIENT_ID = os.environ.get(
+    'MS_ENTRA_CLIENT_ID',
+    '5910709e-99db-4cc0-9468-88497aa32f23',
+).strip()
+MS_ENTRA_CLIENT_SECRET = os.environ.get('MS_ENTRA_CLIENT_SECRET', '').strip()
+MS_ENTRA_SCHOOL_DOMAIN = os.environ.get(
+    'MS_ENTRA_SCHOOL_DOMAIN', 'tsinglan.org',
+).strip().lower()
+MS_ENTRA_REDIRECT_URI = os.environ.get(
+    'MS_ENTRA_REDIRECT_URI',
+    'https://courser.tsinglan.top/accounts/microsoft/callback/',
+).strip()
+MS_ENTRA_AUTHORITY = f'https://login.microsoftonline.com/{MS_ENTRA_TENANT_ID}'
+MS_ENTRA_ENABLED = bool(
+    MS_ENTRA_TENANT_ID and MS_ENTRA_CLIENT_ID and MS_ENTRA_CLIENT_SECRET
+)
+
+LOCAL_INITIAL_PASSWORD_TTL_DAYS = int(
+    os.environ.get('LOCAL_INITIAL_PASSWORD_TTL_DAYS', '7')
+)

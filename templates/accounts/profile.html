@@ -24,6 +24,10 @@
                         <span class="badge bg-success mb-3">
                             <i class="bi bi-mortarboard"></i> Teacher
                         </span>
+                    {% elif profile_user.role == 'teacher' %}
+                        <span class="badge bg-warning text-dark mb-3">
+                            <i class="bi bi-hourglass-split"></i> Teacher approval pending
+                        </span>
                     {% elif profile_user.is_admin %}
                         <span class="badge bg-danger mb-3">
                             <i class="bi bi-shield-check"></i> Admin

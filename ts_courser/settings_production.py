@@ -1,6 +1,8 @@
 """Production settings for deployments behind HTTPS."""
 
 import os
+from urllib.parse import urlsplit
+from uuid import UUID
 
 from django.core.exceptions import ImproperlyConfigured
 
@@ -34,6 +36,41 @@ if (
     )
 ALLOWED_HOSTS = _csv('DJANGO_ALLOWED_HOSTS')
 DEBUG = False
+
+MS_ENTRA_TENANT_ID = _required('MS_ENTRA_TENANT_ID')
+MS_ENTRA_CLIENT_ID = _required('MS_ENTRA_CLIENT_ID')
+MS_ENTRA_CLIENT_SECRET = _required('MS_ENTRA_CLIENT_SECRET')
+MS_ENTRA_SCHOOL_DOMAIN = _required('MS_ENTRA_SCHOOL_DOMAIN').lower()
+MS_ENTRA_REDIRECT_URI = _required('MS_ENTRA_REDIRECT_URI')
+MS_ENTRA_AUTHORITY = f'https://login.microsoftonline.com/{MS_ENTRA_TENANT_ID}'
+MS_ENTRA_ENABLED = True
+
+try:
+    UUID(MS_ENTRA_TENANT_ID)
+    UUID(MS_ENTRA_CLIENT_ID)
+except ValueError as exc:
+    raise ImproperlyConfigured(
+        'MS_ENTRA_TENANT_ID and MS_ENTRA_CLIENT_ID must be UUIDs'
+    ) from exc
+
+if MS_ENTRA_TENANT_ID.lower() != '7222912a-435d-423b-b22b-74b909c3bf8b':
+    raise ImproperlyConfigured('MS_ENTRA_TENANT_ID does not match the school tenant')
+if MS_ENTRA_CLIENT_ID.lower() != '5910709e-99db-4cc0-9468-88497aa32f23':
+    raise ImproperlyConfigured('MS_ENTRA_CLIENT_ID does not match the registered app')
+
+_entra_redirect = urlsplit(MS_ENTRA_REDIRECT_URI)
+if (
+    _entra_redirect.scheme != 'https'
+    or _entra_redirect.netloc != 'courser.tsinglan.top'
+    or _entra_redirect.path != '/accounts/microsoft/callback/'
+    or _entra_redirect.query
+    or _entra_redirect.fragment
+):
+    raise ImproperlyConfigured(
+        'MS_ENTRA_REDIRECT_URI must be the registered production callback'
+    )
+if MS_ENTRA_SCHOOL_DOMAIN != 'tsinglan.org':
+    raise ImproperlyConfigured('MS_ENTRA_SCHOOL_DOMAIN must be tsinglan.org')
 
 CSRF_TRUSTED_ORIGINS = [
     origin.strip()

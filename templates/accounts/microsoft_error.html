@@ -1,0 +1,17 @@
+{% extends 'base.html' %}
+
+{% block title %}Microsoft sign-in unavailable - TS-Courser{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row justify-content-center mt-5">
+        <div class="col-md-7">
+            <div class="alert alert-danger p-4">
+                <h2 class="h4">Microsoft sign-in was not accepted</h2>
+                <p>{{ message }}</p>
+                <a class="btn btn-outline-danger" href="{% url 'accounts:login' %}">Return to sign in</a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

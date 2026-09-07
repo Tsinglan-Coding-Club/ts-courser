@@ -4,13 +4,13 @@
 
 TS-Courser is a Django learning platform for small school classes. Students enroll in courses, read materials, answer quizzes, and run Python in the browser. Teachers author lessons, monitor progress, and review submissions.
 
-This README describes the current working tree as of **2026-09-05**. Account migration and other proposals linked below are not implemented features.
+This README describes the current working tree as of **2026-09-07**.
 
 ## Current features
 
 | Area | Implemented behavior |
 | --- | --- |
-| Accounts | Username/password login, registration with a console-printed email verification code, profiles, avatars, and favorite tags; student, verified teacher, and admin roles |
+| Accounts | Single-tenant Microsoft Entra login for `tsinglan.org`, administrator-issued local student/admin accounts, mandatory first-login username/password replacement, teacher approval, profiles, avatars, and favorite tags |
 | Courses | Published course catalog with track/subject filters; open or eight-character code enrollment; enrollment closure; course dashboard, My Courses, and resume learning |
 | Authoring | Course/section/episode creation and editing, Markdown editor, PDF uploads, thumbnails, tags, and section/episode drag-and-drop ordering |
 | Progress | Last visited episode, read/unread status, per-student completion percentages, and a teacher progress distribution |
@@ -59,7 +59,7 @@ uv run python manage.py runserver 8000
 
 Create a course from the teacher interface using an admin or verified teacher account, add episodes, and publish it for student access. There is no automatic demo-data import during setup.
 
-`uv sync` installs the Python dependencies, including the Django version in `uv.lock` (currently 5.2.7). `npm install` supplies Monaco and Pyodide assets used by Django staticfiles. Bootstrap, Vditor, marked.js, and PDF.js are used by the templates; local setup is not a fully offline bundle.
+`uv sync` installs the Python dependencies, including Django and MSAL from `uv.lock`. Microsoft login is disabled locally until `MS_ENTRA_CLIENT_SECRET` is provided; its production redirect URI is intentionally fixed in the deployment configuration. `npm install` supplies Monaco and Pyodide assets used by Django staticfiles. Bootstrap, Vditor, marked.js, and PDF.js are used by the templates; local setup is not a fully offline bundle.
 
 ## Development and checks
 
@@ -80,7 +80,7 @@ The independent Python tests under `tests/` require the separate unittest comman
 
 | Path | Responsibility |
 | --- | --- |
-| `accounts/` | User model, current login/registration, profiles, admin configuration |
+| `accounts/` | Local and Microsoft authentication, external identity mapping, teacher approval, first-login credential setup, profiles, and account administration |
 | `courses/` | Course hierarchy, catalog and learning views, canonical server quiz parser/validation in `quiz.py` |
 | `progress/` | Enrollment, read progress, quiz/code submissions, test-result payload validation |
 | `teacher/` | Authoring, ordering, student management, assignment review, ownership decorators |
@@ -98,7 +98,7 @@ The current classroom scope retains these documented boundaries:
 - Python tests execute in the student's browser. The server validates the result payload's structure but does not independently rerun code; results are classroom feedback, not tamper-proof grades.
 - Teacher-authored Markdown is rendered as HTML under the assumption that verified teachers are trusted. Sanitization for untrusted/imported content remains deferred.
 - Image uploads decode and re-encode JPEG/PNG/GIF/WebP with size and pixel limits. The inline upload endpoint requires login; its content-author ownership policy remains undecided.
-- Existing endpoint checks are not the final school account/group authorization model. Temporary registration/login flows remain pending replacement, with known issues recorded in the prelaunch review. Production configuration alone does not complete that migration.
+- Microsoft sign-in currently validates the fixed tenant, application audience, v2 issuer, school principal-name domain, and required `acct=0` member claim. Entra disable/removal synchronization and automatic account linking are intentionally not in the first release.
 
 ## Documentation and planned work
 
@@ -107,8 +107,8 @@ The current classroom scope retains these documented boundaries:
 - [Interactive Python API and example](docs/INTERACTIVE_AREA.md)
 - [Deployment](docs/DEPLOYMENT.md)
 - [Prelaunch review and subsequent repair status](docs/PRELAUNCH_REVIEW_2026-09-05.md)
-- [School account upgrade plan — not implemented](docs/ACCOUNT_SYSTEM_UPGRADE_PLAN.md)
-- [Account administration UI specification — not implemented](docs/ACCOUNT_ADMIN_UI_SPEC.md)
+- [School account upgrade plan](docs/ACCOUNT_SYSTEM_UPGRADE_PLAN.md)
+- [Account administration UI specification](docs/ACCOUNT_ADMIN_UI_SPEC.md)
 - [Microsoft identity research](docs/MICROSOFT_IDENTITY_RESEARCH.md)
 - [Functional assessment and proposed priorities](docs/FUNCTIONAL_ROADMAP.md)
 

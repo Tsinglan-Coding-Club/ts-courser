@@ -1,6 +1,6 @@
 # TS-Courser 校内账号系统升级方案
 
-调研日期：2026-09-03。状态：根据用户补充更新的设计建议，尚未实施。Microsoft 接口事实与来源见 [Microsoft Entra ID 调研](MICROSOFT_IDENTITY_RESEARCH.md)，批量发号的页面与接口详见 [管理员界面规格](ACCOUNT_ADMIN_UI_SPEC.md)。
+调研日期：2026-09-03。状态：2026-09-07 已实施第一版核心流程，包括关闭公开注册、单租户 Microsoft 登录、Guest 拒绝、教师首次登录待审核、单个本地学生发号、首次强制改用户名和密码及受控管理员初始化。批量发号、Entra 停用同步和自动身份关联仍未实施。Microsoft 接口事实与来源见 [Microsoft Entra ID 调研](MICROSOFT_IDENTITY_RESEARCH.md)，后续批量发号页面与接口详见 [管理员界面规格](ACCOUNT_ADMIN_UI_SPEC.md)。
 
 已确认的需求：全体师生均有学校 Microsoft 账号；小学生的本地账号是便于使用的另一种登录方式。当前用户全部是测试账号，无需迁移。学生学校邮箱按 `Firstname_Lastname_Graduationyear@学校后缀` 命名，教师邮箱不带毕业年份。学生数据由管理员在产品界面录入或导入，不是用户需要提供给开发者或 AI 的接入资料。学校使用 Teams、Outlook；实际租户 ID 和云环境仍由 IT 确认。
 

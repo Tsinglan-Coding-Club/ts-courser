@@ -8,12 +8,36 @@
         <div class="col-md-6 col-lg-5">
             <div class="card shadow">
                 <div class="card-body p-5">
-                    <h2 class="card-title text-center mb-4">
-                        <i class="bi bi-box-arrow-in-right"></i> Login
+                    <h2 class="card-title text-center mb-2">
+                        <i class="bi bi-microsoft"></i> School sign in
                     </h2>
+                    <p class="text-muted text-center mb-4">Choose your identity before continuing with Microsoft.</p>
+
+                    <form method="post" action="{% url 'accounts:microsoft_login' %}">
+                        {% csrf_token %}
+                        {% if request.GET.next %}<input type="hidden" name="next" value="{{ request.GET.next }}">{% endif %}
+                        <div class="row g-3">
+                            <div class="col-6 d-grid">
+                                <button type="submit" name="role" value="student" class="btn btn-primary btn-lg">
+                                    <i class="bi bi-mortarboard"></i> Student
+                                </button>
+                            </div>
+                            <div class="col-6 d-grid">
+                                <button type="submit" name="role" value="teacher" class="btn btn-outline-primary btn-lg">
+                                    <i class="bi bi-person-workspace"></i> Teacher
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+
+                    <hr class="my-4">
+
+                    <h5 class="mb-2">School-issued local account</h5>
+                    <p class="text-muted small">For administrators and students who received an initial username and password.</p>
 
                     <form method="post">
                         {% csrf_token %}
+                        {% if request.GET.next %}<input type="hidden" name="next" value="{{ request.GET.next }}">{% endif %}
 
                         <div class="mb-3">
                             <label for="username" class="form-label">Username</label>
@@ -27,16 +51,10 @@
 
                         <div class="d-grid">
                             <button type="submit" class="btn btn-primary btn-lg">
-                                <i class="bi bi-box-arrow-in-right"></i> Login
+                                <i class="bi bi-box-arrow-in-right"></i> Sign in locally
                             </button>
                         </div>
                     </form>
-
-                    <hr class="my-4">
-
-                    <p class="text-center mb-0">
-                        Don't have an account? <a href="{% url 'accounts:register' %}">Register here</a>
-                    </p>
                 </div>
             </div>
         </div>

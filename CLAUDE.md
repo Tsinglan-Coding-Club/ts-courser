@@ -40,13 +40,15 @@ Django tests live in app `tests.py` and `test_release.py` modules. Standalone Py
 
 ## Accounts and ownership
 
-`accounts.User` extends `AbstractUser` without changing `USERNAME_FIELD`: login uses **username and password**, not email. Email is unique and used by the temporary registration verification flow; codes print to the console. Microsoft sign-in, bulk school-account issuance, and first-login password changes remain [planned](docs/ACCOUNT_SYSTEM_UPGRADE_PLAN.md).
+`accounts.User` extends `AbstractUser` without changing `USERNAME_FIELD`. Local login uses administrator-issued usernames and passwords; email is optional and is never an identity key. Public registration is disabled. Microsoft sign-in uses the fixed school tenant and an `ExternalIdentity` keyed by `(provider, tenant_id, object_id)`. Never auto-link accounts by email or UPN.
+
+Local accounts require `local_login_enabled=True`. Newly issued accounts must change both their username and password through the short pre-authentication flow before a normal Django session is created. Microsoft-only users have unusable local passwords. Pending Microsoft teachers are confined by `AccountStateMiddleware` until an administrator approves them.
 
 Current role properties:
 
 - `is_student`: `role == 'student'`.
 - `is_teacher`: teacher role plus `is_verified_teacher`.
-- `is_admin`: admin role or `is_staff`. This is distinct from Django superuser status.
+- `is_admin`: admin role or Django superuser. `is_staff` controls Django-admin access only and must not grant platform-wide course permissions.
 
 Teacher mutations use `@login_required`, `@teacher_required`, and the applicable ownership decorator. `require_course_ownership` injects `request.course`; `require_episode_ownership` injects both `request.episode` and `request.course`. Admins bypass ownership. `check_section_ownership` supplies the same check for section operations.
 
