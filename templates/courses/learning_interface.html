@@ -373,6 +373,9 @@
                             <button type="button" class="btn btn-outline-secondary" id="uploadBtn">
                                 <i class="bi bi-cloud-arrow-up"></i> Upload
                             </button>
+                            <button type="button" class="btn btn-outline-secondary" id="codeHistoryBtn" disabled>
+                                <i class="bi bi-clock-history"></i> History
+                            </button>
                             <button type="button" class="btn btn-outline-primary" id="submitCodeBtn"
                                     data-episode-id="{{ current_episode.id }}">
                                 <i class="bi bi-upload"></i> Submit
@@ -391,13 +394,28 @@
                             </button>
                         {% endif %}
 
-                        {% if is_teacher %}
+                        {% if can_edit_course %}
                             <a href="{% url 'teacher:episode_edit' current_episode.id %}" class="btn btn-warning">
                                 <i class="bi bi-pencil"></i> Edit Episode
                             </a>
                         {% endif %}
                     </div>
                 </div>
+
+                {% if current_episode.type == 'code' %}
+                <div class="modal fade" id="codeHistoryModal" tabindex="-1" aria-labelledby="codeHistoryModalTitle" aria-hidden="true">
+                    <div class="modal-dialog modal-lg modal-dialog-scrollable"><div class="modal-content">
+                        <div class="modal-header"><h5 class="modal-title" id="codeHistoryModalTitle">Submission history</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
+                        <div class="modal-body">
+                            <p class="small text-muted">Choose a formal submission to inspect. Loading it replaces the current editor draft and does not submit code or create a new version.</p>
+                            <div id="code-history-list" class="list-group mb-3"></div>
+                            <label for="code-history-preview" class="form-label">Code preview</label>
+                            <pre id="code-history-preview" class="border rounded p-3 mb-0" style="max-height:320px;overflow:auto;"><code></code></pre>
+                        </div>
+                        <div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button><button type="button" class="btn btn-primary" id="loadHistoryBtn" disabled>Load into editor</button></div>
+                    </div></div>
+                </div>
+                {% endif %}
 
                 <!-- Episode Content — type-specific tabs & content -->
                 {% if current_episode.type == 'material' %}
@@ -731,6 +749,12 @@ function initMonaco() {
 // ---- Buttons ----
 const runBtn = document.getElementById('runBtn');
 const uploadBtn = document.getElementById('uploadBtn');
+const codeHistoryBtn = document.getElementById('codeHistoryBtn');
+const codeHistoryList = document.getElementById('code-history-list');
+const codeHistoryPreview = document.querySelector('#code-history-preview code');
+const loadHistoryBtn = document.getElementById('loadHistoryBtn');
+let codeHistory = [];
+let selectedHistorySnapshot = null;
 
 let _hardStopTimer = null;
 
@@ -860,6 +884,72 @@ uploadBtn.addEventListener('click', async () => {
         uploadBtn.classList.add('btn-outline-secondary');
     }, 1200);
 });
+
+if (codeHistoryBtn) {
+    codeHistoryBtn.addEventListener('click', async () => {
+        try {
+            const response = await fetch('{% url "progress:code_history" %}?episode_id={{ current_episode.id }}');
+            const data = await response.json();
+            if (!response.ok || !data.success) throw new Error(data.error || 'Could not load history');
+            if (!data.history.length) {
+                alert('No formal submissions yet.');
+                return;
+            }
+            codeHistory = data.history;
+            selectedHistorySnapshot = null;
+            loadHistoryBtn.disabled = true;
+            codeHistoryPreview.textContent = '';
+            codeHistoryList.replaceChildren(...codeHistory.map((snapshot, index) => {
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.className = 'list-group-item list-group-item-action';
+                button.dataset.historyId = snapshot.id;
+                button.textContent = 'Version ' + (codeHistory.length - index) + ' — ' + new Date(snapshot.submitted_at).toLocaleString();
+                return button;
+            }));
+            bootstrap.Modal.getOrCreateInstance(document.getElementById('codeHistoryModal')).show();
+        } catch (error) {
+            alert('History failed: ' + error.message);
+        }
+    });
+}
+
+if (codeHistoryList) {
+    codeHistoryList.addEventListener('click', function(event) {
+        const button = event.target.closest('[data-history-id]');
+        if (!button) return;
+        selectedHistorySnapshot = codeHistory.find(snapshot => snapshot.id === Number(button.dataset.historyId));
+        if (!selectedHistorySnapshot) return;
+        codeHistoryList.querySelectorAll('.active').forEach(item => item.classList.remove('active'));
+        button.classList.add('active');
+        codeHistoryPreview.textContent = selectedHistorySnapshot.code;
+        loadHistoryBtn.disabled = false;
+    });
+}
+
+if (loadHistoryBtn) {
+    loadHistoryBtn.addEventListener('click', async function() {
+        if (!monacoEditor || !selectedHistorySnapshot) return;
+        this.disabled = true;
+        try {
+            const restoreResponse = await fetch(
+                '{% url "progress:restore_code_history" 0 %}'.replace('/0/', '/' + selectedHistorySnapshot.id + '/'),
+                {method: 'POST', headers: {'X-CSRFToken': csrftoken}}
+            );
+            const restored = await restoreResponse.json();
+            if (!restoreResponse.ok || !restored.success) throw new Error(restored.error || 'Could not restore version');
+            monacoEditor.setValue(restored.code);
+            _saveCode();
+            const resultsPanel = document.getElementById('oj-results-panel');
+            if (resultsPanel) resultsPanel.style.display = 'none';
+            bootstrap.Modal.getInstance(document.getElementById('codeHistoryModal')).hide();
+        } catch (error) {
+            alert('History failed: ' + error.message);
+        } finally {
+            this.disabled = !selectedHistorySnapshot;
+        }
+    });
+}
 
 // ---- Auto-save every 60 seconds (code episodes only) ----
 const _autoSaveInterval = setInterval(_saveCode, 60000);
@@ -1105,8 +1195,9 @@ if (submitCodeBtn) {
 // (existing runBtn click handler already checks isRunning and calls stop())
 
 // Kick off initialization (Monaco and Pyodide in parallel)
-initMonaco().then(() => {
+initMonaco().then((editor) => {
     // Monaco is ready — Pyodide may still be loading
+    if (editor && codeHistoryBtn) codeHistoryBtn.disabled = false;
 }).catch(() => {
     clearInterval(_autoSaveInterval);
 });

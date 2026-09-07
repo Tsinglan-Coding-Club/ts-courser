@@ -13,4 +13,6 @@ urlpatterns = [
     path('quiz/submit/', views.submit_quiz, name='submit_quiz'),
     path('code/upload/', views.upload_code, name='upload_code'),
     path('code/submit/', views.submit_code, name='submit_code'),
+    path('code/history/', views.code_history, name='code_history'),
+    path('code/history/<int:history_id>/restore/', views.restore_code_history, name='restore_code_history'),
 ]

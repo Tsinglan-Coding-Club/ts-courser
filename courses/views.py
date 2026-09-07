@@ -3,7 +3,7 @@ from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.db.models import Q, Prefetch
-from .models import Course, Tag, Section, Episode
+from .models import Course, CourseTeacherMembership, Tag, Section, Episode
 from .quiz import review_answers, student_questions
 from progress.models import UserProgress, EpisodeReadStatus, CourseEnrollment
 
@@ -51,7 +51,7 @@ def course_overview(request, course_id):
         user=request.user,
         course=course
     ).exists()
-    is_teacher_or_admin = request.user.is_teacher or request.user.is_admin
+    is_teacher_or_admin = course.teacher_can(request.user, CourseTeacherMembership.VIEW)
 
     # Enrolled students should use the dashboard, not the overview
     if is_enrolled:
@@ -70,6 +70,7 @@ def course_overview(request, course_id):
         'sections': sections,
         'is_enrolled': is_enrolled,
         'is_teacher_or_admin': is_teacher_or_admin,
+        'can_edit_course': course.teacher_can(request.user, CourseTeacherMembership.EDIT),
     }
     return render(request, 'courses/course_overview.html', context)
 
@@ -82,7 +83,7 @@ def course_dashboard(request, course_id):
     is_enrolled = CourseEnrollment.objects.filter(
         user=request.user, course=course
     ).exists()
-    is_teacher_or_admin = request.user.is_teacher or request.user.is_admin
+    is_teacher_or_admin = course.teacher_can(request.user, CourseTeacherMembership.VIEW)
 
     # Guard: must be enrolled (or teacher/admin) to access dashboard
     if not is_enrolled and not is_teacher_or_admin:
@@ -133,7 +134,7 @@ def learning_interface(request, course_id, episode_id=None):
     is_enrolled = CourseEnrollment.objects.filter(
         user=request.user, course=course
     ).exists()
-    is_teacher_or_admin = request.user.is_teacher or request.user.is_admin
+    is_teacher_or_admin = course.teacher_can(request.user, CourseTeacherMembership.VIEW)
 
     if not is_enrolled and course.enrollment_mode == 'open' and course.enrollment_open:
         CourseEnrollment.objects.get_or_create(user=request.user, course=course)
@@ -211,6 +212,10 @@ def learning_interface(request, course_id, episode_id=None):
                 quiz_answers_json = _json.dumps(review_answers(current_episode, quiz_submission.answers))
             if not quiz_submission or released:
                 quiz_questions = student_questions(current_episode, released=released)
+                if released:
+                    comments = quiz_submission.question_comments or {}
+                    for index, question in enumerate(quiz_questions):
+                        question['teacherComment'] = comments.get(str(index), '')
 
     # Get code submission context
     code_submission = None
@@ -232,6 +237,7 @@ def learning_interface(request, course_id, episode_id=None):
         'current_read_status': current_read_status,
         'read_status_dict': read_status_dict,
         'is_teacher': request.user.is_teacher,
+        'can_edit_course': course.teacher_can(request.user, CourseTeacherMembership.EDIT),
         'quiz_submission': quiz_submission,
         'quiz_answers_json': quiz_answers_json,
         'quiz_questions': quiz_questions,

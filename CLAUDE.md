@@ -50,7 +50,7 @@ Current role properties:
 - `is_teacher`: teacher role plus `is_verified_teacher`.
 - `is_admin`: admin role or Django superuser. `is_staff` controls Django-admin access only and must not grant platform-wide course permissions.
 
-Teacher mutations use `@login_required`, `@teacher_required`, and the applicable ownership decorator. `require_course_ownership` injects `request.course`; `require_episode_ownership` injects both `request.episode` and `request.course`. Admins bypass ownership. `check_section_ownership` supplies the same check for section operations.
+Teacher mutations use `@login_required`, `@teacher_required`, and the applicable course permission decorator. CourseTeacherMembership grants view, edit, or manage; course creation grants the creator an ordinary manage membership. The creator field is provenance and never an access bypass. Managers can change/remove any membership while retaining at least one manager. Review reads require view, grading/comments/release and content edits require edit, and teacher access administration requires manage. `require_course_ownership` injects `request.course`; `require_episode_ownership` injects both `request.episode` and `request.course`. Admins bypass course membership checks. `check_section_ownership` supplies the same check for section operations.
 
 Student submission/progress access is centralized in `progress.views._get_accessible_episode`. Published-course learning views also enforce enrollment, with a teacher/admin bypass. Open-mode auto-enrollment requires `enrollment_open=True`; closing enrollment leaves existing enrollments intact. Current learning views require publication even for teachers; do not assume an unpublished student-preview route exists.
 
@@ -69,10 +69,11 @@ Progress records:
 | `CourseEnrollment` | One user/course enrollment |
 | `UserProgress` | One user/course current episode |
 | `EpisodeReadStatus` | One user/episode read flag; not a mastery grade |
-| `QuizSubmission` | One user/episode latest answer JSON, FRQ grade JSON, submission and release timestamps |
+| `QuizSubmission` | One user/episode latest answer JSON, FRQ grade JSON, question comment JSON, submission and release timestamps |
 | `CodeSubmission` | One user/episode latest code, test-result JSON, upload timestamp, formal submission flag and timestamp |
+| `CodeSubmissionHistory` | Full code/test-result snapshot for each formal submit; uploads do not create versions |
 
-There is no immutable attempt history or question-version snapshot. Changing live questions can affect interpretation of previous answers; preserve this distinction when designing new functionality.
+Code has submitted-version history. Quiz has no attempt history or question-version snapshot. Changing live questions can affect interpretation of previous answers; preserve this distinction when designing new functionality.
 
 ## Quiz authoring, delivery, and review
 
@@ -97,13 +98,13 @@ Release behavior in `progress.views.submit_quiz`:
 - `manual`: teacher release required.
 - `inherit`: automatic only when the course enables it and the quiz contains no FRQ.
 
-Changed answers clear previous FRQ grades and recalculate release status; identical answers retain existing review state. Teacher grade/release/cancel/reset actions require the `submission_version` timestamp to match, returning 409 for stale requests. Manual release requires every FRQ to have a boolean grade. FRQ grades currently store `{question_index: is_correct}`, not partial credit or comments.
+Changed answers clear previous FRQ grades and question comments and recalculate release status; identical answers retain existing review state. Teacher grade/release/cancel/reset actions require the `submission_version` timestamp to match, returning 409 for stale requests. Manual release requires every FRQ to have a boolean grade. FRQ grades store `{question_index: is_correct}` without partial credit. `question_comments` separately stores plain-text feedback keyed by question index for all question types. Feedback follows result release and uses the same stale-submission guard as grading.
 
 ## Python execution and submissions
 
 Monaco and Pyodide assets come from `node_modules/`. Python runs in a browser worker, with SharedArrayBuffer-backed input/interrupt support. Preserve the COOP/COEP behavior in middleware, development WSGI static handling, and production static serving. Interactive display details and limits belong in [INTERACTIVE_AREA.md](docs/INTERACTIVE_AREA.md).
 
-Editor initialization prefers a usable local draft, then server code, then teacher starter code. Automatic saves are local-only (every 60 seconds). Upload calls `/api/code/upload/` and sets `is_submitted=False`; formal submission calls `/api/code/submit/` and makes the record visible for review. A later upload overwrites that same record and clears its submission state. Do not describe this as independent draft and submitted-version storage.
+Editor initialization prefers a usable local draft, then server code, then teacher starter code. Automatic saves are local-only (every 60 seconds). Upload calls `/api/code/upload/` and sets `is_submitted=False`; formal submission calls `/api/code/submit/` and makes the record visible for review. A later upload overwrites that latest record and clears its submission state, but leaves CodeSubmissionHistory snapshots intact and available to teachers. Every successful formal submit appends a full snapshot, including repeated code. Restoring history loads code into the editor as a draft and requires a separate submit to create another version.
 
 `progress/validation.py` validates browser test-result structure and provides tolerant handling for legacy stored results. The server does not run student Python or verify correctness independently.
 

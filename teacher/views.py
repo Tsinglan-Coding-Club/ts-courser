@@ -6,11 +6,16 @@ from django.http import JsonResponse
 from django.views.decorators.http import require_POST
 from django.utils import timezone
 from django.db import models, transaction
-from courses.models import Course, Section, Episode, Tag
+from accounts.models import User
+from courses.models import Course, CourseTeacherMembership, Section, Episode, Tag
 from courses.quiz import _parse_quiz_markdown
-from progress.models import CourseEnrollment, EpisodeReadStatus, QuizSubmission, CodeSubmission
+from progress.models import (
+    CourseEnrollment, EpisodeReadStatus, QuizSubmission, CodeSubmission,
+    CodeSubmissionHistory,
+)
 from .decorators import (
     teacher_required,
+    require_course_permission,
     require_course_ownership,
     require_episode_ownership,
     check_section_ownership,
@@ -33,7 +38,18 @@ def course_list(request):
     if request.user.is_admin:
         courses = Course.objects.all().prefetch_related('tags', 'creator')
     else:
-        courses = Course.objects.filter(creator=request.user).prefetch_related('tags', 'creator')
+        courses = Course.objects.filter(
+            teacher_memberships__user=request.user
+        ).prefetch_related('tags', 'creator').distinct()
+    courses = list(courses)
+    for course in courses:
+        course.current_teacher_role = course.teacher_role(request.user)
+        course.can_edit_course = course.teacher_can(
+            request.user, CourseTeacherMembership.EDIT
+        )
+        course.can_manage_course = course.teacher_can(
+            request.user, CourseTeacherMembership.MANAGE
+        )
     return render(request, 'teacher/course_list.html', {'courses': courses})
 
 
@@ -86,12 +102,14 @@ def course_create(request):
 
 
 @teacher_required
-@require_course_ownership
+@require_course_permission(CourseTeacherMembership.EDIT)
 def course_edit(request, course_id):
     """Edit an existing course. Only the creator (or admin) can edit."""
     course = request.course  # Injected by require_course_ownership
 
     if request.method == 'POST':
+        if not course.teacher_can(request.user, CourseTeacherMembership.MANAGE):
+            raise PermissionDenied("Only course managers can change course settings.")
         course.title = request.POST.get('title', course.title)
         course.description = request.POST.get('description', course.description)
         course.is_published = request.POST.get('is_published') == 'on'
@@ -140,6 +158,7 @@ def course_edit(request, course_id):
         'tags': tags,
         'sections': sections,
         'total_episodes': total_episodes,
+        'can_manage_course': course.teacher_can(request.user, CourseTeacherMembership.MANAGE),
     }
     return render(request, 'teacher/course_edit.html', context)
 
@@ -158,8 +177,8 @@ def section_create(request):
         course = get_object_or_404(Course, id=course_id)
 
         # Ownership check: only the course creator or admin can add sections
-        if not request.user.is_admin and course.creator != request.user:
-            raise PermissionDenied("You can only add sections to your own courses.")
+        if not course.teacher_can(request.user, CourseTeacherMembership.EDIT):
+            raise PermissionDenied("You can only add sections to assigned courses.")
 
         with transaction.atomic():
             Course.objects.select_for_update().get(pk=course.pk)
@@ -338,7 +357,7 @@ def _reorder_content(request, content_model, payload_key):
             return JsonResponse({'success': False, 'error': 'Items must belong to the same parent.'}, status=400)
         course_id = objects[0].course_id if content_model is Section else objects[0].section.course_id
         course = Course.objects.select_for_update().get(pk=course_id)
-        if not request.user.is_admin and course.creator_id != request.user.pk:
+        if not course.teacher_can(request.user, CourseTeacherMembership.EDIT):
             return JsonResponse({'success': False, 'error': 'Permission denied'}, status=403)
         siblings = content_model.objects.filter(**{parent_field: parent_ids.pop()})
         if set(siblings.values_list('pk', flat=True)) != set(ids):
@@ -369,8 +388,8 @@ def course_delete(request, course_id):
     """Delete a course. Only the creator (or admin) can delete."""
     course = get_object_or_404(Course, id=course_id)
 
-    if not request.user.is_admin and course.creator != request.user:
-        raise PermissionDenied("You can only delete your own courses.")
+    if not course.teacher_can(request.user, CourseTeacherMembership.MANAGE):
+        raise PermissionDenied("You can only delete courses you manage.")
 
     if request.method == 'POST':
         course_title = course.title
@@ -404,8 +423,8 @@ def episode_delete(request, episode_id):
     )
     course = episode.section.course
 
-    if not request.user.is_admin and course.creator != request.user:
-        raise PermissionDenied("You can only delete your own content.")
+    if not course.teacher_can(request.user, CourseTeacherMembership.EDIT):
+        raise PermissionDenied("You can only delete assigned course content.")
 
     if request.method == 'POST':
         episode_title = episode.title
@@ -448,7 +467,7 @@ def validate_pdf(pdf_file):
 
 @login_required
 @teacher_required
-@require_course_ownership
+@require_course_permission(CourseTeacherMembership.VIEW)
 def course_manage(request, course_id):
     """Teacher dashboard: student progress, enrollment management, assignments."""
     course = request.course
@@ -548,6 +567,10 @@ def course_manage(request, course_id):
         'students_data': students_data,
         'stats': stats,
         'quiz_episodes': quiz_episodes,
+        'memberships': course.teacher_memberships.select_related('user'),
+        'role_choices': CourseTeacherMembership.ROLE_CHOICES,
+        'can_edit_course': course.teacher_can(request.user, CourseTeacherMembership.EDIT),
+        'can_manage_course': course.teacher_can(request.user, CourseTeacherMembership.MANAGE),
     }
     return render(request, 'teacher/course_manage.html', context)
 
@@ -566,7 +589,7 @@ def remove_student(request):
     course = get_object_or_404(Course, id=course_id)
 
     # Ownership check
-    if not request.user.is_admin and course.creator != request.user:
+    if not course.teacher_can(request.user, CourseTeacherMembership.MANAGE):
         return JsonResponse({'success': False, 'error': 'Permission denied'})
 
     enrollment = CourseEnrollment.objects.filter(
@@ -578,6 +601,78 @@ def remove_student(request):
         return JsonResponse({'success': True, 'message': 'Student removed successfully.'})
     else:
         return JsonResponse({'success': False, 'error': 'Student is not enrolled in this course.'})
+
+
+def _manager_membership_change_allowed(course, membership, new_role=None, deleting=False):
+    """Keep every course administrable while memberships are changed."""
+    if membership.role != CourseTeacherMembership.MANAGE:
+        return True
+    if not deleting and new_role == CourseTeacherMembership.MANAGE:
+        return True
+    return course.teacher_memberships.filter(
+        role=CourseTeacherMembership.MANAGE
+    ).exclude(pk=membership.pk).exists()
+
+
+@login_required
+@teacher_required
+@require_POST
+@transaction.atomic
+def course_member_save(request, course_id):
+    """Add a teacher to a course or change an existing member's role."""
+    course = get_object_or_404(Course.objects.select_for_update(), pk=course_id)
+    if not course.teacher_can(request.user, CourseTeacherMembership.MANAGE):
+        raise PermissionDenied("You can only manage teachers for courses you manage.")
+
+    username = request.POST.get('username', '').strip()
+    role = request.POST.get('role', '')
+    if role not in dict(CourseTeacherMembership.ROLE_CHOICES):
+        messages.error(request, 'Choose a valid course role.')
+    elif not username:
+        messages.error(request, 'Enter a teacher username.')
+    else:
+        teacher = User.objects.filter(username=username).first()
+        if teacher is None or not teacher.is_teacher:
+            messages.error(request, 'That username does not belong to a verified teacher.')
+        elif teacher.is_admin:
+            messages.error(request, 'Administrators already have access to every course.')
+        else:
+            membership, created = CourseTeacherMembership.objects.select_for_update().get_or_create(
+                course=course, user=teacher, defaults={'role': role}
+            )
+            if not created and not _manager_membership_change_allowed(course, membership, role):
+                messages.error(request, 'A course must retain at least one manager.')
+            else:
+                membership.role = role
+                membership.save(update_fields=['role', 'updated_at'])
+                messages.success(request, f'{teacher.username} can now {membership.get_role_display().lower()}.')
+    if course.teacher_can(request.user, CourseTeacherMembership.VIEW):
+        return redirect('teacher:course_manage', course_id=course.id)
+    return redirect('teacher:course_list')
+
+
+@login_required
+@teacher_required
+@require_POST
+@transaction.atomic
+def course_member_remove(request, course_id, membership_id):
+    """Remove a teacher's scoped access while preserving a manager."""
+    course = get_object_or_404(Course.objects.select_for_update(), pk=course_id)
+    if not course.teacher_can(request.user, CourseTeacherMembership.MANAGE):
+        raise PermissionDenied("You can only manage teachers for courses you manage.")
+    membership = get_object_or_404(
+        CourseTeacherMembership.objects.select_for_update(),
+        pk=membership_id, course=course,
+    )
+    if not _manager_membership_change_allowed(course, membership, deleting=True):
+        messages.error(request, 'A course must retain at least one manager.')
+    else:
+        username = membership.user.username
+        membership.delete()
+        messages.success(request, f'Removed {username} from this course.')
+    if course.teacher_can(request.user, CourseTeacherMembership.VIEW):
+        return redirect('teacher:course_manage', course_id=course.id)
+    return redirect('teacher:course_list')
 
 
 # ========== Assignment Review ==========
@@ -711,8 +806,8 @@ def assignment_review(request, course_id, episode_id):
         raise PermissionDenied("This episode type does not support assignment review.")
 
     # Ownership check
-    if not request.user.is_admin and course.creator != request.user:
-        raise PermissionDenied("You can only review your own course content.")
+    if not course.teacher_can(request.user, CourseTeacherMembership.VIEW):
+        raise PermissionDenied("You do not have access to this course's student work.")
 
     # Get all enrolled students and their submissions
     enrollments = CourseEnrollment.objects.filter(course=course).select_related('user')
@@ -722,14 +817,19 @@ def assignment_review(request, course_id, episode_id):
             s.user_id: s for s in QuizSubmission.objects.filter(episode=episode)
         }
     else:
-        submissions_by_user = {
-            s.user_id: s for s in CodeSubmission.objects.filter(
-                episode=episode, is_submitted=True
-            )
-        }
+        submissions_by_user = {}
+        code_history_by_user = {}
+        for snapshot in CodeSubmissionHistory.objects.filter(episode=episode):
+            code_history_by_user.setdefault(snapshot.user_id, []).append(snapshot)
+            submissions_by_user.setdefault(snapshot.user_id, snapshot)
+        # Keep pre-history formal submissions visible after this migration.
+        for submission in CodeSubmission.objects.filter(episode=episode, is_submitted=True):
+            submissions_by_user.setdefault(submission.user_id, submission)
 
     students = []
+    enrolled_user_ids = set()
     for enrollment in enrollments:
+        enrolled_user_ids.add(enrollment.user_id)
         sub = submissions_by_user.get(enrollment.user_id)
         students.append({
             'user': enrollment.user,
@@ -737,11 +837,25 @@ def assignment_review(request, course_id, episode_id):
             'submission': sub,
         })
 
+    # Formal code snapshots remain reviewable when a student is later removed
+    # from the course. Their enrollment is gone, but their submitted work is not.
+    if episode.type == 'code':
+        former_user_ids = set(submissions_by_user) - enrolled_user_ids
+        for user in User.objects.filter(id__in=former_user_ids):
+            students.append({
+                'user': user,
+                'submitted': True,
+                'submission': submissions_by_user[user.id],
+            })
+
     # Determine selected student's submission
     selected_user_id = request.GET.get('user_id')
     selected_submission = None
     if selected_user_id:
-        selected_submission = submissions_by_user.get(int(selected_user_id))
+        try:
+            selected_submission = submissions_by_user.get(int(selected_user_id))
+        except (TypeError, ValueError):
+            selected_submission = None
 
     # If no selection, pick first submitted student
     if not selected_submission:
@@ -806,6 +920,7 @@ def assignment_review(request, course_id, episode_id):
                         'choices': quiz_q['choices'],
                         'student_answer': student_ans,
                         'refAnswer': quiz_q.get('refAnswer', ''),
+                        'teacher_comment': (selected_submission.question_comments or {}).get(str(i), ''),
                     }
                     letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
                     for j, c in enumerate(quiz_q['choices']):
@@ -913,9 +1028,37 @@ def assignment_review(request, course_id, episode_id):
             'passed_count': passed_count,
             'total_count': total_count,
             'oj_enabled': oj_enabled,
+            'code_history': (
+                code_history_by_user.get(selected_submission.user_id, [])
+                if selected_submission else []
+            ),
         }
 
+        requested_history_id = request.GET.get('history_id')
+        if requested_history_id and selected_submission:
+            try:
+                requested_history_id = int(requested_history_id)
+            except (TypeError, ValueError):
+                requested_history_id = None
+            for snapshot in context['code_history']:
+                if snapshot.id == requested_history_id:
+                    selected_submission = snapshot
+                    context['selected_submission'] = snapshot
+                    context['selected_code'] = snapshot.code or ''
+                    try:
+                        context['test_results'] = validate_test_results(
+                            json.loads(snapshot.test_results)
+                        )
+                    except (json.JSONDecodeError, ValueError):
+                        context['test_results'] = []
+                    context['passed_count'] = sum(
+                        1 for tr in context['test_results'] if tr.get('passed')
+                    )
+                    context['total_count'] = len(context['test_results'])
+                    break
+
     context['submission_version'] = selected_submission.submitted_at.isoformat() if selected_submission and selected_submission.submitted_at else ''
+    context['can_edit_course'] = course.teacher_can(request.user, CourseTeacherMembership.EDIT)
     return render(request, 'teacher/assignment_review.html', context)
 
 
@@ -925,7 +1068,9 @@ def _review_submission(request):
     except (TypeError, ValueError):
         return None, JsonResponse({'success': False, 'error': 'Invalid submission ID'}, status=400)
     submission = get_object_or_404(QuizSubmission.objects.select_for_update(), pk=submission_id)
-    if not request.user.is_admin and submission.episode.section.course.creator_id != request.user.pk:
+    if not submission.episode.section.course.teacher_can(
+        request.user, CourseTeacherMembership.EDIT
+    ):
         return None, JsonResponse({'success': False, 'error': 'Permission denied'}, status=403)
     if request.POST.get('submission_version') != submission.submitted_at.isoformat():
         return None, JsonResponse({
@@ -1049,3 +1194,32 @@ def reset_submission(request):
     EpisodeReadStatus.objects.filter(user=user, episode=episode).update(is_read=False)
 
     return JsonResponse({'success': True, 'message': 'Submission reset. Student can redo the quiz.'})
+
+
+@login_required
+@teacher_required
+@require_POST
+@transaction.atomic
+def comment_question(request):
+    """Save or clear a comment on any question in the current submission."""
+    submission, error_response = _review_submission(request)
+    if error_response:
+        return error_response
+    questions = _parse_quiz_markdown(submission.episode.info_page_content or '')
+    try:
+        question_index = int(request.POST.get('question_index', ''))
+        if not 0 <= question_index < len(questions):
+            raise ValueError
+    except (TypeError, ValueError):
+        return JsonResponse({'success': False, 'error': 'Invalid question index'}, status=400)
+    comment = request.POST.get('comment', '').strip()
+    if len(comment) > 10000:
+        return JsonResponse({'success': False, 'error': 'Comment must be at most 10,000 characters.'}, status=400)
+    comments = dict(submission.question_comments or {})
+    if comment:
+        comments[str(question_index)] = comment
+    else:
+        comments.pop(str(question_index), None)
+    submission.question_comments = comments
+    submission.save(update_fields=['question_comments'])
+    return JsonResponse({'success': True, 'comment': comment})
