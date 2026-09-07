@@ -37,6 +37,13 @@ if (
 ALLOWED_HOSTS = _csv('DJANGO_ALLOWED_HOSTS')
 DEBUG = False
 
+# Keep the production SQLite database in a writable, site-local runtime
+# directory. The source tree remains read-only for the www service account.
+DATABASES['default']['NAME'] = os.environ.get(
+    'DJANGO_DB_PATH',
+    BASE_DIR / 'db.sqlite3',
+)
+
 MS_ENTRA_TENANT_ID = _required('MS_ENTRA_TENANT_ID')
 MS_ENTRA_CLIENT_ID = _required('MS_ENTRA_CLIENT_ID')
 MS_ENTRA_CLIENT_SECRET = _required('MS_ENTRA_CLIENT_SECRET')
