@@ -179,9 +179,6 @@ MS_ENTRA_CLIENT_ID = os.environ.get(
     '5910709e-99db-4cc0-9468-88497aa32f23',
 ).strip()
 MS_ENTRA_CLIENT_SECRET = os.environ.get('MS_ENTRA_CLIENT_SECRET', '').strip()
-MS_ENTRA_SCHOOL_DOMAIN = os.environ.get(
-    'MS_ENTRA_SCHOOL_DOMAIN', 'tsinglan.org',
-).strip().lower()
 MS_ENTRA_REDIRECT_URI = os.environ.get(
     'MS_ENTRA_REDIRECT_URI',
     'https://courser.tsinglan.top/accounts/microsoft/callback/',

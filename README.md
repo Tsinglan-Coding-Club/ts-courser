@@ -98,7 +98,7 @@ The current classroom scope retains these documented boundaries:
 - Python tests execute in the student's browser. The server validates the result payload's structure but does not independently rerun code; results are classroom feedback, not tamper-proof grades.
 - Teacher-authored Markdown is rendered as HTML under the assumption that verified teachers are trusted. Sanitization for untrusted/imported content remains deferred.
 - Image uploads decode and re-encode JPEG/PNG/GIF/WebP with size and pixel limits. The inline upload endpoint requires login; its content-author ownership policy remains undecided.
-- Microsoft sign-in currently validates the fixed tenant, application audience, v2 issuer, school principal-name domain, and required `acct=0` member claim. Entra disable/removal synchronization and automatic account linking are intentionally not in the first release.
+- Microsoft sign-in currently validates the fixed tenant, application audience, and v2 issuer. Guest/member classification and email domain are delegated to the Entra application's organizational-directory policy. Entra disable/removal synchronization and automatic account linking are intentionally not in the first release.
 
 ## Documentation and planned work
 

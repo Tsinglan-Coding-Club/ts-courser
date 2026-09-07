@@ -477,7 +477,6 @@ class FirstLoginCredentialTests(TestCase):
     MS_ENTRA_TENANT_ID='7222912a-435d-423b-b22b-74b909c3bf8b',
     MS_ENTRA_CLIENT_ID='5910709e-99db-4cc0-9468-88497aa32f23',
     MS_ENTRA_CLIENT_SECRET='test-client-secret',
-    MS_ENTRA_SCHOOL_DOMAIN='tsinglan.org',
     MS_ENTRA_REDIRECT_URI='https://courser.tsinglan.top/accounts/microsoft/callback/',
 )
 class MicrosoftAccountFlowTests(TestCase):
@@ -664,48 +663,48 @@ class MicrosoftAccountFlowTests(TestCase):
         self.assertEqual(identity.principal_name, 'renamed@tsinglan.org')
         self.assertIsNotNone(identity.last_authenticated_at)
 
-    def test_guest_and_wrong_tenant_accounts_are_rejected(self):
-        invalid_claims = (
-            (
-                'guest',
-                self.claims(
-                    object_id='22222222-2222-3333-4444-555555555555',
-                    username='guest@tsinglan.org',
-                    name='Guest User',
-                    acct='1',
-                ),
-                'Guest Microsoft accounts are not allowed.',
-            ),
-            (
-                'wrong tenant',
-                self.claims(
-                    object_id='33333333-2222-3333-4444-555555555555',
-                    username='outsider@tsinglan.org',
-                    name='Wrong Tenant',
-                    tid='aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
-                ),
-                'This Microsoft tenant is not allowed.',
+    def test_guest_account_is_allowed_but_wrong_tenant_is_rejected(self):
+        guest_response = self.complete_microsoft_sign_in(
+            role='student',
+            claims=self.claims(
+                object_id='22222222-2222-3333-4444-555555555555',
+                username='guest_external.example.com#EXT#@tsinglan.onmicrosoft.com',
+                name='Guest User',
+                acct='1',
             ),
         )
 
-        for label, claims, expected_message in invalid_claims:
-            with self.subTest(case=label):
-                self.client = Client()
-                response = self.complete_microsoft_sign_in(
-                    claims=claims,
-                )
+        self.assertRedirects(
+            guest_response,
+            reverse('courses:course_list'),
+            fetch_redirect_response=False,
+        )
+        self.assertEqual(
+            User.objects.get().email,
+            'guest_external.example.com#EXT#@tsinglan.onmicrosoft.com',
+        )
+        self.assertEqual(ExternalIdentity.objects.count(), 1)
 
-                self.assertEqual(response.status_code, 403)
-                self.assertContains(
-                    response,
-                    expected_message,
-                    status_code=403,
-                )
+        self.client = Client()
+        response = self.complete_microsoft_sign_in(
+            claims=self.claims(
+                object_id='33333333-2222-3333-4444-555555555555',
+                username='outsider@tsinglan.org',
+                name='Wrong Tenant',
+                tid='aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
+            ),
+        )
 
-        self.assertFalse(User.objects.exists())
-        self.assertFalse(ExternalIdentity.objects.exists())
+        self.assertEqual(response.status_code, 403)
+        self.assertContains(
+            response,
+            'This Microsoft tenant is not allowed.',
+            status_code=403,
+        )
+        self.assertEqual(User.objects.count(), 1)
+        self.assertEqual(ExternalIdentity.objects.count(), 1)
 
-    def test_missing_member_claim_and_wrong_audience_are_rejected(self):
+    def test_missing_acct_claim_is_allowed_but_wrong_audience_is_rejected(self):
         missing_acct = self.claims(
             object_id='55555555-2222-3333-4444-555555555555',
             username='member@tsinglan.org',
@@ -719,14 +718,26 @@ class MicrosoftAccountFlowTests(TestCase):
             aud='not-this-application',
         )
 
-        for claims in (missing_acct, wrong_audience):
-            with self.subTest(claims=claims):
-                self.client = Client()
-                response = self.complete_microsoft_sign_in(claims=claims)
-                self.assertEqual(response.status_code, 403)
+        missing_acct_response = self.complete_microsoft_sign_in(
+            role='student',
+            claims=missing_acct,
+        )
+        self.assertRedirects(
+            missing_acct_response,
+            reverse('courses:course_list'),
+            fetch_redirect_response=False,
+        )
+        self.assertEqual(User.objects.count(), 1)
+        self.assertEqual(ExternalIdentity.objects.count(), 1)
 
-        self.assertFalse(User.objects.exists())
-        self.assertFalse(ExternalIdentity.objects.exists())
+        self.client = Client()
+        wrong_audience_response = self.complete_microsoft_sign_in(
+            claims=wrong_audience,
+        )
+        self.assertEqual(wrong_audience_response.status_code, 403)
+
+        self.assertEqual(User.objects.count(), 1)
+        self.assertEqual(ExternalIdentity.objects.count(), 1)
 
     def test_login_page_role_input_cannot_change_existing_identity(self):
         object_id = '77777777-2222-3333-4444-555555555555'

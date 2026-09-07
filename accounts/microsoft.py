@@ -113,17 +113,10 @@ def validate_claims(claims):
         UUID(object_id)
     except ValueError:
         raise MicrosoftIdentityError('The Microsoft account has no object identifier.')
-    # `acct` is an optional ID-token claim configured in Entra. Requiring 0
-    # fails closed if the app registration does not emit it and rejects guests.
-    if str(claims.get('acct', '')) != '0':
-        raise MicrosoftIdentityError('Guest Microsoft accounts are not allowed.')
     if '@' not in principal_name:
-        raise MicrosoftIdentityError('The Microsoft account has no school sign-in name.')
-    domain = principal_name.rsplit('@', 1)[1].lower()
-    if domain != settings.MS_ENTRA_SCHOOL_DOMAIN.lower():
-        raise MicrosoftIdentityError('This is not a school Microsoft account.')
+        raise MicrosoftIdentityError('The Microsoft account has no sign-in name.')
     if len(principal_name) > 254:
-        raise MicrosoftIdentityError('The Microsoft school sign-in name is too long.')
+        raise MicrosoftIdentityError('The Microsoft sign-in name is too long.')
 
     return MicrosoftPrincipal(
         tenant_id=tenant_id,
