@@ -9,6 +9,7 @@
             <div class="card shadow-sm">
                 <div class="card-body p-4">
                     <h1 class="h3">Create local student account</h1>
+                    <p><a href="{% url 'accounts:create_local_students' %}">Create multiple students from a list of names</a></p>
                     <p class="text-muted">Choose the student's username and initial password. The student will keep this username and must change the password at first sign-in.</p>
                     <form method="post" novalidate>
                         {% csrf_token %}

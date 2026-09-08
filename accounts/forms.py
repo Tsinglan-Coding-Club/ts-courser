@@ -8,6 +8,7 @@ from django.core.exceptions import ValidationError
 from django.utils import timezone
 
 from .models import User
+from .services import student_username_from_name
 
 
 class FirstLoginCredentialsForm(forms.Form):
@@ -87,6 +88,46 @@ class LocalStudentCreationForm(forms.Form):
         if User.objects.filter(username__iexact=username).exists():
             raise ValidationError('This username is already in use.')
         return username
+
+
+class LocalStudentNameForm(forms.Form):
+    display_name = forms.CharField(
+        max_length=100,
+        label='Student name',
+        widget=forms.TextInput(attrs={
+            'class': 'form-control',
+            'placeholder': 'Abby Ai',
+            'autocomplete': 'off',
+            'aria-label': 'Student name',
+        }),
+    )
+
+    def clean_display_name(self):
+        name = ' '.join(self.cleaned_data['display_name'].split())
+        student_username_from_name(name)
+        return name
+
+
+LocalStudentNameFormSet = forms.formset_factory(
+    LocalStudentNameForm,
+    extra=4,
+    min_num=1,
+    validate_min=True,
+    max_num=200,
+    validate_max=True,
+    absolute_max=200,
+)
+
+
+class SharedInitialPasswordForm(forms.Form):
+    initial_password = forms.CharField(
+        label='Shared initial password',
+        strip=False,
+        widget=forms.PasswordInput(attrs={
+            'class': 'form-control',
+            'autocomplete': 'new-password',
+        }),
+    )
 
 
 class AdminLocalUserCreationForm(UserCreationForm):
