@@ -4,14 +4,19 @@
 
 {% block content %}
 <div class="container mt-4">
-    <div class="d-flex justify-content-between align-items-center mb-4">
+    <div class="d-flex flex-wrap gap-3 justify-content-between align-items-center mb-4">
         <div>
             <h1 class="mb-1">Account management</h1>
             <p class="text-muted mb-0">Issue student accounts and review first-time teacher sign-ins.</p>
         </div>
-        <a class="btn btn-primary" href="{% url 'accounts:create_local_student' %}">
-            <i class="bi bi-person-plus"></i> Create local student
-        </a>
+        <div class="d-flex flex-wrap gap-2">
+            <a class="btn btn-outline-primary" href="{% url 'accounts:create_local_student' %}">
+                <i class="bi bi-person-plus"></i> Create local student
+            </a>
+            <a class="btn btn-primary" href="{% url 'accounts:create_local_students' %}">
+                <i class="bi bi-people"></i> Create students in bulk
+            </a>
+        </div>
     </div>
 
     <div class="card shadow-sm">

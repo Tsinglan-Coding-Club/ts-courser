@@ -1,0 +1,38 @@
+{% extends 'base.html' %}
+
+{% block title %}Student accounts created - TS-Courser{% endblock %}
+
+{% block content %}
+<div class="container my-4">
+    <div class="row justify-content-center">
+        <div class="col-lg-9">
+            <h1 class="h3">{{ created_users|length }} student accounts created</h1>
+            <div class="card shadow-sm">
+                <div class="card-body p-4">
+                    <dl class="row">
+                        <dt class="col-sm-4">Shared initial password</dt><dd class="col-sm-8"><code>{{ initial_password }}</code></dd>
+                        <dt class="col-sm-4">Initial password expires</dt><dd class="col-sm-8">{{ created_users.0.initial_password_expires_at|date:"Y-m-d H:i T" }}</dd>
+                    </dl>
+                    <p>Students keep these usernames and must change the password at first sign-in.</p>
+                    <div class="table-responsive">
+                        <table class="table">
+                            <thead><tr><th scope="col">#</th><th scope="col">Student name</th><th scope="col">Username</th></tr></thead>
+                            <tbody>
+                                {% for student in created_users %}
+                                    <tr><td>{{ forloop.counter }}</td><td>{{ student.display_name }}</td><td><code>{{ student.username }}</code></td></tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    <p class="text-muted d-print-none">Save or print this list now. The initial password cannot be retrieved later.</p>
+                    <div class="d-flex flex-wrap gap-2 d-print-none">
+                        <button class="btn btn-outline-secondary" type="button" onclick="window.print()">Print account list</button>
+                        <a class="btn btn-primary" href="{% url 'accounts:create_local_students' %}">Create another batch</a>
+                        <a class="btn btn-link" href="{% url 'accounts:account_management' %}">Account management</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

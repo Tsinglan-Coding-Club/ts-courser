@@ -4,6 +4,8 @@ from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
+from django.core import signing
+from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -11,6 +13,8 @@ from django.urls import reverse
 from django.utils import timezone
 from django.utils.crypto import constant_time_compare
 from django.utils.http import url_has_allowed_host_and_scheme
+from django.views.decorators.cache import never_cache
+from django.views.decorators.debug import sensitive_post_parameters
 from django.views.decorators.http import require_POST
 from msal.exceptions import MsalError
 from requests.exceptions import RequestException
@@ -18,7 +22,12 @@ from requests.exceptions import RequestException
 from courses.models import Tag
 from ts_courser.utils import ImageUploadValidationError, validate_and_reencode_image
 
-from .forms import FirstLoginCredentialsForm, LocalStudentCreationForm
+from .forms import (
+    FirstLoginCredentialsForm,
+    LocalStudentCreationForm,
+    LocalStudentNameFormSet,
+    SharedInitialPasswordForm,
+)
 from .microsoft import (
     MicrosoftIdentityError,
     MicrosoftPrincipal,
@@ -28,7 +37,7 @@ from .microsoft import (
     verify_id_token,
 )
 from .models import User
-from .services import issue_local_student
+from .services import issue_local_student, issue_local_students, plan_local_students
 
 
 PREAUTH_USER_KEY = 'credential_change_user_id'
@@ -38,6 +47,7 @@ PREAUTH_NEXT_KEY = 'credential_change_next'
 PENDING_MICROSOFT_PRINCIPAL_KEY = 'pending_microsoft_principal'
 PENDING_MICROSOFT_TIME_KEY = 'pending_microsoft_verified_at'
 PENDING_MICROSOFT_NEXT_KEY = 'pending_microsoft_next'
+BULK_STUDENT_PREVIEW_SALT = 'accounts.bulk-student-preview'
 
 
 def _safe_next(request, candidate=None):
@@ -387,6 +397,88 @@ def create_local_student(request):
         response['Cache-Control'] = 'no-store'
         return response
     return render(request, 'accounts/create_local_student.html', {'form': form})
+
+
+@_admin_required
+@never_cache
+@sensitive_post_parameters('initial_password')
+def create_local_students(request):
+    data = request.POST if request.method == 'POST' else None
+    action = request.POST.get('action')
+    formset = LocalStudentNameFormSet(data, prefix='students')
+    password_form = SharedInitialPasswordForm(data if action == 'create' else None)
+    students = []
+    preview_token = ''
+    error = ''
+    status = 200
+
+    if request.method == 'POST' and formset.is_valid():
+        names = [
+            form.cleaned_data['display_name']
+            for form in formset if form.cleaned_data
+        ]
+        if action == 'preview':
+            students = plan_local_students(names)
+            preview_token = signing.dumps(
+                {'creator_id': request.user.pk, 'students': students},
+                salt=BULK_STUDENT_PREVIEW_SALT,
+                compress=True,
+            )
+        elif action == 'create':
+            try:
+                preview_token = request.POST.get('preview_token', '')
+                preview = signing.loads(
+                    preview_token, salt=BULK_STUDENT_PREVIEW_SALT, max_age=600,
+                )
+                if (
+                    preview['creator_id'] != request.user.pk
+                    or [student['display_name'] for student in preview['students']] != names
+                ):
+                    raise signing.BadSignature('The roster has changed.')
+                students = preview['students']
+            except signing.BadSignature:
+                preview_token = ''
+                error = 'This preview has expired or changed. Preview the names again.'
+                status = 400
+            else:
+                if password_form.is_valid():
+                    try:
+                        users = issue_local_students(
+                            creator=request.user,
+                            students=students,
+                            initial_password=password_form.cleaned_data['initial_password'],
+                        )
+                    except (ValidationError, IntegrityError):
+                        students = []
+                        preview_token = ''
+                        error = 'A username is now in use. No accounts were created. Preview the names again.'
+                        status = 409
+                    else:
+                        return render(request, 'accounts/local_students_created.html', {
+                            'created_users': users,
+                            'initial_password': password_form.cleaned_data['initial_password'],
+                        })
+        else:
+            error = 'Preview the names before creating accounts.'
+            status = 400
+
+    planned = iter(students)
+    rows = [
+        {
+            'form': form,
+            'username': next(planned, {}).get('username', '')
+            if students and form.cleaned_data else '',
+        }
+        for form in formset
+    ]
+    return render(request, 'accounts/create_local_students.html', {
+        'formset': formset,
+        'rows': rows,
+        'students': students,
+        'preview_token': preview_token,
+        'password_form': password_form,
+        'error': error,
+    }, status=status)
 
 
 @_admin_required

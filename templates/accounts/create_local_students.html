@@ -1,0 +1,75 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Create students in bulk - TS-Courser{% endblock %}
+
+{% block content %}
+<div class="container my-4">
+    <div class="row justify-content-center">
+        <div class="col-lg-9">
+            <h1 class="h3">Create students in bulk</h1>
+            <p class="text-muted">Enter one name per row, then preview the usernames and set a shared initial password. Each student must change the password at first sign-in.</p>
+            <div class="card shadow-sm">
+                <div class="card-body p-4">
+                    {% if error %}<div class="alert alert-danger" role="alert">{{ error }}</div>{% endif %}
+                    {% for error in formset.non_form_errors %}<div class="alert alert-danger" role="alert">{{ error }}</div>{% endfor %}
+                    <form method="post" id="bulk-student-form" novalidate>
+                        {% csrf_token %}
+                        {{ formset.management_form }}
+                        <input type="hidden" name="preview_token" id="preview-token" value="{{ preview_token }}">
+                        <p class="small text-muted" id="name-rules">Use English names or pinyin. Spaces and punctuation are removed: Abby Ai → abbyai. Accents are simplified. Duplicate usernames get a number, such as abbyai2.</p>
+                        <div class="table-responsive">
+                            <table class="table align-middle">
+                                <thead><tr><th scope="col">#</th><th scope="col">Student name</th><th scope="col">Username</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr></thead>
+                                <tbody id="student-rows">
+                                    {% for row in rows %}
+                                        <tr>
+                                            <td data-row-number>{{ forloop.counter }}</td>
+                                            <td>
+                                                {{ row.form.display_name }}
+                                                {% for error in row.form.display_name.errors %}<div class="text-danger small" role="alert">{{ error }}</div>{% endfor %}
+                                            </td>
+                                            <td><code data-username>{{ row.username|default:"—" }}</code></td>
+                                            <td class="text-end"><button type="button" class="btn btn-sm btn-outline-danger" data-remove-row aria-label="Remove student row {{ forloop.counter }}">Remove</button></td>
+                                        </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="d-flex align-items-center gap-3 mb-3">
+                            <button type="button" class="btn btn-outline-secondary" id="add-student-row">Add student</button>
+                            <span class="small text-muted">Up to {{ formset.max_num }} students. You can paste a column of names into a row.</span>
+                        </div>
+                        <p class="small text-muted" id="preview-status" role="status">{% if students %}{{ students|length }} usernames ready. Check the table before creating accounts.{% else %}Preview the names to see the assigned usernames.{% endif %}</p>
+                        {% if students %}
+                            <div class="mb-4" id="shared-password-panel">
+                                <label class="form-label" for="{{ password_form.initial_password.id_for_label }}">{{ password_form.initial_password.label }}</label>
+                                {{ password_form.initial_password }}
+                                <div class="form-text">All students in this batch will start with this password.</div>
+                                {% for error in password_form.initial_password.errors %}<div class="text-danger small" role="alert">{{ error }}</div>{% endfor %}
+                            </div>
+                        {% endif %}
+                        <div class="d-flex flex-wrap gap-2">
+                            {% if students %}<button type="submit" name="action" value="create" class="btn btn-primary" id="create-students">Create {{ students|length }} student accounts</button>{% endif %}
+                            <button type="submit" name="action" value="preview" class="btn {% if students %}btn-outline-primary{% else %}btn-primary{% endif %}">Preview usernames</button>
+                            <a class="btn btn-link" href="{% url 'accounts:account_management' %}">Cancel</a>
+                        </div>
+                    </form>
+                    <template id="empty-student-row">
+                        <tr>
+                            <td data-row-number></td>
+                            <td>{{ formset.empty_form.display_name }}</td>
+                            <td><code data-username>—</code></td>
+                            <td class="text-end"><button type="button" class="btn btn-sm btn-outline-danger" data-remove-row>Remove</button></td>
+                        </tr>
+                    </template>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'js/bulk-students.js' %}" defer></script>
+{% endblock %}

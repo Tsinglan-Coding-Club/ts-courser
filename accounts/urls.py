@@ -26,6 +26,11 @@ urlpatterns = [
         name='create_local_student',
     ),
     path(
+        'manage/local-students/bulk/',
+        views.create_local_students,
+        name='create_local_students',
+    ),
+    path(
         'manage/teachers/<int:user_id>/approve/',
         views.approve_teacher,
         name='approve_teacher',
