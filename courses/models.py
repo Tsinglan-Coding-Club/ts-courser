@@ -1,4 +1,4 @@
-from django.db import models
+from django.db import models, transaction
 from django.conf import settings
 import secrets
 import uuid
@@ -46,8 +46,10 @@ class Course(models.Model):
     )
     creator = models.ForeignKey(
         settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,
-        related_name='created_courses'
+        on_delete=models.SET_NULL,
+        related_name='created_courses',
+        null=True,
+        blank=True,
     )
     tags = models.ManyToManyField(Tag, related_name='courses', blank=True)
     is_published = models.BooleanField(default=False)
@@ -81,19 +83,89 @@ class Course(models.Model):
         return secrets.token_hex(4).upper()
 
     def save(self, *args, **kwargs):
-        super().save(*args, **kwargs)
-        # Generate course code if code-mode and no code yet
-        if self.enrollment_mode == 'code' and not self.course_code:
-            self.course_code = self._generate_code()
-            super().save(update_fields=['course_code'])
+        is_new = self._state.adding
+        with transaction.atomic():
+            super().save(*args, **kwargs)
+            # Generate course code if code-mode and no code yet
+            if self.enrollment_mode == 'code' and not self.course_code:
+                self.course_code = self._generate_code()
+                super().save(update_fields=['course_code'])
+            if is_new and self.creator_id:
+                # Keep creator as provenance only. Access is always membership based.
+                CourseTeacherMembership.objects.get_or_create(
+                    course=self, user_id=self.creator_id,
+                    defaults={'role': CourseTeacherMembership.MANAGE},
+                )
 
     def regenerate_code(self):
         """Force-regenerate the course code."""
         self.course_code = self._generate_code()
         self.save(update_fields=['course_code'])
 
+    def teacher_role(self, user):
+        """Return this user's effective course role, or ``None``.
+
+        Course creators receive a manager membership on creation, but the creator
+        field is provenance only and does not bypass the membership policy.
+        """
+        if not getattr(user, 'is_authenticated', False):
+            return None
+        if user.is_admin:
+            return CourseTeacherMembership.MANAGE
+        if not user.is_teacher:
+            return None
+        try:
+            return self.teacher_memberships.only('role').get(user=user).role
+        except CourseTeacherMembership.DoesNotExist:
+            return None
+
+    def teacher_can(self, user, required_role):
+        """Whether *user* has at least the requested course permission."""
+        role = self.teacher_role(user)
+        return role is not None and CourseTeacherMembership.role_rank(role) >= (
+            CourseTeacherMembership.role_rank(required_role)
+        )
+
     class Meta:
         ordering = ['-created_at']
+
+
+class CourseTeacherMembership(models.Model):
+    """A teacher's scoped access to one course."""
+
+    VIEW = 'view'
+    EDIT = 'edit'
+    MANAGE = 'manage'
+    ROLE_CHOICES = [
+        (VIEW, 'View student work'),
+        (EDIT, 'Edit course content'),
+        (MANAGE, 'Manage course'),
+    ]
+    ROLE_RANKS = {VIEW: 1, EDIT: 2, MANAGE: 3}
+
+    course = models.ForeignKey(
+        Course, on_delete=models.CASCADE, related_name='teacher_memberships'
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        related_name='course_memberships'
+    )
+    role = models.CharField(max_length=10, choices=ROLE_CHOICES, default=VIEW)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    @classmethod
+    def role_rank(cls, role):
+        return cls.ROLE_RANKS.get(role, 0)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=('course', 'user'), name='unique_course_teacher_membership'),
+        ]
+        ordering = ['course_id', 'user__username']
+
+    def __str__(self):
+        return f'{self.user} — {self.course} ({self.role})'
 
 
 class Section(models.Model):

@@ -152,6 +152,7 @@
             </div>
 
             <!-- Course Basic Info (Collapsible) -->
+            {% if can_manage_course %}
             <form method="post" enctype="multipart/form-data" id="courseInfoForm">
                 {% csrf_token %}
 
@@ -283,6 +284,9 @@
                     </div>
                 </div>
             </form>
+            {% else %}
+            <div class="card mb-3"><div class="card-body text-muted">You can edit sections and episodes, but only course managers can change course settings.</div></div>
+            {% endif %}
         </div>
 
         <!-- Right Main Area: Sections & Episodes -->

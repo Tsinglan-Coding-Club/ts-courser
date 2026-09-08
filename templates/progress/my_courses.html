@@ -51,7 +51,7 @@
                                 </a>
                             </h5>
                             <p class="text-muted small mb-2">
-                                <i class="bi bi-person"></i> {{ data.course.creator.get_display_name }}
+                                <i class="bi bi-person"></i> {{ data.course.creator.get_display_name|default:"Deleted user" }}
                             </p>
 
                             <!-- Course Description -->

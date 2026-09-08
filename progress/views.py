@@ -5,8 +5,11 @@ from django.views.decorators.http import require_POST
 from django.core.files.storage import default_storage
 from django.conf import settings
 from django.utils import timezone
-from .models import UserProgress, EpisodeReadStatus, CourseEnrollment, QuizSubmission, CodeSubmission
-from courses.models import Episode, Course
+from .models import (
+    UserProgress, EpisodeReadStatus, CourseEnrollment, QuizSubmission,
+    CodeSubmission, CodeSubmissionHistory,
+)
+from courses.models import CourseTeacherMembership, Episode, Course
 from ts_courser.utils import ImageUploadValidationError, validate_and_reencode_image
 from courses.quiz import validate_answers
 from progress.validation import validate_test_results
@@ -34,7 +37,7 @@ def _get_accessible_episode(request, episode_id, episode_type=None):
     is_enrolled = CourseEnrollment.objects.filter(
         user=request.user, course=course
     ).exists()
-    is_privileged = request.user.is_teacher or request.user.is_admin
+    is_privileged = course.teacher_can(request.user, CourseTeacherMembership.VIEW)
 
     if not course.is_published or (not is_enrolled and not is_privileged):
         return None, JsonResponse(
@@ -266,6 +269,7 @@ def submit_quiz(request):
         if changed:
             # A grade belongs to the previous answers, never to a replacement.
             submission.frq_grades = '{}'
+            submission.question_comments = {}
             submission.released_at = timezone.now() if automatic else None
             submission.submitted_at = timezone.now()
         submission.answers = answers_json
@@ -336,18 +340,25 @@ def submit_code(request):
         return JsonResponse({'success': False, 'error': str(error)}, status=400)
     test_results_json = json.dumps(test_results)
 
-    # The client has already run the tests and uploaded the source. Keep the
-    # latest formal submission as the only teacher-visible record.
-    CodeSubmission.objects.update_or_create(
-        user=request.user,
-        episode=episode,
-        defaults={
-            'code': code,
-            'test_results': test_results_json,
-            'is_submitted': True,
-            'submitted_at': timezone.now(),
-        },
-    )
+    # Keep the mutable upload for editor recovery, and separately preserve an
+    # immutable snapshot for each formal submission.
+    with transaction.atomic():
+        CodeSubmission.objects.update_or_create(
+            user=request.user,
+            episode=episode,
+            defaults={
+                'code': code,
+                'test_results': test_results_json,
+                'is_submitted': True,
+                'submitted_at': timezone.now(),
+            },
+        )
+        history = CodeSubmissionHistory.objects.create(
+            user=request.user,
+            episode=episode,
+            code=code,
+            test_results=test_results_json,
+        )
 
     # Mark episode as read on submission
     EpisodeReadStatus.objects.update_or_create(
@@ -359,6 +370,60 @@ def submit_code(request):
     return JsonResponse({
         'success': True,
         'message': 'Code submitted successfully!',
+        'history_id': history.id,
+    })
+
+
+@login_required
+def code_history(request):
+    """Return the current student's formal submission history for an episode."""
+    episode_id = request.GET.get('episode_id')
+    if not episode_id:
+        return JsonResponse({'success': False, 'error': 'Episode ID required'}, status=400)
+
+    episode, error_response = _get_accessible_episode(request, episode_id, 'code')
+    if error_response:
+        return error_response
+
+    history = CodeSubmissionHistory.objects.filter(
+        user=request.user, episode=episode
+    ).values('id', 'submitted_at', 'code').order_by('-submitted_at', '-id')
+    return JsonResponse({
+        'success': True,
+        'history': [
+            {
+                'id': item['id'],
+                'submitted_at': item['submitted_at'].isoformat(),
+                'code': item['code'],
+            }
+            for item in history
+        ],
+    })
+
+
+@login_required
+@require_POST
+def restore_code_history(request, history_id):
+    """Return a student's historical snapshot so the browser can restore a draft."""
+    snapshot = get_object_or_404(
+        CodeSubmissionHistory.objects.select_related('episode__section__course'),
+        id=history_id,
+        user=request.user,
+    )
+    episode, error_response = _get_accessible_episode(
+        request, snapshot.episode_id, 'code'
+    )
+    if error_response:
+        return error_response
+    if episode.id != snapshot.episode_id:
+        return JsonResponse({'success': False, 'error': 'Code submission not found'}, status=404)
+
+    # This intentionally does not update CodeSubmission or create a snapshot.
+    return JsonResponse({
+        'success': True,
+        'id': snapshot.id,
+        'code': snapshot.code,
+        'submitted_at': snapshot.submitted_at.isoformat(),
     })
 
 

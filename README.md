@@ -27,15 +27,15 @@ This README describes the current working tree as of **2026-09-07**.
 - **Code** (`code`): Python editor, optional tests, starter code, interactive display, and reference panel.
 - **Paper** (`paper`): Paper PDF and optional answer PDF.
 
-New sections and episodes append to their parent. Reorder them on the course editing page; the episode editor has no numeric order input. Teachers edit their own courses; admins bypass ownership checks.
+New sections and episodes append to their parent. Reorder them on the course editing page; the episode editor has no numeric order input. Courses support multiple teachers with view, edit, and manage permissions. The creator starts as a manager and has the same permissions as any other manager; managers can change or remove one another’s access while retaining at least one manager. Admins have full access.
 
 ### Submission and progress semantics
 
 Read progress indicates completion activity, not demonstrated mastery. Quiz and formal code submission mark an episode as read.
 
-Quiz release is configured per episode: inherit the course default, require manual release, or release immediately. Inherited automatic release excludes quizzes containing FRQs. Immediate release also applies to FRQs; a reference answer is not a teacher grade. Manual release requires all FRQs to be graded. Changing submitted answers clears earlier manual grades and recalculates release status; stale teacher review requests are rejected. Unreleased student question data omits answer keys and code-assembly solution positions.
+Quiz release is configured per episode: inherit the course default, require manual release, or release immediately. Inherited automatic release excludes quizzes containing FRQs. Immediate release also applies to FRQs; a reference answer is not a teacher grade. Manual release requires all FRQs to be graded. Teachers can save feedback on every question type; students see it alongside each question after results are released. Changing submitted answers clears earlier manual grades and feedback and recalculates release status; stale teacher review requests are rejected. Unreleased student question data omits answer keys and code-assembly solution positions.
 
-Code saves automatically to browser local storage every 60 seconds. **Upload** saves the latest code to the server without making it a formal teacher-visible submission. **Submit** records code and test results for teacher review. There is currently one code record per student/episode: uploading again resets its formal submission state. Quiz submissions also retain only one current record, rather than attempt history.
+Code saves automatically to browser local storage every 60 seconds. **Upload** saves the latest code to the server without making it a formal teacher-visible submission. **Submit** records code and test results for teacher review. Every formal submit creates a complete code/test-result snapshot. Later uploads do not change that history. Students can load a past submission into their editor, and teachers can inspect all submitted versions. Uploads and local saves do not create versions. Quiz submissions retain one current record, rather than attempt history. See [submission history and course collaboration](docs/SUBMISSIONS_AND_COURSE_PERMISSIONS.md).
 
 ## Local setup
 

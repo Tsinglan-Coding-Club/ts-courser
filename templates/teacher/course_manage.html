@@ -13,7 +13,7 @@
     <nav aria-label="breadcrumb">
         <ol class="breadcrumb">
             <li class="breadcrumb-item"><a href="{% url 'teacher:course_list' %}">Manage Courses</a></li>
-            <li class="breadcrumb-item"><a href="{% url 'teacher:course_edit' course.id %}">{{ course.title }}</a></li>
+            {% if can_edit_course %}<li class="breadcrumb-item"><a href="{% url 'teacher:course_edit' course.id %}">{{ course.title }}</a></li>{% else %}<li class="breadcrumb-item">{{ course.title }}</li>{% endif %}
             <li class="breadcrumb-item active">Manage Students</li>
         </ol>
     </nav>
@@ -26,10 +26,58 @@
                 <p class="teacher-page-subtitle">查看学习进度、管理学生与作业。</p>
             </div>
         </div>
-        <a href="{% url 'teacher:course_edit' course.id %}" class="btn btn-outline-secondary">
+        {% if can_edit_course %}<a href="{% url 'teacher:course_edit' course.id %}" class="btn btn-outline-secondary">
             <i class="bi bi-arrow-left"></i> Back to Edit
-        </a>
+        </a>{% endif %}
     </div>
+
+    {% if can_manage_course %}
+    <div class="card section-card mb-4">
+        <div class="card-header section-card-header">
+            <h2 class="section-card-title"><i class="bi bi-person-gear"></i> Teacher access</h2>
+        </div>
+        <div class="card-body">
+            <p class="text-muted small">View includes student progress and assignment submissions. Edit also allows content changes, grading, and feedback. Manage also allows course settings and teacher access. Entering an existing teacher's username changes their role. Every course must retain at least one manager.</p>
+            <form method="post" action="{% url 'teacher:course_member_save' course.id %}" class="row g-2 align-items-end mb-3">
+                {% csrf_token %}
+                <div class="col-md-6">
+                    <label class="form-label" for="teacherUsername">Teacher username</label>
+                    <input id="teacherUsername" class="form-control" name="username" required>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label" for="teacherRole">Access</label>
+                    <select id="teacherRole" class="form-select" name="role">
+                        {% for value, label in role_choices %}
+                        <option value="{{ value }}">{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-2"><button class="btn btn-primary w-100" type="submit">Save access</button></div>
+            </form>
+            <div class="table-responsive">
+                <table class="table table-sm mb-0">
+                    <thead><tr><th>Teacher</th><th>Access</th><th class="text-end">Action</th></tr></thead>
+                    <tbody>
+                        {% for membership in memberships %}
+                        <tr>
+                            <td>{{ membership.user.get_display_name }} <span class="text-muted">({{ membership.user.username }})</span></td>
+                            <td>{{ membership.get_role_display }}</td>
+                            <td class="text-end">
+                                <form method="post" action="{% url 'teacher:course_member_remove' course.id membership.id %}" class="d-inline">
+                                    {% csrf_token %}
+                                    <button class="btn btn-sm btn-outline-danger" type="submit">Remove</button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr><td colspan="3" class="text-muted">No teacher access has been assigned.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% endif %}
 
     <!-- Tab Navigation -->
     <div class="manage-tabs" role="group" id="manageTabGroup">
@@ -173,6 +221,7 @@
                                         </span>
                                     </td>
                                     <td class="text-end">
+                                        {% if can_manage_course %}
                                         <div class="table-actions">
                                             <button type="button"
                                                     class="btn btn-outline-danger btn-sm btn-action remove-student-btn"
@@ -181,6 +230,7 @@
                                                 <i class="bi bi-x-circle"></i> Remove
                                             </button>
                                         </div>
+                                        {% endif %}
                                     </td>
                                 </tr>
                             {% endfor %}
