@@ -103,11 +103,11 @@
             <tbody id="courseTableBody">
                 {% for course in courses %}
                     <tr class="course-row"
-                        data-creator="{{ course.creator.username|default:'Deleted user' }}"
+                        data-creator="{{ course.creator.get_display_name|default:'Deleted user' }}"
                         data-is-published="{{ course.is_published|yesno:'true,false' }}"
                         data-is-my-course="{% if course.can_manage_course %}true{% else %}false{% endif %}">
                         <td>{{ course.title }}</td>
-                        <td>{{ course.creator.username|default:"Deleted user" }}</td>
+                        <td>{{ course.creator.get_display_name|default:"Deleted user" }}</td>
                         <td>
                             {% if course.is_published %}
                                 <span class="badge bg-success">Published</span>

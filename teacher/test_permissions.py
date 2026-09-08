@@ -150,3 +150,16 @@ class CourseTeacherPermissionTests(TestCase):
         response = self.client.get(reverse('teacher:course_list'))
         self.assertEqual(response.status_code, 200)
         self.assertNotContains(response, self.course.title)
+
+    def test_course_list_shows_creator_display_name(self):
+        self.creator.username = 'entra_123456789'
+        self.creator.display_name = 'Course Creator'
+        self.creator.save(update_fields=['username', 'display_name'])
+        self.client.force_login(self.viewer)
+
+        response = self.client.get(reverse('teacher:course_list'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'data-creator="Course Creator"')
+        self.assertContains(response, '>Course Creator</td>')
+        self.assertNotContains(response, self.creator.username)
