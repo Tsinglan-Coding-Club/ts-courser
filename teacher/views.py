@@ -569,6 +569,11 @@ def course_manage(request, course_id):
         'quiz_episodes': quiz_episodes,
         'memberships': course.teacher_memberships.select_related('user'),
         'role_choices': CourseTeacherMembership.ROLE_CHOICES,
+        'available_teachers': (
+            User.objects.filter(role='teacher').order_by('display_name', 'username')
+            if course.teacher_can(request.user, CourseTeacherMembership.MANAGE)
+            else User.objects.none()
+        ),
         'can_edit_course': course.teacher_can(request.user, CourseTeacherMembership.EDIT),
         'can_manage_course': course.teacher_can(request.user, CourseTeacherMembership.MANAGE),
     }
@@ -632,8 +637,8 @@ def course_member_save(request, course_id):
         messages.error(request, 'Enter a teacher username.')
     else:
         teacher = User.objects.filter(username=username).first()
-        if teacher is None or not teacher.is_teacher:
-            messages.error(request, 'That username does not belong to a verified teacher.')
+        if teacher is None or not teacher.is_teacher or not teacher.is_active:
+            messages.error(request, 'Choose an active, verified teacher.')
         elif teacher.is_admin:
             messages.error(request, 'Administrators already have access to every course.')
         else:

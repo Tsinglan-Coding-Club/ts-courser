@@ -26,6 +26,8 @@ class FirstLoginCredentialsForm(forms.Form):
     def __init__(self, *args, user, **kwargs):
         self.user = user
         super().__init__(*args, **kwargs)
+        if user.is_student:
+            del self.fields['username']
 
     def clean_username(self):
         username = self.cleaned_data['username'].strip()
@@ -67,17 +69,18 @@ class FirstLoginCredentialsForm(forms.Form):
 class LocalStudentCreationForm(forms.Form):
     username = forms.CharField(
         max_length=150,
-        required=False,
-        label='Temporary username (optional)',
-        help_text='Leave blank to generate one automatically.',
+        label='Username',
+    )
+    initial_password = forms.CharField(
+        label='Initial password',
+        strip=False,
+        widget=forms.PasswordInput(attrs={'autocomplete': 'new-password'}),
     )
     display_name = forms.CharField(max_length=100, label='Student name')
     email = forms.EmailField(required=False, label='Contact email (optional)')
 
     def clean_username(self):
         username = self.cleaned_data['username'].strip()
-        if not username:
-            return username
         username_field = User._meta.get_field('username')
         for validator in username_field.validators:
             validator(username)

@@ -4,13 +4,13 @@
 
 TS-Courser is a Django learning platform for small school classes. Students enroll in courses, read materials, answer quizzes, and run Python in the browser. Teachers author lessons, monitor progress, and review submissions.
 
-This README describes the current working tree as of **2026-09-07**.
+This README describes the current working tree as of **2026-09-08**.
 
 ## Current features
 
 | Area | Implemented behavior |
 | --- | --- |
-| Accounts | Single-tenant Microsoft Entra login for `tsinglan.org`, administrator-issued local student/admin accounts, mandatory first-login username/password replacement, teacher approval, profiles, avatars, and favorite tags |
+| Accounts | Single-tenant Microsoft Entra login for `tsinglan.org`, administrator-issued local student/admin accounts, administrator-chosen student usernames and initial passwords, mandatory first-login password replacement, teacher approval, profiles, avatars, and favorite tags |
 | Courses | Published course catalog with track/subject filters; open or eight-character code enrollment; enrollment closure; course dashboard, My Courses, and resume learning |
 | Authoring | Course/section/episode creation and editing, Markdown editor, PDF uploads, thumbnails, tags, and section/episode drag-and-drop ordering |
 | Progress | Last visited episode, read/unread status, per-student completion percentages, and a teacher progress distribution |

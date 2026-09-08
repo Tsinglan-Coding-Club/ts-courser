@@ -37,12 +37,19 @@
             <h2 class="section-card-title"><i class="bi bi-person-gear"></i> Teacher access</h2>
         </div>
         <div class="card-body">
-            <p class="text-muted small">View includes student progress and assignment submissions. Edit also allows content changes, grading, and feedback. Manage also allows course settings and teacher access. Entering an existing teacher's username changes their role. Every course must retain at least one manager.</p>
+            <p class="text-muted small">View includes student progress and assignment submissions. Edit also allows content changes, grading, and feedback. Manage also allows course settings and teacher access. Selecting a teacher already in this course updates their role. Every course must retain at least one manager.</p>
             <form method="post" action="{% url 'teacher:course_member_save' course.id %}" class="row g-2 align-items-end mb-3">
                 {% csrf_token %}
                 <div class="col-md-6">
-                    <label class="form-label" for="teacherUsername">Teacher username</label>
-                    <input id="teacherUsername" class="form-control" name="username" required>
+                    <label class="form-label" for="teacherSearch">Teacher</label>
+                    <input id="teacherSearch" type="search" class="form-control mb-2" placeholder="Search by name or username" autocomplete="off" aria-controls="teacherSelect">
+                    <select id="teacherSelect" class="form-select" name="username" size="5" required aria-label="Select a teacher" aria-describedby="teacherSearchStatus">
+                        <option value="" disabled selected>Select a teacher</option>
+                        {% for teacher in available_teachers %}
+                        <option value="{{ teacher.username }}" {% if not teacher.is_verified_teacher or not teacher.is_active or teacher.is_admin %}disabled{% endif %}>{{ teacher.get_display_name }} ({{ teacher.username }}){% if teacher.is_admin %} — Administrator: already has access{% elif not teacher.is_active %} — Inactive{% elif not teacher.is_verified_teacher %} — Awaiting approval{% endif %}</option>
+                        {% endfor %}
+                    </select>
+                    <small id="teacherSearchStatus" class="text-muted" role="status">{{ available_teachers|length }} teachers</small>
                 </div>
                 <div class="col-md-4">
                     <label class="form-label" for="teacherRole">Access</label>
@@ -52,7 +59,7 @@
                         {% endfor %}
                     </select>
                 </div>
-                <div class="col-md-2"><button class="btn btn-primary w-100" type="submit">Save access</button></div>
+                <div class="col-md-2"><button class="btn btn-primary w-100" type="submit">Add teacher</button></div>
             </form>
             <div class="table-responsive">
                 <table class="table table-sm mb-0">
@@ -281,6 +288,7 @@
 {% endblock %}
 
 {% block extra_js %}
+<script src="{% static 'js/teacher-picker.js' %}" defer></script>
 <script>
 // ---- Tab switching ----
 const tabRadios = document.querySelectorAll('input[name="manageTab"]');
