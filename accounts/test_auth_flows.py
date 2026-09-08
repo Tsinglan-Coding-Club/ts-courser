@@ -168,6 +168,7 @@ class LocalAccountFlowTests(TestCase):
             reverse('accounts:create_local_student'),
             {
                 'username': 'issued-student',
+                'initial_password': '123456',
                 'display_name': 'Issued Student',
                 'email': 'issued@example.test',
             },
@@ -178,12 +179,75 @@ class LocalAccountFlowTests(TestCase):
         self.assertEqual(response.headers['Cache-Control'], 'no-store')
         issued_student = User.objects.get(username='issued-student')
         initial_password = response.context['initial_password']
+        self.assertEqual(initial_password, '123456')
         self.assertEqual(issued_student.role, 'student')
         self.assertEqual(issued_student.created_by, self.platform_admin)
         self.assertTrue(issued_student.local_login_enabled)
         self.assertTrue(issued_student.must_change_credentials)
         self.assertTrue(issued_student.check_password(initial_password))
+        self.assertNotEqual(issued_student.password, initial_password)
         self.assertGreater(issued_student.initial_password_expires_at, timezone.now())
+
+    def test_student_creation_requires_administrator_supplied_credentials(self):
+        self.client.force_login(self.platform_admin)
+        data = {
+            'username': 'issued-student',
+            'initial_password': '123456',
+            'display_name': 'Issued Student',
+        }
+
+        for field in ('username', 'initial_password'):
+            for value in (None, ''):
+                with self.subTest(field=field, value=value):
+                    payload = data.copy()
+                    if value is None:
+                        payload.pop(field)
+                    else:
+                        payload[field] = value
+                    response = self.client.post(
+                        reverse('accounts:create_local_student'), payload,
+                    )
+
+                    self.assertFormError(
+                        response.context['form'], field, 'This field is required.',
+                    )
+                    self.assertEqual(User.objects.count(), 1)
+
+    def test_student_creation_rejects_invalid_or_duplicate_usernames(self):
+        self.client.force_login(self.platform_admin)
+
+        for username in ('name with spaces', 'PLATFORM-ADMIN'):
+            with self.subTest(username=username):
+                response = self.client.post(
+                    reverse('accounts:create_local_student'),
+                    {
+                        'username': username,
+                        'initial_password': '123456',
+                        'display_name': 'Issued Student',
+                    },
+                )
+
+                self.assertIn('username', response.context['form'].errors)
+                self.assertEqual(User.objects.count(), 1)
+                self.assertNotContains(response, 'value="123456"')
+
+    def test_student_creation_preserves_password_whitespace_and_optional_email(self):
+        self.client.force_login(self.platform_admin)
+        password = '  classroom password  '
+
+        response = self.client.post(
+            reverse('accounts:create_local_student'),
+            {
+                'username': 'issued-student',
+                'initial_password': password,
+                'display_name': 'Issued Student',
+            },
+        )
+
+        self.assertTemplateUsed(response, 'accounts/local_account_created.html')
+        student = User.objects.get(username='issued-student')
+        self.assertTrue(student.check_password(password))
+        self.assertEqual(student.email, '')
 
     def test_django_staff_is_not_a_platform_admin(self):
         staff_student = User.objects.create_user(
@@ -276,7 +340,7 @@ class FirstLoginCredentialTests(TestCase):
             initial_password_expires_at=timezone.now() + timezone.timedelta(days=1),
         )
 
-    def test_first_login_forces_both_username_and_password_change(self):
+    def test_first_login_changes_password_and_keeps_issued_student_username(self):
         student = self.make_temporary_student()
 
         login_response = self.client.post(
@@ -295,10 +359,13 @@ class FirstLoginCredentialTests(TestCase):
         )
         self.assertNotIn('_auth_user_id', self.client.session)
 
+        setup_response = self.client.get(reverse('accounts:first_login_credentials'))
+        self.assertNotContains(setup_response, 'name="username"')
+        self.assertContains(setup_response, student.username)
+
         change_response = self.client.post(
             reverse('accounts:first_login_credentials'),
             {
-                'username': 'student-chosen-name',
                 'password1': 'NewStudentPassword!567',
                 'password2': 'NewStudentPassword!567',
             },
@@ -310,7 +377,7 @@ class FirstLoginCredentialTests(TestCase):
             fetch_redirect_response=False,
         )
         student.refresh_from_db()
-        self.assertEqual(student.username, 'student-chosen-name')
+        self.assertEqual(student.username, 'temporary-student')
         self.assertTrue(student.check_password('NewStudentPassword!567'))
         self.assertFalse(student.check_password('InitialPassword!234'))
         self.assertFalse(student.must_change_credentials)
@@ -318,7 +385,19 @@ class FirstLoginCredentialTests(TestCase):
         self.assertIsNotNone(student.password_changed_at)
         self.assertEqual(self.client.session['_auth_user_id'], str(student.pk))
 
-    def test_first_login_rejects_retaining_either_issued_credential(self):
+        self.client.logout()
+        returning_response = self.client.post(
+            reverse('accounts:login'),
+            {'username': student.username, 'password': 'NewStudentPassword!567'},
+        )
+        self.assertRedirects(
+            returning_response,
+            reverse('courses:course_list'),
+            fetch_redirect_response=False,
+        )
+        self.assertEqual(self.client.session['_auth_user_id'], str(student.pk))
+
+    def test_first_login_rejects_retaining_initial_password(self):
         student = self.make_temporary_student()
         self.client.post(
             reverse('accounts:login'),
@@ -328,25 +407,9 @@ class FirstLoginCredentialTests(TestCase):
             },
         )
 
-        same_username_response = self.client.post(
-            reverse('accounts:first_login_credentials'),
-            {
-                'username': 'temporary-student',
-                'password1': 'NewStudentPassword!567',
-                'password2': 'NewStudentPassword!567',
-            },
-        )
-        self.assertEqual(same_username_response.status_code, 200)
-        self.assertFormError(
-            same_username_response.context['form'],
-            'username',
-            'Please choose a new username.',
-        )
-
         same_password_response = self.client.post(
             reverse('accounts:first_login_credentials'),
             {
-                'username': 'student-chosen-name',
                 'password1': 'InitialPassword!234',
                 'password2': 'InitialPassword!234',
             },
@@ -361,6 +424,81 @@ class FirstLoginCredentialTests(TestCase):
         self.assertEqual(student.username, 'temporary-student')
         self.assertTrue(student.must_change_credentials)
         self.assertNotIn('_auth_user_id', self.client.session)
+
+    def test_first_login_ignores_submitted_student_username(self):
+        student = self.make_temporary_student()
+        self.client.post(
+            reverse('accounts:login'),
+            {'username': student.username, 'password': 'InitialPassword!234'},
+        )
+
+        response = self.client.post(
+            reverse('accounts:first_login_credentials'),
+            {
+                'username': 'student-chosen-name',
+                'password1': 'NewStudentPassword!567',
+                'password2': 'NewStudentPassword!567',
+            },
+        )
+
+        self.assertRedirects(
+            response, reverse('courses:course_list'), fetch_redirect_response=False,
+        )
+        student.refresh_from_db()
+        self.assertEqual(student.username, 'temporary-student')
+        self.assertTrue(student.check_password('NewStudentPassword!567'))
+
+    def test_first_login_still_validates_password_strength_and_confirmation(self):
+        student = self.make_temporary_student()
+        self.client.post(
+            reverse('accounts:login'),
+            {'username': student.username, 'password': 'InitialPassword!234'},
+        )
+
+        for password1, password2, error_field in (
+            ('NewStudentPassword!567', 'DifferentPassword!567', 'password2'),
+            ('123456', '123456', 'password1'),
+            (student.username, student.username, 'password1'),
+        ):
+            with self.subTest(error_field=error_field, password=password1):
+                response = self.client.post(
+                    reverse('accounts:first_login_credentials'),
+                    {'password1': password1, 'password2': password2},
+                )
+
+                self.assertIn(error_field, response.context['form'].errors)
+                student.refresh_from_db()
+                self.assertTrue(student.check_password('InitialPassword!234'))
+                self.assertTrue(student.must_change_credentials)
+                self.assertNotIn('_auth_user_id', self.client.session)
+
+    def test_issued_administrator_still_changes_both_credentials(self):
+        administrator = self.make_temporary_student()
+        administrator.role = 'admin'
+        administrator.save(update_fields=('role',))
+        self.client.post(
+            reverse('accounts:login'),
+            {'username': administrator.username, 'password': 'InitialPassword!234'},
+        )
+
+        setup_response = self.client.get(reverse('accounts:first_login_credentials'))
+        self.assertContains(setup_response, 'name="username"')
+
+        response = self.client.post(
+            reverse('accounts:first_login_credentials'),
+            {
+                'username': 'permanent-admin',
+                'password1': 'NewAdminPassword!567',
+                'password2': 'NewAdminPassword!567',
+            },
+        )
+
+        self.assertRedirects(
+            response, reverse('courses:course_list'), fetch_redirect_response=False,
+        )
+        administrator.refresh_from_db()
+        self.assertEqual(administrator.username, 'permanent-admin')
+        self.assertTrue(administrator.check_password('NewAdminPassword!567'))
 
     def test_local_login_rejects_an_external_next_url(self):
         student = User.objects.create_user(

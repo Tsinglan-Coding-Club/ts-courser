@@ -312,7 +312,8 @@ def first_login_credentials(request):
                     _clear_preauth(request)
                     messages.error(request, 'This credential-change session is no longer valid.')
                     return redirect('accounts:login')
-                locked_user.username = form.cleaned_data['username']
+                if 'username' in form.cleaned_data:
+                    locked_user.username = form.cleaned_data['username']
                 locked_user.set_password(form.cleaned_data['password1'])
                 locked_user.must_change_credentials = False
                 locked_user.initial_password_expires_at = None
@@ -332,7 +333,11 @@ def first_login_credentials(request):
         next_url = request.session.get(PREAUTH_NEXT_KEY)
         _clear_preauth(request)
         login(request, locked_user, backend='accounts.backends.LocalAccountBackend')
-        messages.success(request, 'Your username and password have been updated.')
+        messages.success(
+            request,
+            'Your password has been updated.' if user.is_student
+            else 'Your username and password have been updated.',
+        )
         return redirect(next_url if next_url and url_has_allowed_host_and_scheme(
             next_url,
             allowed_hosts={request.get_host()},
@@ -367,14 +372,17 @@ def account_management(request):
 def create_local_student(request):
     form = LocalStudentCreationForm(request.POST or None)
     if request.method == 'POST' and form.is_valid():
-        user, initial_password = issue_local_student(
+        user = issue_local_student(
             creator=request.user,
             **form.cleaned_data,
         )
         response = render(
             request,
             'accounts/local_account_created.html',
-            {'created_user': user, 'initial_password': initial_password},
+            {
+                'created_user': user,
+                'initial_password': form.cleaned_data['initial_password'],
+            },
         )
         response['Cache-Control'] = 'no-store'
         return response

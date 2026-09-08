@@ -39,8 +39,9 @@ class User(AbstractUser):
     created_at = models.DateTimeField(auto_now_add=True)
 
     # Authentication state. Microsoft-only users have an unusable password and
-    # local_login_enabled=False. Accounts issued by an administrator must replace
-    # both their temporary username and password before entering the platform.
+    # local_login_enabled=False. Issued accounts must replace their initial
+    # password before entering the platform. Students keep their issued username;
+    # newly issued local administrators must also replace their username.
     local_login_enabled = models.BooleanField(default=False)
     must_change_credentials = models.BooleanField(default=False)
     initial_password_expires_at = models.DateTimeField(null=True, blank=True)

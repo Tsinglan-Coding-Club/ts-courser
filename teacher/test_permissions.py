@@ -163,3 +163,35 @@ class CourseTeacherPermissionTests(TestCase):
         self.assertContains(response, 'data-creator="Course Creator"')
         self.assertContains(response, '>Course Creator</td>')
         self.assertNotContains(response, self.creator.username)
+
+    def test_manager_picker_lists_teachers_and_marks_unavailable_accounts(self):
+        self.stranger.display_name = '王老师'
+        self.stranger.save(update_fields=['display_name'])
+        pending = User.objects.create_user(username='pending_teacher', role='teacher')
+        inactive = self._teacher('inactive_teacher')
+        inactive.is_active = False
+        inactive.save(update_fields=['is_active'])
+        self.client.force_login(self.manager)
+        response = self.client.get(reverse('teacher:course_manage', args=[self.course.pk]))
+        self.assertContains(response, '王老师 (stranger)')
+        self.assertContains(response, 'Add teacher</button>')
+        self.assertContains(response, 'Search by name or username')
+        self.assertContains(response, 'Awaiting approval')
+        self.assertContains(response, 'Inactive')
+        self.assertNotIn(self.student, response.context['available_teachers'])
+        self.assertIn(pending, response.context['available_teachers'])
+        for user in (pending, inactive):
+            self.client.post(reverse('teacher:course_member_save', args=[self.course.pk]), {
+                'username': user.username, 'role': CourseTeacherMembership.VIEW,
+            })
+            self.assertFalse(CourseTeacherMembership.objects.filter(course=self.course, user=user).exists())
+        self.client.post(reverse('teacher:course_member_save', args=[self.course.pk]), {
+            'username': self.stranger.username, 'role': CourseTeacherMembership.VIEW,
+        })
+        self.assertTrue(CourseTeacherMembership.objects.filter(course=self.course, user=self.stranger).exists())
+
+    def test_viewer_does_not_receive_teacher_picker_directory(self):
+        self.client.force_login(self.viewer)
+        response = self.client.get(reverse('teacher:course_manage', args=[self.course.pk]))
+        self.assertNotContains(response, 'id="teacherSelect"')
+        self.assertEqual(list(response.context['available_teachers']), [])
