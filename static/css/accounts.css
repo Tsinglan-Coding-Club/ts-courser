@@ -39,6 +39,16 @@ body.auth-page main {
     opacity: 0.5;
 }
 
+.auth-content {
+    position: relative;
+    z-index: 1;
+    width: min(100%, 520px);
+}
+
+.auth-messages .alert:last-child {
+    margin-bottom: 1rem;
+}
+
 [data-theme="dark"] .auth-fluid-background {
     opacity: 0.62;
 }
@@ -52,6 +62,10 @@ body.auth-page main {
     border-radius: 0.75rem;
     background: var(--auth-surface);
     box-shadow: 0 0.5rem 1rem var(--shadow-color);
+}
+
+.auth-content .auth-panel {
+    width: 100%;
 }
 
 .auth-heading {
