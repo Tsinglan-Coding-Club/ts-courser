@@ -7,7 +7,9 @@ from django.urls import reverse
 
 from accounts.models import User
 from courses.models import Course, Episode, Section
-from progress.models import CourseEnrollment, QuizSubmission
+from progress.models import (
+    CodeSubmission, CodeSubmissionHistory, CourseEnrollment, EpisodeReadStatus, QuizSubmission,
+)
 from teacher.views import _cba_tokens_equivalent, _parse_quiz_markdown
 
 
@@ -695,3 +697,95 @@ class CodeEpisodeEditorTests(TestCase):
         )
         self.episode.refresh_from_db()
         self.assertEqual(self.episode.starter_code, starter_code)
+
+
+class AssignmentCompletionTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.teacher = User.objects.create_user(
+            username='teacher', email='teacher@example.com',
+            role='teacher', is_verified_teacher=True,
+        )
+        cls.course = Course.objects.create(title='Course', creator=cls.teacher)
+        section = Section.objects.create(course=cls.course, title='Section')
+        cls.quiz = Episode.objects.create(section=section, title='Quiz', type='quiz')
+        cls.student = User.objects.create_user(
+            username='student', email='student@example.com', role='student',
+        )
+        cls.pending_student = User.objects.create_user(
+            username='pending', email='pending@example.com', role='student',
+        )
+        cls.former_student = User.objects.create_user(
+            username='former', email='former@example.com', role='student',
+        )
+        cls.admin = User.objects.create_user(
+            username='admin', email='admin@example.com', role='admin',
+        )
+        # Preview accounts may have historical enrollments as well as submissions.
+        for user in [cls.teacher, cls.admin, cls.student, cls.pending_student]:
+            CourseEnrollment.objects.create(course=cls.course, user=user)
+        other_course = Course.objects.create(title='Other', creator=cls.teacher)
+        CourseEnrollment.objects.create(course=other_course, user=cls.former_student)
+        for user in [cls.teacher, cls.admin, cls.student, cls.former_student]:
+            QuizSubmission.objects.create(episode=cls.quiz, user=user, answers='[]')
+            EpisodeReadStatus.objects.create(episode=cls.quiz, user=user, is_read=True)
+
+    def setUp(self):
+        self.client.force_login(self.teacher)
+
+    def test_manage_counts_only_current_enrolled_students(self):
+        response = self.client.get(reverse('teacher:course_manage', args=[self.course.id]))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context['quiz_episodes'][0]['submission_count'], 1)
+        self.assertEqual(response.context['stats']['total_students'], 2)
+        self.assertEqual(response.context['stats']['median'], 50)
+        self.assertEqual(
+            {row['user'].id for row in response.context['students_data']},
+            {self.student.id, self.pending_student.id},
+        )
+        self.assertContains(response, '<span class="section-count">1/2</span>', html=True)
+
+    def test_manage_without_students_does_not_count_preview_submissions(self):
+        CourseEnrollment.objects.filter(course=self.course, user__role='student').delete()
+
+        response = self.client.get(reverse('teacher:course_manage', args=[self.course.id]))
+
+        self.assertEqual(response.context['quiz_episodes'][0]['submission_count'], 0)
+        self.assertEqual(response.context['stats']['total_students'], 0)
+
+    def test_review_uses_the_same_student_roster_as_manage(self):
+        for excluded_user in [self.teacher, self.admin, self.former_student]:
+            with self.subTest(user=excluded_user.username):
+                response = self.client.get(reverse(
+                    'teacher:assignment_review', args=[self.course.id, self.quiz.id],
+                ), {'user_id': excluded_user.id})
+
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(
+                    {row['user'].id: row['submitted'] for row in response.context['students']},
+                    {self.student.id: True, self.pending_student.id: False},
+                )
+                self.assertEqual(response.context['selected_submission'].user_id, self.student.id)
+
+    def test_code_assignments_exclude_previews_and_unsubmitted_uploads(self):
+        code = Episode.objects.create(section=self.quiz.section, title='Code', type='code')
+        for user in [self.teacher, self.admin, self.student, self.former_student]:
+            CodeSubmission.objects.create(episode=code, user=user, is_submitted=True)
+            CodeSubmissionHistory.objects.create(episode=code, user=user)
+        CodeSubmission.objects.create(episode=code, user=self.pending_student, is_submitted=False)
+
+        response = self.client.get(reverse('teacher:course_manage', args=[self.course.id]))
+
+        counts = {row['id']: row['submission_count'] for row in response.context['quiz_episodes']}
+        self.assertEqual(counts, {self.quiz.id: 1, code.id: 1})
+
+        response = self.client.get(reverse(
+            'teacher:assignment_review', args=[self.course.id, code.id],
+        ))
+
+        # Former students' code history remains reviewable, but previews are excluded.
+        self.assertEqual(
+            {row['user'].id: row['submitted'] for row in response.context['students']},
+            {self.student.id: True, self.pending_student.id: False, self.former_student.id: True},
+        )
