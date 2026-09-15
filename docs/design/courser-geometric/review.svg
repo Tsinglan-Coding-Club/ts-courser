@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="780" viewBox="0 0 1200 780">
+  <defs>
+    <mask id="courser-cutouts" x="0" y="0" width="256" height="256" maskUnits="userSpaceOnUse" style="mask-type:luminance">
+      <rect width="256" height="256" fill="white"/>
+      <circle cx="122" cy="111" r="10" fill="black"/>
+      <path d="M 122 78.118 A 126 126 0 0 1 254.119 139 L 243.727 145 A 114 114 0 0 0 124.19 89.916 Z" fill="black"/>
+    </mask>
+  <symbol id="mark" viewBox="0 0 256 256">  <g fill="currentColor" mask="url(#courser-cutouts)">
+    <circle cx="156" cy="128" r="90"/>
+    <path d="M 11 102 A 90 90 0 0 1 100 91.084 L 100 106.183 A 207.162 207.162 0 0 1 11 102 Z"/>
+  </g></symbol>
+    <clipPath id="construction-window"><rect width="256" height="256"/></clipPath>
+  </defs>
+  <rect width="1200" height="780" fill="#f4f3f0"/>
+  <g font-family="-apple-system, BlinkMacSystemFont, Helvetica Neue, Arial, sans-serif" fill="#111111">
+    <text x="40" y="54" font-size="26" font-weight="650">COURser / 几何鸟头</text>
+    <text x="40" y="86" font-size="15" fill="#666666">走鸻参考 · 圆与圆弧构造 · 单色 SVG 审核稿</text>
+    <rect x="40" y="116" width="352" height="350" rx="16" fill="white"/>
+    <rect x="424" y="116" width="352" height="350" rx="16" fill="#17191b"/>
+    <rect x="808" y="116" width="352" height="350" rx="16" fill="white"/>
+    <use href="#mark" x="60" y="127" width="312" height="312" color="#111111"/>
+    <use href="#mark" x="444" y="127" width="312" height="312" color="#ffffff"/>
+    <g transform="translate(828 127) scale(1.21875)" clip-path="url(#construction-window)">
+      <use href="#mark" width="256" height="256" opacity="0.14"/>
+
+  <g fill="none" stroke="#408b91" stroke-width="0.7">
+    <circle cx="156" cy="128" r="90"/>
+    <circle cx="145" cy="202" r="126"/>
+    <circle cx="145" cy="202" r="114"/>
+    <circle cx="65" cy="174" r="90"/>
+    <circle cx="65" cy="-98" r="207.162"/>
+    <circle cx="122" cy="111" r="10"/>
+    <path stroke-dasharray="2 3" d="M 156 20 V 234 M 20 128 H 250 M 145 64 V 246 M 32 202 H 250"/>
+    <path d="M 152 128 H 160 M 156 124 V 132 M 141 202 H 149 M 145 198 V 206 M 61 174 H 69 M 65 170 V 178"/>
+  </g>
+    </g>
+    <text x="60" y="445" font-size="13" fill="#777777">01 / 正形</text>
+    <text x="444" y="445" font-size="13" fill="#bbbbbb">02 / 反白</text>
+    <text x="828" y="445" font-size="13" fill="#777777">03 / 实际构造圆</text>
+    <text x="40" y="518" font-size="17" font-weight="600">小尺寸检查</text>
+    <text x="40" y="544" font-size="13" fill="#666666">下方按 SVG 标称尺寸绘制；图片缩放会影响显示大小。</text>
+    <rect x="40" y="568" width="540" height="126" rx="14" fill="white"/>
+    <rect x="604" y="568" width="556" height="126" rx="14" fill="#17191b"/>
+    <use href="#mark" x="96" y="606" width="16" height="16" color="#111111"/>
+        <text x="104" y="670" font-size="12" text-anchor="middle" fill="#777777">16 px</text>
+        <use href="#mark" x="662" y="606" width="16" height="16" color="#ffffff"/>
+        <text x="670" y="670" font-size="12" text-anchor="middle" fill="#bbbbbb">16 px</text><use href="#mark" x="222" y="602" width="24" height="24" color="#111111"/>
+        <text x="234" y="670" font-size="12" text-anchor="middle" fill="#777777">24 px</text>
+        <use href="#mark" x="788" y="602" width="24" height="24" color="#ffffff"/>
+        <text x="800" y="670" font-size="12" text-anchor="middle" fill="#bbbbbb">24 px</text><use href="#mark" x="348" y="598" width="32" height="32" color="#111111"/>
+        <text x="364" y="670" font-size="12" text-anchor="middle" fill="#777777">32 px</text>
+        <use href="#mark" x="914" y="598" width="32" height="32" color="#ffffff"/>
+        <text x="930" y="670" font-size="12" text-anchor="middle" fill="#bbbbbb">32 px</text><use href="#mark" x="470" y="590" width="48" height="48" color="#111111"/>
+        <text x="494" y="670" font-size="12" text-anchor="middle" fill="#777777">48 px</text>
+        <use href="#mark" x="1036" y="590" width="48" height="48" color="#ffffff"/>
+        <text x="1060" y="670" font-size="12" text-anchor="middle" fill="#bbbbbb">48 px</text>
+    <text x="40" y="744" font-size="13" fill="#666666">头部 R90 · 眼睛 R10 · 眉纹同心圆 R126 / R114 · 喙由两段圆弧围成</text>
+  </g>
+</svg>

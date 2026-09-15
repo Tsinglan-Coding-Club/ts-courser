@@ -1,5 +1,10 @@
 /* Shared rules for HTML produced by Markdown renderers. */
 
+.markdown-body img {
+    max-width: 100%;
+    height: auto;
+}
+
 /*
  * Inline code intentionally has padding. Fenced code already sits inside a
  * padded <pre>, so its nested <code> must not add a second inset that looks

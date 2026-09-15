@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" fill="none">
+  <title>Courser — geometric head</title>
+  <desc>A left-facing courser head constructed from circles and circular arcs, with a downcurved bill and a narrow eyebrow cutout.</desc>
+  <defs>
+    <mask id="courser-cutouts" x="0" y="0" width="256" height="256" maskUnits="userSpaceOnUse" style="mask-type:luminance">
+      <rect width="256" height="256" fill="white"/>
+      <circle cx="122" cy="111" r="10" fill="black"/>
+      <path d="M 122 78.118 A 126 126 0 0 1 254.119 139 L 243.727 145 A 114 114 0 0 0 124.19 89.916 Z" fill="black"/>
+    </mask>
+  </defs>
+  <g fill="currentColor" mask="url(#courser-cutouts)">
+    <circle cx="156" cy="128" r="90"/>
+    <path d="M 11 102 A 90 90 0 0 1 100 91.084 L 100 106.183 A 207.162 207.162 0 0 1 11 102 Z"/>
+  </g>
+</svg>
