@@ -199,6 +199,36 @@
 
     <!-- Tab 2: Student Management -->
     <div id="panelStudents" class="manage-panel" style="display:none;">
+        <div class="card shadow-sm mb-4">
+            <div class="card-header bg-info text-white">
+                <h5 class="mb-0"><i class="bi bi-person-plus-fill"></i> Add Registered Student</h5>
+            </div>
+            <div class="card-body">
+                {% if available_students %}
+                    <form id="addStudentForm" class="row g-2 align-items-end">
+                        <div class="col-md">
+                            <label for="studentToAdd" class="form-label">Student account</label>
+                            <select class="form-select" id="studentToAdd" name="user_id" required>
+                                <option value="" selected disabled>Select a registered student</option>
+                                {% for student in available_students %}
+                                    <option value="{{ student.id }}">
+                                        {{ student.get_display_name }} — {{ student.email }}
+                                    </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-auto">
+                            <button type="submit" class="btn btn-info text-white" id="addStudentBtn">
+                                <i class="bi bi-plus-circle"></i> Add Student
+                            </button>
+                        </div>
+                    </form>
+                {% else %}
+                    <p class="text-muted mb-0">All active registered students are already enrolled.</p>
+                {% endif %}
+            </div>
+        </div>
+
         {% if students_data %}
             <div class="card section-card">
                 <div class="card-header section-card-header">
@@ -304,11 +334,59 @@ function showManageTab(tabName) {
     });
 }
 
+const initialTab = window.location.hash.slice(1);
+if (panels[initialTab]) {
+    const initialRadio = document.querySelector(`input[name="manageTab"][value="${initialTab}"]`);
+    if (initialRadio) initialRadio.checked = true;
+    showManageTab(initialTab);
+}
+
 tabRadios.forEach(radio => {
     radio.addEventListener('change', () => {
         showManageTab(radio.value);
+        history.replaceState(null, '', `#${radio.value}`);
     });
 });
+
+// ---- Add student ----
+const addStudentForm = document.getElementById('addStudentForm');
+if (addStudentForm) {
+    addStudentForm.addEventListener('submit', async function(event) {
+        event.preventDefault();
+
+        const studentSelect = document.getElementById('studentToAdd');
+        const submitButton = document.getElementById('addStudentBtn');
+        if (!studentSelect.value) return;
+
+        submitButton.disabled = true;
+        try {
+            const formData = new FormData();
+            formData.append('course_id', '{{ course.id }}');
+            formData.append('user_id', studentSelect.value);
+
+            const response = await fetch('{% url "teacher:add_student" %}', {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': '{{ csrf_token }}'
+                },
+                body: formData
+            });
+
+            const data = await response.json();
+            if (data.success) {
+                window.location.hash = 'students';
+                location.reload();
+            } else {
+                alert('Error: ' + (data.error || 'Failed to add student'));
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            alert('An error occurred. Please try again.');
+        } finally {
+            submitButton.disabled = false;
+        }
+    });
+}
 
 // ---- Remove student ----
 document.querySelectorAll('.remove-student-btn').forEach(btn => {
@@ -335,6 +413,7 @@ document.querySelectorAll('.remove-student-btn').forEach(btn => {
 
             const data = await response.json();
             if (data.success) {
+                window.location.hash = 'students';
                 location.reload();
             } else {
                 alert('Error: ' + (data.error || 'Failed to remove student'));
