@@ -32,7 +32,7 @@
             </div>
 
             <p class="text-muted">
-                <i class="bi bi-person"></i> Created by {{ course.creator.username }}
+                <i class="bi bi-person"></i> Created by {{ course.creator.username|default:"Deleted user" }}
             </p>
         </div>
 

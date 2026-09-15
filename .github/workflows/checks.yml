@@ -1,0 +1,42 @@
+name: Checks
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      DJANGO_SETTINGS_MODULE: ts_courser.settings
+      DJANGO_SECRET_KEY: ci-only-secret
+      DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: latest
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: sudo apt-get update && sudo apt-get install --yes libmagic1
+      - run: uv sync
+      - run: npm install
+      - run: uv run python manage.py test
+      - run: npm test
+      - run: uv run python -m unittest discover -s tests
+      - run: uv run python manage.py makemigrations --check --dry-run
+      - run: uv run python manage.py collectstatic --noinput --dry-run
+      - run: >-
+          uv run python manage.py check --deploy
+          --settings=ts_courser.settings_production
+        env:
+          DJANGO_SETTINGS_MODULE: ts_courser.settings_production
+          DJANGO_SECRET_KEY: ci-production-secret-key-0123456789-abcdefghijklmnopqrstuvwxyz
+          DJANGO_ALLOWED_HOSTS: example.com
+          DJANGO_CSRF_TRUSTED_ORIGINS: https://example.com
+          MS_ENTRA_TENANT_ID: 7222912a-435d-423b-b22b-74b909c3bf8b
+          MS_ENTRA_CLIENT_ID: 5910709e-99db-4cc0-9468-88497aa32f23
+          MS_ENTRA_CLIENT_SECRET: ci-only-entra-secret
+          MS_ENTRA_SCHOOL_DOMAIN: tsinglan.org
+          MS_ENTRA_REDIRECT_URI: https://courser.tsinglan.top/accounts/microsoft/callback/

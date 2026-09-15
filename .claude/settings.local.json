@@ -5,7 +5,8 @@
       "Bash(uv run:*)",
       "Bash(if not exist \"static\\images\" mkdir staticimages)",
       "Bash(git diff *)",
-      "Read(//tmp/**)"
+      "Read(//tmp/**)",
+      "Bash(python3 *)"
     ],
     "deny": [],
     "ask": []

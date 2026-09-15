@@ -7,9 +7,14 @@
  * Reference: Pyodide docs — "Using Pyodide in a web worker"
  */
 
+import { isHandledExecutionError } from '/static/js/python-error.mjs?v=2';
+import { createStdinRequest } from './stdin-channel.mjs?v=1';
+
 let _worker = null;
 let _pendingRequests = new Map();
 let _lastId = 1;
+let _activeExecutionId = null;
+let _stopping = false;
 
 /** Generate a unique message ID */
 function _getId() {
@@ -32,7 +37,7 @@ function _deferred() {
  */
 export function getWorker() {
     if (!_worker) {
-        _worker = new Worker('/static/js/pyodide-worker.js?v=3', { type: 'module' });
+        _worker = new Worker('/static/js/pyodide-worker.js?v=6', { type: 'module' });
         _setupWorkerListeners(_worker);
     }
     return _worker;
@@ -44,6 +49,7 @@ export function getWorker() {
  */
 function _setupWorkerListeners(worker) {
     worker.addEventListener('message', (event) => {
+        if (_worker !== worker) return;
         const data = event.data;
 
         // --- Diagnostic: catch _dbg messages from worker ---
@@ -59,7 +65,14 @@ function _setupWorkerListeners(worker) {
         }
 
         if (data.type === 'stdin-request') {
-            _handleStdinRequest(data);
+            if (data.runId === _activeExecutionId) _handleStdinRequest(data);
+            return;
+        }
+
+        if (data.type === 'interactive') {
+            if (data.runId === _activeExecutionId && _onInteractive) {
+                _onInteractive(data.events);
+            }
             return;
         }
 
@@ -80,16 +93,42 @@ function _setupWorkerListeners(worker) {
 
         // --- request/response matching ---
         if (data.id !== undefined && _pendingRequests.has(data.id)) {
+            if (data.id === _activeExecutionId) {
+                _activeExecutionId = null;
+                _closeInput();
+            }
             const { resolve, reject } = _pendingRequests.get(data.id);
             _pendingRequests.delete(data.id);
 
-            if (data.error) {
+            // Python exceptions and user interrupts are normal execution
+            // results. Only communication/runtime failures reject the request.
+            if (data.error && !isHandledExecutionError(data)) {
                 reject(new Error(data.error));
             } else {
                 resolve(data);
             }
         }
     });
+
+    const handleWorkerFailure = (event) => {
+        if (_worker !== worker) return;
+        console.error('[pyodide-api] Worker failure:', event);
+        for (const { reject } of _pendingRequests.values()) {
+            reject(new Error('Python environment error.'));
+        }
+        _pendingRequests.clear();
+        if (_worker === worker) {
+            worker.terminate();
+            _worker = null;
+        }
+        _stdinSab = null;
+        _interruptSab = null;
+        _activeExecutionId = null;
+        _closeInput();
+    };
+
+    worker.addEventListener('error', handleWorkerFailure);
+    worker.addEventListener('messageerror', handleWorkerFailure);
 }
 
 // ---- Real-time stream callback ----
@@ -109,6 +148,27 @@ export function onStreamOutput(callback) {
 
 let _stdinSab = null;
 let _interruptSab = null;
+let _inputRequest = null;
+let _onInputRequest = null;
+let _onInputClosed = null;
+let _onInteractive = null;
+
+export function onInputRequest(callback, onClosed) {
+    _onInputRequest = callback;
+    _onInputClosed = onClosed;
+}
+
+export function onInteractive(callback) {
+    _onInteractive = callback;
+}
+
+function _closeInput() {
+    if (_inputRequest) {
+        _inputRequest.cancel();
+        return;
+    }
+    if (_onInputClosed) _onInputClosed();
+}
 
 function _handleStdinRequest(data) {
     if (!_stdinSab) {
@@ -116,29 +176,19 @@ function _handleStdinRequest(data) {
         return;
     }
 
-    // Prompt comes directly from the message (no SAB read needed).
+    _closeInput();
     const prompt = data.prompt || '';
-
-    // 1) Show browser prompt dialog (empty string = Python default)
-    const response = window.prompt(prompt) || '';
-
-    // 2) Echo prompt (white) + user input (green) on one console line
-    if (_onStreamOutput) {
-        _onStreamOutput('stdout', prompt);        // white, no \n
-        _onStreamOutput('input', response + '\n'); // green, ends line
-    }
-
-    // Write response back to SAB for synchronous return to worker
-    const status = new Int32Array(_stdinSab, 0, 1);
-    const dataLen = new Int32Array(_stdinSab, 4, 1);
-    const encoder = new TextEncoder();
-    const encoded = encoder.encode(response);
-    new Uint8Array(_stdinSab, 8, encoded.length).set(encoded);
-    Atomics.store(dataLen, 0, encoded.length);
-    Atomics.store(status, 0, 2); // status = "has-response"
-
-    // Wake the worker
-    Atomics.notify(status, 0, 1);
+    _inputRequest = createStdinRequest(_stdinSab, prompt, response => {
+        if (_onStreamOutput) {
+            _onStreamOutput('stdout', prompt);
+            _onStreamOutput('input', response + '\n');
+        }
+    }, () => {
+        _inputRequest = null;
+        if (_onInputClosed) _onInputClosed();
+    });
+    if (_onInputRequest && !_stopping) _onInputRequest(_inputRequest);
+    else _inputRequest.cancel();
 }
 
 // ---- Interrupt & Termination ----
@@ -148,8 +198,9 @@ function _handleStdinRequest(data) {
  * Writes 2 into the interrupt SharedArrayBuffer, triggering KeyboardInterrupt.
  */
 export function writeInterrupt() {
-    if (!_interruptSab) return;
-    new Uint8Array(_interruptSab)[0] = 2;
+    _stopping = true;
+    if (_interruptSab) new Uint8Array(_interruptSab)[0] = 2;
+    _closeInput();
 }
 
 /**
@@ -158,10 +209,20 @@ export function writeInterrupt() {
  * The next call to getWorker() will create a fresh worker.
  */
 export function terminateWorker() {
+    _activeExecutionId = null;
+    _closeInput();
     if (_worker) {
+        for (const { resolve } of _pendingRequests.values()) {
+            resolve({
+                error: 'Execution interrupted',
+                errorKind: 'interrupted',
+                interrupted: true,
+                results: [],
+            });
+        }
+        _pendingRequests.clear();
         _worker.terminate();
         _worker = null;
-        _pendingRequests.clear();
     }
     _stdinSab = null;
     _interruptSab = null;
@@ -177,8 +238,25 @@ export function requestResponse(worker, msg) {
     const { promise, resolve, reject } = _deferred();
     const id = _getId();
 
+    if (msg.type === 'run' || msg.type === 'judge') {
+        if (_activeExecutionId !== null) throw new Error('Python is already running.');
+        _closeInput();
+        _activeExecutionId = id;
+        _stopping = false;
+        // Clear the previous run's signal before dispatch, so a Stop arriving
+        // while the worker starts up cannot be overwritten by worker setup.
+        if (_interruptSab) new Uint8Array(_interruptSab)[0] = 0;
+    }
+
     _pendingRequests.set(id, { resolve, reject });
-    worker.postMessage({ id, ...msg });
+    try {
+        worker.postMessage({ id, ...msg });
+    } catch (error) {
+        _pendingRequests.delete(id);
+        if (_activeExecutionId === id) _activeExecutionId = null;
+        console.error('[pyodide-api] Failed to send worker request:', error);
+        reject(new Error('Python environment error.'));
+    }
     return promise;
 }
 
@@ -187,7 +265,7 @@ export function requestResponse(worker, msg) {
  * @param {string} script - Python code to execute
  * @param {object} context - JS object to inject as Python globals
  * @param {string[]} apis - List of API names to enable
- * @returns {Promise<{result: any, stdout: string, stderr: string, error: string|null}>}
+ * @returns {Promise<{result: any, stdout: string, stderr: string, error: string|null, errorKind: string|null, interrupted: boolean}>}
  */
 export async function asyncRun(script, context = {}, apis = []) {
     const worker = getWorker();
@@ -203,6 +281,7 @@ export async function asyncRun(script, context = {}, apis = []) {
         stdout: response.stdout || '',
         stderr: response.stderr || '',
         error: response.error || null,
+        errorKind: response.errorKind || null,
         interrupted: response.interrupted || false,
     };
 }
@@ -213,6 +292,29 @@ export async function asyncRun(script, context = {}, apis = []) {
 export async function resetNamespace() {
     const worker = getWorker();
     return requestResponse(worker, { type: 'reset' });
+}
+
+/**
+ * Run Python code against test cases for automated checking.
+ * @param {string} script - Python code to judge
+ * @param {Array<{input: string, expected: string}>} testCases
+ * @param {string[]} apis - List of API names to enable
+ * @returns {Promise<{results: Array, error: string|null, errorKind: string|null, interrupted: boolean}>}
+ */
+export async function asyncJudge(script, testCases, apis = []) {
+    const worker = getWorker();
+    const response = await requestResponse(worker, {
+        type: 'judge',
+        python: script,
+        testCases,
+        apis,
+    });
+    return {
+        results: response.results || [],
+        error: response.error || null,
+        errorKind: response.errorKind || null,
+        interrupted: response.interrupted || false,
+    };
 }
 
 /**

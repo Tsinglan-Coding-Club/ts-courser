@@ -175,3 +175,50 @@
 .code-console-container .console-output {
     background-color: #1e1e1e;
 }
+
+/* Python input() stays on the page, beside the interactive display. */
+.stdin-panel {
+    flex: 0 1 auto;
+    min-height: 0;
+    max-height: 80%;
+    overflow-y: auto;
+    border-top: 1px solid #424242;
+    padding: 0.65rem;
+    color: #d4d4d4;
+    background: #252526;
+    font-family: inherit;
+    font-size: 0.85rem;
+}
+
+.stdin-panel[hidden] { display: none; }
+.stdin-prompt { display: grid; gap: 0.4rem; overflow-wrap: anywhere; }
+.stdin-field {
+    min-width: 0;
+    width: 100%;
+    color: #ffffff;
+    background: #1e1e1e;
+    border: 1px solid #808080;
+    border-radius: 4px;
+    padding: 0.4rem;
+    font: inherit;
+}
+.stdin-actions, .stdin-direction-buttons { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.5rem; }
+.stdin-panel button {
+    color: #ffffff;
+    background: #333333;
+    border: 1px solid #808080;
+    border-radius: 4px;
+    padding: 0.35rem 0.55rem;
+    font: inherit;
+    cursor: pointer;
+}
+.stdin-panel button:hover { background: #464646; }
+.stdin-panel button:focus-visible, .stdin-field:focus-visible { outline: 2px solid #75beff; outline-offset: 2px; }
+.stdin-directions { margin-top: 0.5rem; }
+.stdin-directions summary { cursor: pointer; }
+.stdin-error { color: #ff9494; overflow-wrap: anywhere; }
+.stdin-error:not(:empty) { margin-top: 0.5rem; }
+@media (pointer: coarse) {
+    .stdin-panel button { min-height: 44px; }
+    .stdin-field { font-size: 16px; }
+}

@@ -6,23 +6,32 @@ from django.core.exceptions import PermissionDenied
 from django.http import JsonResponse
 from django.views.decorators.http import require_POST
 from django.utils import timezone
-from django.db import models
-from courses.models import Course, Section, Episode, Tag
-from progress.models import CourseEnrollment, EpisodeReadStatus, QuizSubmission
+from django.db import models, transaction
+from accounts.models import User
+from courses.models import Course, CourseTeacherMembership, Section, Episode, Tag
+from courses.quiz import _parse_quiz_markdown
+from progress.models import (
+    CourseEnrollment, EpisodeReadStatus, QuizSubmission, CodeSubmission,
+    CodeSubmissionHistory,
+)
 from .decorators import (
     teacher_required,
+    require_course_permission,
     require_course_ownership,
     require_episode_ownership,
     check_section_ownership,
 )
+import json
 import logging
 import magic
-import os
 
-from ts_courser.utils import compress_image
+from ts_courser.utils import ImageUploadValidationError, validate_and_reencode_image
+from progress.validation import validate_test_results
 
 logger = logging.getLogger(__name__)
 User = get_user_model()
+
+COURSE_THUMBNAIL_ASPECT_RATIO = (16, 9)
 
 
 @teacher_required
@@ -31,7 +40,18 @@ def course_list(request):
     if request.user.is_admin:
         courses = Course.objects.all().prefetch_related('tags', 'creator')
     else:
-        courses = Course.objects.filter(creator=request.user).prefetch_related('tags', 'creator')
+        courses = Course.objects.filter(
+            teacher_memberships__user=request.user
+        ).prefetch_related('tags', 'creator').distinct()
+    courses = list(courses)
+    for course in courses:
+        course.current_teacher_role = course.teacher_role(request.user)
+        course.can_edit_course = course.teacher_can(
+            request.user, CourseTeacherMembership.EDIT
+        )
+        course.can_manage_course = course.teacher_can(
+            request.user, CourseTeacherMembership.MANAGE
+        )
     return render(request, 'teacher/course_list.html', {'courses': courses})
 
 
@@ -48,6 +68,18 @@ def course_create(request):
             messages.error(request, 'Title and description are required.')
             return redirect('teacher:course_create')
 
+        thumbnail = None
+        if 'thumbnail' in request.FILES:
+            try:
+                thumbnail = validate_and_reencode_image(
+                    request.FILES['thumbnail'],
+                    max_size_bytes=10 * 1024 * 1024,
+                    crop_aspect_ratio=COURSE_THUMBNAIL_ASPECT_RATIO,
+                )
+            except ImageUploadValidationError as error:
+                messages.error(request, str(error))
+                return redirect('teacher:course_create')
+
         course = Course.objects.create(
             title=title,
             description=description,
@@ -55,9 +87,9 @@ def course_create(request):
             is_published=is_published
         )
 
-        # Handle thumbnail upload (compress if > 1MB)
-        if 'thumbnail' in request.FILES:
-            course.thumbnail = compress_image(request.FILES['thumbnail'])
+        # Save the validated and centre-cropped thumbnail.
+        if thumbnail:
+            course.thumbnail = thumbnail
             course.save()
 
         # Add tags
@@ -72,12 +104,14 @@ def course_create(request):
 
 
 @teacher_required
-@require_course_ownership
+@require_course_permission(CourseTeacherMembership.EDIT)
 def course_edit(request, course_id):
     """Edit an existing course. Only the creator (or admin) can edit."""
     course = request.course  # Injected by require_course_ownership
 
     if request.method == 'POST':
+        if not course.teacher_can(request.user, CourseTeacherMembership.MANAGE):
+            raise PermissionDenied("Only course managers can change course settings.")
         course.title = request.POST.get('title', course.title)
         course.description = request.POST.get('description', course.description)
         course.is_published = request.POST.get('is_published') == 'on'
@@ -92,9 +126,17 @@ def course_edit(request, course_id):
         if request.POST.get('regenerate_code') == '1' and course.enrollment_mode == 'code':
             course.course_code = course._generate_code()
 
-        # Handle thumbnail upload (compress if > 1MB)
+        # Validate and centre-crop a replacement thumbnail.
         if 'thumbnail' in request.FILES:
-            course.thumbnail = compress_image(request.FILES['thumbnail'])
+            try:
+                course.thumbnail = validate_and_reencode_image(
+                    request.FILES['thumbnail'],
+                    max_size_bytes=10 * 1024 * 1024,
+                    crop_aspect_ratio=COURSE_THUMBNAIL_ASPECT_RATIO,
+                )
+            except ImageUploadValidationError as error:
+                messages.error(request, str(error))
+                return redirect('teacher:course_edit', course_id=course.id)
 
         course.save()
 
@@ -118,6 +160,7 @@ def course_edit(request, course_id):
         'tags': tags,
         'sections': sections,
         'total_episodes': total_episodes,
+        'can_manage_course': course.teacher_can(request.user, CourseTeacherMembership.MANAGE),
     }
     return render(request, 'teacher/course_edit.html', context)
 
@@ -136,20 +179,22 @@ def section_create(request):
         course = get_object_or_404(Course, id=course_id)
 
         # Ownership check: only the course creator or admin can add sections
-        if not request.user.is_admin and course.creator != request.user:
-            raise PermissionDenied("You can only add sections to your own courses.")
+        if not course.teacher_can(request.user, CourseTeacherMembership.EDIT):
+            raise PermissionDenied("You can only add sections to assigned courses.")
 
-        # Auto-calculate order (max + 1)
-        max_order = Section.objects.filter(course=course).aggregate(
-            models.Max('order')
-        )['order__max']
-        new_order = (max_order or -1) + 1
+        with transaction.atomic():
+            Course.objects.select_for_update().get(pk=course.pk)
+            # Auto-calculate order (max + 1)
+            max_order = Section.objects.filter(course=course).aggregate(
+                models.Max('order')
+            )['order__max']
+            new_order = (max_order if max_order is not None else -1) + 1
 
-        Section.objects.create(
-            course=course,
-            title=title,
-            order=new_order
-        )
+            Section.objects.create(
+                course=course,
+                title=title,
+                order=new_order
+            )
 
         messages.success(request, f'Section "{title}" created successfully!')
         return redirect('teacher:course_edit', course_id=course_id)
@@ -172,18 +217,20 @@ def episode_create(request):
         # Ownership check: trace back to parent course
         section, course = check_section_ownership(request, section_id)
 
-        # Auto-calculate order (max + 1)
-        max_order = Episode.objects.filter(section=section).aggregate(
-            models.Max('order')
-        )['order__max']
-        new_order = (max_order or -1) + 1
+        with transaction.atomic():
+            Course.objects.select_for_update().get(pk=course.pk)
+            # Auto-calculate order (max + 1)
+            max_order = Episode.objects.filter(section=section).aggregate(
+                models.Max('order')
+            )['order__max']
+            new_order = (max_order if max_order is not None else -1) + 1
 
-        episode = Episode.objects.create(
-            section=section,
-            title=title,
-            type=episode_type,
-            order=new_order
-        )
+            episode = Episode.objects.create(
+                section=section,
+                title=title,
+                type=episode_type,
+                order=new_order
+            )
 
         messages.success(request, f'Episode "{title}" created successfully!')
         return redirect('teacher:episode_edit', episode_id=episode.id)
@@ -201,13 +248,13 @@ def episode_edit(request, episode_id):
     if request.method == 'POST':
         episode.title = request.POST.get('title', episode.title)
         episode.type = request.POST.get('type', episode.type)
-        episode.order = request.POST.get('order', episode.order)
         episode.info_page_content = request.POST.get('info_page_content', '')
-
-        if episode.order:
-            episode.order = int(episode.order)
-        else:
-            messages.error(request, 'Episode not found.')
+        if episode.type == 'quiz':
+            # Browser form encoding converts textarea LF to CRLF. Keep the
+            # persisted quiz format canonical as well as tolerating old data.
+            episode.info_page_content = episode.info_page_content.replace(
+                '\r\n', '\n'
+            ).replace('\r', '\n')
 
         # Handle PDF uploads with validation
         if 'content_pdf' in request.FILES:
@@ -226,11 +273,23 @@ def episode_edit(request, episode_id):
 
         # Quiz configuration toggles
         episode.quiz_require_all = request.POST.get('quiz_require_all') == 'on'
-        episode.quiz_show_results = request.POST.get('quiz_show_results') == 'on'
+        release_policy = request.POST.get('quiz_release_policy', 'inherit')
+        if release_policy in dict(Episode.QUIZ_RELEASE_CHOICES):
+            episode.quiz_release_policy = release_policy
 
         # Code episode layout toggles
         episode.show_interactive = request.POST.get('show_interactive') == 'on'
         episode.show_reference = request.POST.get('show_reference') == 'on'
+
+        # Automated code testing configuration
+        episode.code_oj_enabled = request.POST.get('code_oj_enabled') == 'on'
+        episode.code_oj_testcases = request.POST.get('code_oj_testcases', '[]')
+
+        # Starter code
+        episode.starter_code = request.POST.get('starter_code', '')
+
+        # Reference sheet
+        episode.reference_sheet_content = request.POST.get('reference_sheet_content', '')
 
         episode.save()
         messages.success(request, f'Episode "{episode.title}" updated successfully!')
@@ -240,6 +299,7 @@ def episode_edit(request, episode_id):
         'episode': episode,
         'course': course,
         'type_options': Episode.TYPE_CHOICES,
+        'release_policy_options': Episode.QUIZ_RELEASE_CHOICES,
     }
     return render(request, 'teacher/episode_edit.html', context)
 
@@ -269,92 +329,58 @@ def tag_create(request):
         return JsonResponse({'success': False, 'error': 'Failed to create tag.'})
 
 
+def _reorder_content(request, content_model, payload_key):
+    """Save one complete sibling ordering atomically, after ownership validation."""
+    try:
+        data = json.loads(request.body)
+        items = data.get(payload_key) if isinstance(data, dict) else None
+        if not isinstance(items, list) or not items or len(items) > 5000:
+            raise ValueError('Provide the complete list to reorder.')
+        if any(
+            not isinstance(item, dict)
+            or type(item.get('id')) is not int
+            or type(item.get('order')) is not int
+            for item in items
+        ):
+            raise ValueError('Invalid ordering data.')
+        ids = [item['id'] for item in items]
+        if len(set(ids)) != len(ids) or sorted(item['order'] for item in items) != list(range(len(items))):
+            raise ValueError('Ordering must contain each item exactly once.')
+    except (json.JSONDecodeError, ValueError) as error:
+        return JsonResponse({'success': False, 'error': str(error)}, status=400)
+
+    with transaction.atomic():
+        objects = list(content_model.objects.filter(pk__in=ids))
+        if len(objects) != len(ids):
+            return JsonResponse({'success': False, 'error': 'Content changed. Reload and try again.'}, status=409)
+        parent_field = 'course_id' if content_model is Section else 'section_id'
+        parent_ids = {getattr(obj, parent_field) for obj in objects}
+        if len(parent_ids) != 1:
+            return JsonResponse({'success': False, 'error': 'Items must belong to the same parent.'}, status=400)
+        course_id = objects[0].course_id if content_model is Section else objects[0].section.course_id
+        course = Course.objects.select_for_update().get(pk=course_id)
+        if not course.teacher_can(request.user, CourseTeacherMembership.EDIT):
+            return JsonResponse({'success': False, 'error': 'Permission denied'}, status=403)
+        siblings = content_model.objects.filter(**{parent_field: parent_ids.pop()})
+        if set(siblings.values_list('pk', flat=True)) != set(ids):
+            return JsonResponse({'success': False, 'error': 'Content changed. Reload and try again.'}, status=409)
+        orders = {item['id']: item['order'] for item in items}
+        for obj in objects:
+            obj.order = orders[obj.pk]
+        content_model.objects.bulk_update(objects, ['order'])
+    return JsonResponse({'success': True})
+
+
 @teacher_required
+@require_POST
 def section_reorder(request):
-    """Reorder sections via AJAX. Only the course owner (or admin) can reorder."""
-    if request.method == 'POST':
-        try:
-            import json
-            data = json.loads(request.body)
-            section_orders = data.get('section_orders', [])
-
-            if not section_orders:
-                return JsonResponse({'success': False, 'error': 'No sections provided'})
-
-            # Verify ownership: all sections must belong to the same course owned by user
-            section_ids = [item.get('id') for item in section_orders]
-            sections = Section.objects.filter(id__in=section_ids).select_related('course')
-
-            if len(sections) != len(section_ids):
-                return JsonResponse({'success': False, 'error': 'Some sections not found'})
-
-            # All sections must belong to the same course
-            course_ids = set(s.course_id for s in sections)
-            if len(course_ids) != 1:
-                return JsonResponse({'success': False, 'error': 'Sections must belong to the same course'})
-
-            course = sections[0].course
-            if not request.user.is_admin and course.creator != request.user:
-                return JsonResponse({'success': False, 'error': 'Permission denied'})
-
-            for section in sections:
-                new_order = next(
-                    (item['order'] for item in section_orders if item['id'] == section.id),
-                    section.order
-                )
-                section.order = new_order
-                section.save()
-
-            return JsonResponse({'success': True})
-        except Exception as e:
-            return JsonResponse({'success': False, 'error': str(e)})
-
-    return JsonResponse({'success': False, 'error': 'Invalid request'})
+    return _reorder_content(request, Section, 'section_orders')
 
 
 @teacher_required
+@require_POST
 def episode_reorder(request):
-    """Reorder episodes via AJAX. Only the parent course owner (or admin) can reorder."""
-    if request.method == 'POST':
-        try:
-            import json
-            data = json.loads(request.body)
-            episode_orders = data.get('episode_orders', [])
-
-            if not episode_orders:
-                return JsonResponse({'success': False, 'error': 'No episodes provided'})
-
-            # Verify ownership: all episodes must belong to the same course owned by user
-            episode_ids = [item.get('id') for item in episode_orders]
-            episodes = Episode.objects.filter(id__in=episode_ids).select_related(
-                'section__course'
-            )
-
-            if len(episodes) != len(episode_ids):
-                return JsonResponse({'success': False, 'error': 'Some episodes not found'})
-
-            # All episodes must belong to the same course
-            course_ids = set(e.section.course_id for e in episodes)
-            if len(course_ids) != 1:
-                return JsonResponse({'success': False, 'error': 'Episodes must belong to the same course'})
-
-            course = episodes[0].section.course
-            if not request.user.is_admin and course.creator != request.user:
-                return JsonResponse({'success': False, 'error': 'Permission denied'})
-
-            for episode in episodes:
-                new_order = next(
-                    (item['order'] for item in episode_orders if item['id'] == episode.id),
-                    episode.order
-                )
-                episode.order = new_order
-                episode.save()
-
-            return JsonResponse({'success': True})
-        except Exception as e:
-            return JsonResponse({'success': False, 'error': str(e)})
-
-    return JsonResponse({'success': False, 'error': 'Invalid request'})
+    return _reorder_content(request, Episode, 'episode_orders')
 
 
 # ========== Delete Views ==========
@@ -364,8 +390,8 @@ def course_delete(request, course_id):
     """Delete a course. Only the creator (or admin) can delete."""
     course = get_object_or_404(Course, id=course_id)
 
-    if not request.user.is_admin and course.creator != request.user:
-        raise PermissionDenied("You can only delete your own courses.")
+    if not course.teacher_can(request.user, CourseTeacherMembership.MANAGE):
+        raise PermissionDenied("You can only delete courses you manage.")
 
     if request.method == 'POST':
         course_title = course.title
@@ -399,8 +425,8 @@ def episode_delete(request, episode_id):
     )
     course = episode.section.course
 
-    if not request.user.is_admin and course.creator != request.user:
-        raise PermissionDenied("You can only delete your own content.")
+    if not course.teacher_can(request.user, CourseTeacherMembership.EDIT):
+        raise PermissionDenied("You can only delete assigned course content.")
 
     if request.method == 'POST':
         episode_title = episode.title
@@ -443,7 +469,7 @@ def validate_pdf(pdf_file):
 
 @login_required
 @teacher_required
-@require_course_ownership
+@require_course_permission(CourseTeacherMembership.VIEW)
 def course_manage(request, course_id):
     """Teacher dashboard: student progress, enrollment management, assignments."""
     course = request.course
@@ -526,14 +552,23 @@ def course_manage(request, course_id):
             'total_students': 0,
         }
 
-    # Get quiz episodes with submission counts
+    # Get quiz and code episodes with submission counts
     quiz_episodes = []
-    for ep in Episode.objects.filter(section__course=course, type='quiz').select_related('section'):
-        count = QuizSubmission.objects.filter(episode=ep).count()
+    assignable_types = ['quiz', 'code']
+    for ep in Episode.objects.filter(
+        section__course=course, type__in=assignable_types
+    ).select_related('section'):
+        if ep.type == 'quiz':
+            count = QuizSubmission.objects.filter(episode=ep).count()
+        else:
+            count = CodeSubmission.objects.filter(
+                episode=ep, is_submitted=True
+            ).count()
         quiz_episodes.append({
             'id': ep.id,
             'title': ep.title,
             'section': ep.section,
+            'type': ep.type,
             'submission_count': count,
         })
 
@@ -543,6 +578,15 @@ def course_manage(request, course_id):
         'available_students': available_students,
         'stats': stats,
         'quiz_episodes': quiz_episodes,
+        'memberships': course.teacher_memberships.select_related('user'),
+        'role_choices': CourseTeacherMembership.ROLE_CHOICES,
+        'available_teachers': (
+            User.objects.filter(role='teacher').order_by('display_name', 'username')
+            if course.teacher_can(request.user, CourseTeacherMembership.MANAGE)
+            else User.objects.none()
+        ),
+        'can_edit_course': course.teacher_can(request.user, CourseTeacherMembership.EDIT),
+        'can_manage_course': course.teacher_can(request.user, CourseTeacherMembership.MANAGE),
     }
     return render(request, 'teacher/course_manage.html', context)
 
@@ -610,7 +654,7 @@ def remove_student(request):
     course = get_object_or_404(Course, id=course_id)
 
     # Ownership check
-    if not request.user.is_admin and course.creator != request.user:
+    if not course.teacher_can(request.user, CourseTeacherMembership.MANAGE):
         return JsonResponse({'success': False, 'error': 'Permission denied'})
 
     enrollment = CourseEnrollment.objects.filter(
@@ -624,27 +668,233 @@ def remove_student(request):
         return JsonResponse({'success': False, 'error': 'Student is not enrolled in this course.'})
 
 
+def _manager_membership_change_allowed(course, membership, new_role=None, deleting=False):
+    """Keep every course administrable while memberships are changed."""
+    if membership.role != CourseTeacherMembership.MANAGE:
+        return True
+    if not deleting and new_role == CourseTeacherMembership.MANAGE:
+        return True
+    return course.teacher_memberships.filter(
+        role=CourseTeacherMembership.MANAGE
+    ).exclude(pk=membership.pk).exists()
+
+
+@login_required
+@teacher_required
+@require_POST
+@transaction.atomic
+def course_member_save(request, course_id):
+    """Add a teacher to a course or change an existing member's role."""
+    course = get_object_or_404(Course.objects.select_for_update(), pk=course_id)
+    if not course.teacher_can(request.user, CourseTeacherMembership.MANAGE):
+        raise PermissionDenied("You can only manage teachers for courses you manage.")
+
+    username = request.POST.get('username', '').strip()
+    role = request.POST.get('role', '')
+    if role not in dict(CourseTeacherMembership.ROLE_CHOICES):
+        messages.error(request, 'Choose a valid course role.')
+    elif not username:
+        messages.error(request, 'Enter a teacher username.')
+    else:
+        teacher = User.objects.filter(username=username).first()
+        if teacher is None or not teacher.is_teacher or not teacher.is_active:
+            messages.error(request, 'Choose an active, verified teacher.')
+        elif teacher.is_admin:
+            messages.error(request, 'Administrators already have access to every course.')
+        else:
+            membership, created = CourseTeacherMembership.objects.select_for_update().get_or_create(
+                course=course, user=teacher, defaults={'role': role}
+            )
+            if not created and not _manager_membership_change_allowed(course, membership, role):
+                messages.error(request, 'A course must retain at least one manager.')
+            else:
+                membership.role = role
+                membership.save(update_fields=['role', 'updated_at'])
+                messages.success(request, f'{teacher.username} can now {membership.get_role_display().lower()}.')
+    if course.teacher_can(request.user, CourseTeacherMembership.VIEW):
+        return redirect('teacher:course_manage', course_id=course.id)
+    return redirect('teacher:course_list')
+
+
+@login_required
+@teacher_required
+@require_POST
+@transaction.atomic
+def course_member_remove(request, course_id, membership_id):
+    """Remove a teacher's scoped access while preserving a manager."""
+    course = get_object_or_404(Course.objects.select_for_update(), pk=course_id)
+    if not course.teacher_can(request.user, CourseTeacherMembership.MANAGE):
+        raise PermissionDenied("You can only manage teachers for courses you manage.")
+    membership = get_object_or_404(
+        CourseTeacherMembership.objects.select_for_update(),
+        pk=membership_id, course=course,
+    )
+    if not _manager_membership_change_allowed(course, membership, deleting=True):
+        messages.error(request, 'A course must retain at least one manager.')
+    else:
+        username = membership.user.username
+        membership.delete()
+        messages.success(request, f'Removed {username} from this course.')
+    if course.teacher_can(request.user, CourseTeacherMembership.VIEW):
+        return redirect('teacher:course_manage', course_id=course.id)
+    return redirect('teacher:course_list')
+
+
 # ========== Assignment Review ==========
+
+
+def _normalize_choice_ids(value, choice_count):
+    """Return valid integer choice IDs from a stored quiz answer."""
+    if not isinstance(value, list):
+        return []
+    return [
+        choice_id for choice_id in value
+        if type(choice_id) is int and 0 <= choice_id < choice_count
+    ]
+
+
+def _normalize_cba_token_lines(value, quiz_question):
+    """Validate a CBA answer without trusting client-provided token IDs."""
+    expected_lines = quiz_question.get('lines', [])
+    if not isinstance(value, list) or len(value) != len(expected_lines):
+        return None
+
+    allowed_ids = {
+        choice['id'] for choice in quiz_question.get('choices', [])
+        if not choice.get('hint')
+    }
+    seen_ids = set()
+    normalized = []
+    for line in value:
+        if not isinstance(line, list):
+            return None
+        normalized_line = []
+        for token_id in line:
+            if (
+                not isinstance(token_id, str)
+                or token_id not in allowed_ids
+                or token_id in seen_ids
+            ):
+                return None
+            seen_ids.add(token_id)
+            normalized_line.append(token_id)
+        normalized.append(normalized_line)
+    return normalized
+
+
+def _cba_tokens_equivalent(actual, expected):
+    """Compare displayed code, not the identity of a token-bank occurrence.
+
+    Boundary padding is invisible on code cards; internal whitespace (including
+    strings), indentation cards, and indentation merged into code remain exact.
+    """
+    if not actual or not expected or actual.get('kind') != expected.get('kind'):
+        return False
+    if actual.get('kind') == 'indent':
+        return actual['text'] == expected['text']
+    return (
+        actual.get('leadingIndent', '') == expected.get('leadingIndent', '')
+        and actual['text'].strip(' \t') == expected['text'].strip(' \t')
+    )
+
+
+def _is_cba_answer_correct(quiz_question, value):
+    token_lines = _normalize_cba_token_lines(value, quiz_question)
+    if token_lines is None:
+        return False
+    choices_by_id = {choice['id']: choice for choice in quiz_question['choices']}
+    for line, submitted_ids in zip(quiz_question['lines'], token_lines):
+        expected = [choice for choice in line['choices'] if not choice['hint']]
+        if len(submitted_ids) != len(expected):
+            return False
+        if not all(
+            _cba_tokens_equivalent(choices_by_id[token_id], choice)
+            for token_id, choice in zip(submitted_ids, expected)
+        ):
+            return False
+    return True
+
+
+def _build_cba_review_lines(quiz_question, token_lines):
+    """Place movable answers into the fixed hint slots used by the CBA UI."""
+    choices_by_id = {
+        choice['id']: choice for choice in quiz_question.get('choices', [])
+    }
+    review_lines = []
+    for line_index, line_definition in enumerate(quiz_question.get('lines', [])):
+        correct_choices = [
+            choices_by_id[token_id]
+            for token_id in line_definition.get('choiceIds', [])
+            if token_id in choices_by_id
+        ]
+        submitted_ids = token_lines[line_index] if token_lines is not None else []
+        submitted_iter = iter(submitted_ids)
+        rendered_tokens = []
+
+        for expected_choice in correct_choices:
+            if expected_choice.get('hint'):
+                rendered = expected_choice.copy()
+                rendered['positionCorrect'] = True
+            else:
+                submitted_id = next(submitted_iter, None)
+                if submitted_id is None:
+                    continue
+                rendered = choices_by_id[submitted_id].copy()
+                rendered['positionCorrect'] = _cba_tokens_equivalent(
+                    rendered, expected_choice
+                )
+            rendered_tokens.append(rendered)
+
+        # A malformed/incomplete row can contain more tokens than its own line.
+        # Preserve those known tokens in the review instead of hiding the error.
+        for submitted_id in submitted_iter:
+            rendered = choices_by_id[submitted_id].copy()
+            rendered['positionCorrect'] = False
+            rendered_tokens.append(rendered)
+
+        review_lines.append({
+            'number': line_index + 1,
+            'tokens': rendered_tokens,
+            'empty': not rendered_tokens,
+        })
+    return review_lines
+
 
 @login_required
 @teacher_required
 def assignment_review(request, course_id, episode_id):
-    """Review quiz submissions for a specific episode."""
+    """Review submissions for quiz or code episodes."""
     course = get_object_or_404(Course, id=course_id)
-    episode = get_object_or_404(Episode, id=episode_id, section__course=course, type='quiz')
+    episode = get_object_or_404(Episode, id=episode_id, section__course=course)
+
+    if episode.type not in ('quiz', 'code'):
+        raise PermissionDenied("This episode type does not support assignment review.")
 
     # Ownership check
-    if not request.user.is_admin and course.creator != request.user:
-        raise PermissionDenied("You can only review your own course content.")
+    if not course.teacher_can(request.user, CourseTeacherMembership.VIEW):
+        raise PermissionDenied("You do not have access to this course's student work.")
 
     # Get all enrolled students and their submissions
     enrollments = CourseEnrollment.objects.filter(course=course).select_related('user')
-    submissions_by_user = {
-        s.user_id: s for s in QuizSubmission.objects.filter(episode=episode)
-    }
+
+    if episode.type == 'quiz':
+        submissions_by_user = {
+            s.user_id: s for s in QuizSubmission.objects.filter(episode=episode)
+        }
+    else:
+        submissions_by_user = {}
+        code_history_by_user = {}
+        for snapshot in CodeSubmissionHistory.objects.filter(episode=episode):
+            code_history_by_user.setdefault(snapshot.user_id, []).append(snapshot)
+            submissions_by_user.setdefault(snapshot.user_id, snapshot)
+        # Keep pre-history formal submissions visible after this migration.
+        for submission in CodeSubmission.objects.filter(episode=episode, is_submitted=True):
+            submissions_by_user.setdefault(submission.user_id, submission)
 
     students = []
+    enrolled_user_ids = set()
     for enrollment in enrollments:
+        enrolled_user_ids.add(enrollment.user_id)
         sub = submissions_by_user.get(enrollment.user_id)
         students.append({
             'user': enrollment.user,
@@ -652,15 +902,25 @@ def assignment_review(request, course_id, episode_id):
             'submission': sub,
         })
 
-    # Parse quiz content for display
-    quiz_content = episode.info_page_content or ''
-    quiz_questions = _parse_quiz_markdown(quiz_content)
+    # Formal code snapshots remain reviewable when a student is later removed
+    # from the course. Their enrollment is gone, but their submitted work is not.
+    if episode.type == 'code':
+        former_user_ids = set(submissions_by_user) - enrolled_user_ids
+        for user in User.objects.filter(id__in=former_user_ids):
+            students.append({
+                'user': user,
+                'submitted': True,
+                'submission': submissions_by_user[user.id],
+            })
 
     # Determine selected student's submission
     selected_user_id = request.GET.get('user_id')
     selected_submission = None
     if selected_user_id:
-        selected_submission = submissions_by_user.get(int(selected_user_id))
+        try:
+            selected_submission = submissions_by_user.get(int(selected_user_id))
+        except (TypeError, ValueError):
+            selected_submission = None
 
     # If no selection, pick first submitted student
     if not selected_submission:
@@ -669,211 +929,225 @@ def assignment_review(request, course_id, episode_id):
                 selected_submission = s['submission']
                 break
 
-    # Parse FRQ grades and student answers, merge with quiz data
-    frq_grades = {}
-    selected_questions = None
-    all_frq_graded = True
+    # Parse content and build review data based on episode type
+    import json
 
-    if selected_submission:
-        import json
-        if selected_submission.frq_grades:
-            try:
-                frq_grades = json.loads(selected_submission.frq_grades)
-            except json.JSONDecodeError:
-                frq_grades = {}
+    if episode.type == 'quiz':
+        # --- Quiz review logic (existing) ---
+        quiz_content = episode.info_page_content or ''
+        quiz_questions = _parse_quiz_markdown(quiz_content)
 
-        if selected_submission.answers:
-            try:
-                selected_answers = json.loads(selected_submission.answers)
-            except json.JSONDecodeError:
+        frq_grades = {}
+        selected_questions = None
+        all_frq_graded = True
+
+        if selected_submission:
+            if selected_submission.frq_grades:
+                try:
+                    frq_grades = json.loads(selected_submission.frq_grades)
+                    if not isinstance(frq_grades, dict):
+                        frq_grades = {}
+                except json.JSONDecodeError:
+                    frq_grades = {}
+
+            if selected_submission.answers:
+                try:
+                    selected_answers = json.loads(selected_submission.answers)
+                except json.JSONDecodeError:
+                    selected_answers = None
+            else:
                 selected_answers = None
-        else:
-            selected_answers = None
 
-        # Merge quiz questions with student answers
-        if selected_answers:
-            answer_list = selected_answers.get('questions', [])
-            selected_questions = []
-            has_frq = False
-            for i, quiz_q in enumerate(quiz_questions):
-                student_ans = answer_list[i] if i < len(answer_list) else {}
-                merged = {
-                    'index': i,
-                    'type': quiz_q['type'],
-                    'question_html': quiz_q['question'],
-                    'choices': quiz_q['choices'],
-                    'student_answer': student_ans,
-                    'refAnswer': quiz_q.get('refAnswer', ''),
-                }
-                # Pre-compute choice display data
-                letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
-                for j, c in enumerate(quiz_q['choices']):
-                    c['letter'] = letters[j] if j < len(letters) else str(j)
-                    if quiz_q['type'] == 'mcq':
-                        c['isSelected'] = (student_ans.get('selectedIndex') == j)
-                        c['rowClass'] = 'correct' if c.get('isCorrect') else ('wrong-student' if c['isSelected'] else '')
-                    elif quiz_q['type'] == 'mrq':
-                        sids = student_ans.get('selectedIds', []) or []
-                        c['isSelected'] = j in sids
-                        c['rowClass'] = 'correct' if c.get('isCorrect') else ('wrong-student' if c['isSelected'] else '')
-                    elif quiz_q['type'] == 'srt':
-                        sids = student_ans.get('selectedIds', []) or []
-                        try:
-                            c['studentPos'] = sids.index(j) + 1
-                        except (ValueError, IndexError):
-                            c['studentPos'] = 0
-
-                # Determine correctness per type
-                if quiz_q['type'] == 'mcq':
-                    si = student_ans.get('selectedIndex')
-                    merged['is_correct'] = (
-                        si is not None and
-                        any(c['isCorrect'] for j, c in enumerate(quiz_q['choices']) if j == si)
+            if isinstance(selected_answers, dict):
+                answer_list = selected_answers.get('questions', [])
+                if not isinstance(answer_list, list):
+                    answer_list = []
+                selected_questions = []
+                has_frq = False
+                for i, quiz_q in enumerate(quiz_questions):
+                    student_ans = answer_list[i] if i < len(answer_list) else {}
+                    if not isinstance(student_ans, dict):
+                        student_ans = {}
+                    choice_count = len(quiz_q['choices'])
+                    selected_index = student_ans.get('selectedIndex')
+                    if (
+                        type(selected_index) is not int
+                        or not 0 <= selected_index < choice_count
+                    ):
+                        selected_index = None
+                    selected_ids = _normalize_choice_ids(
+                        student_ans.get('selectedIds'), choice_count
                     )
-                elif quiz_q['type'] == 'mrq':
-                    sids = student_ans.get('selectedIds', []) or []
-                    correct_ids = {j for j, c in enumerate(quiz_q['choices']) if c.get('isCorrect')}
-                    merged['is_correct'] = set(sids) == correct_ids
-                elif quiz_q['type'] == 'srt':
-                    sids = student_ans.get('selectedIds', []) or []
-                    correct_order = [c.get('sortPosition', j+1) - 1 for j, c in enumerate(quiz_q['choices'])]
-                    merged['is_correct'] = sids == correct_order
-                elif quiz_q['type'] == 'frq':
-                    has_frq = True
-                    merged['frq_graded'] = str(i) in frq_grades
-                    merged['frq_correct'] = frq_grades.get(str(i), None)
-                    if not merged['frq_graded']:
-                        all_frq_graded = False
-                selected_questions.append(merged)
-            if not has_frq:
-                all_frq_graded = True
+                    merged = {
+                        'index': i,
+                        'type': quiz_q['type'],
+                        'question_html': quiz_q['question'],
+                        'choices': quiz_q['choices'],
+                        'student_answer': student_ans,
+                        'refAnswer': quiz_q.get('refAnswer', ''),
+                        'teacher_comment': (selected_submission.question_comments or {}).get(str(i), ''),
+                    }
+                    letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+                    for j, c in enumerate(quiz_q['choices']):
+                        c['letter'] = letters[j] if j < len(letters) else str(j)
+                        if quiz_q['type'] == 'mcq':
+                            c['isSelected'] = selected_index == j
+                        elif quiz_q['type'] == 'mrq':
+                            c['isSelected'] = j in selected_ids
+                        if quiz_q['type'] in ('mcq', 'mrq'):
+                            if c['isSelected']:
+                                result_class = (
+                                    'correct' if c.get('isCorrect')
+                                    else 'wrong-student'
+                                )
+                                c['rowClass'] = f'student-selected {result_class}'
+                            elif c.get('isCorrect'):
+                                c['rowClass'] = 'correct-answer'
+                            else:
+                                c['rowClass'] = ''
 
-    context = {
-        'course': course,
-        'episode': episode,
-        'students': students,
-        'selected_submission': selected_submission,
-        'selected_questions': selected_questions,
-        'frq_grades': frq_grades,
-        'all_frq_graded': all_frq_graded,
-    }
+                    if quiz_q['type'] == 'mcq':
+                        merged['is_correct'] = (
+                            selected_index is not None
+                            and quiz_q['choices'][selected_index]['isCorrect']
+                        )
+                    elif quiz_q['type'] == 'mrq':
+                        correct_ids = {j for j, c in enumerate(quiz_q['choices']) if c.get('isCorrect')}
+                        merged['is_correct'] = set(selected_ids) == correct_ids
+                    elif quiz_q['type'] == 'srt':
+                        correct_order = sorted(
+                            range(len(quiz_q['choices'])),
+                            key=lambda choice_index: quiz_q['choices'][
+                                choice_index
+                            ].get('sortPosition', choice_index + 1),
+                        )
+                        merged['is_correct'] = selected_ids == correct_order
+                        merged['student_choices'] = []
+                        for position, choice_index in enumerate(
+                            selected_ids, start=1
+                        ):
+                            student_choice = quiz_q['choices'][choice_index].copy()
+                            student_choice['studentPos'] = position
+                            student_choice['positionCorrect'] = (
+                                student_choice.get('sortPosition') == position
+                            )
+                            merged['student_choices'].append(student_choice)
+                    elif quiz_q['type'] == 'cba':
+                        token_lines = _normalize_cba_token_lines(
+                            student_ans.get('tokenIds'), quiz_q
+                        )
+                        merged['is_correct'] = _is_cba_answer_correct(
+                            quiz_q, token_lines
+                        )
+                        merged['student_lines'] = _build_cba_review_lines(
+                            quiz_q, token_lines
+                        )
+                        merged['answer_valid'] = token_lines is not None
+                        merged['language'] = quiz_q.get('language', '')
+                    elif quiz_q['type'] == 'frq':
+                        has_frq = True
+                        merged['frq_graded'] = str(i) in frq_grades
+                        merged['frq_correct'] = frq_grades.get(str(i), None)
+                        if not merged['frq_graded']:
+                            all_frq_graded = False
+                    selected_questions.append(merged)
+                if not has_frq:
+                    all_frq_graded = True
+
+        context = {
+            'course': course,
+            'episode': episode,
+            'students': students,
+            'selected_submission': selected_submission,
+            'selected_questions': selected_questions,
+            'frq_grades': frq_grades,
+            'all_frq_graded': all_frq_graded,
+        }
+
+    else:
+        # --- Code review logic ---
+        selected_code = ''
+        test_results = []
+        oj_enabled = getattr(episode, 'code_oj_enabled', False)
+        oj_testcases_raw = getattr(episode, 'code_oj_testcases', '[]')
+
+        if selected_submission:
+            selected_code = selected_submission.code or ''
+            if selected_submission.test_results:
+                try:
+                    test_results = validate_test_results(json.loads(selected_submission.test_results))
+                except (json.JSONDecodeError, ValueError):
+                    test_results = []
+
+        # Count passed test cases
+        passed_count = sum(1 for tr in test_results if tr.get('passed'))
+        total_count = len(test_results) if test_results else 0
+
+        context = {
+            'course': course,
+            'episode': episode,
+            'students': students,
+            'selected_submission': selected_submission,
+            'selected_code': selected_code,
+            'test_results': test_results,
+            'passed_count': passed_count,
+            'total_count': total_count,
+            'oj_enabled': oj_enabled,
+            'code_history': (
+                code_history_by_user.get(selected_submission.user_id, [])
+                if selected_submission else []
+            ),
+        }
+
+        requested_history_id = request.GET.get('history_id')
+        if requested_history_id and selected_submission:
+            try:
+                requested_history_id = int(requested_history_id)
+            except (TypeError, ValueError):
+                requested_history_id = None
+            for snapshot in context['code_history']:
+                if snapshot.id == requested_history_id:
+                    selected_submission = snapshot
+                    context['selected_submission'] = snapshot
+                    context['selected_code'] = snapshot.code or ''
+                    try:
+                        context['test_results'] = validate_test_results(
+                            json.loads(snapshot.test_results)
+                        )
+                    except (json.JSONDecodeError, ValueError):
+                        context['test_results'] = []
+                    context['passed_count'] = sum(
+                        1 for tr in context['test_results'] if tr.get('passed')
+                    )
+                    context['total_count'] = len(context['test_results'])
+                    break
+
+    context['submission_version'] = selected_submission.submitted_at.isoformat() if selected_submission and selected_submission.submitted_at else ''
+    context['can_edit_course'] = course.teacher_can(request.user, CourseTeacherMembership.EDIT)
     return render(request, 'teacher/assignment_review.html', context)
 
 
-def _parse_quiz_markdown(md):
-    """Parse quiz markdown into structured question objects (mirrors JS parser)."""
-    import re
-    if not md or not md.strip():
-        return []
-
-    blocks = re.split(r'^## (?![#])', md, flags=re.MULTILINE)
-    questions = []
-
-    for block in blocks:
-        block = block.strip()
-        if not block:
-            continue
-        lines = block.split('\n')
-
-        first_choice = -1
-        for j, line in enumerate(lines):
-            if re.match(r'^>', line):
-                first_choice = j
-                break
-
-        if first_choice == -1:
-            question_text = '\n'.join(lines).strip()
-            choice_lines = []
-        else:
-            question_text = '\n'.join(lines[:first_choice]).strip()
-            choice_lines = lines[first_choice:]
-
-        if not question_text:
-            continue
-
-        # Skip "None" (Django null artifact, mirrors JS parser)
-        if question_text == 'None':
-            continue
-
-        choices = []
-        has_mrq = False
-        has_sort = False
-        has_correct = False
-
-        for line in choice_lines:
-            m_frq_ref = re.match(r'^>= (.+)$', line)
-            m_frq_e = re.match(r'^>=\s*$', line)
-            m_mcq = re.match(r'^>\+ (.+)$', line)
-            m_mcq_e = re.match(r'^>\+\s*$', line)
-            m_mrq = re.match(r'^>\* (.+)$', line)
-            m_mrq_e = re.match(r'^>\*\s*$', line)
-            m_sort = re.match(r'^>(\d+)(?:\s+(.+))?$', line)
-            m_wrong = re.match(r'^> (?!\+)(?!\*)(.+)$', line)
-            m_empty = re.match(r'^>\s*$', line)
-
-            if m_frq_ref:
-                choices.append({'text': m_frq_ref.group(1).strip(), 'isCorrect': False, 'isFRQRef': True})
-            elif m_frq_e:
-                choices.append({'text': '', 'isCorrect': False, 'isFRQRef': True})
-            elif m_mcq:
-                choices.append({'text': m_mcq.group(1).strip(), 'isCorrect': True})
-                has_correct = True
-            elif m_mcq_e:
-                choices.append({'text': '', 'isCorrect': True})
-                has_correct = True
-            elif m_mrq:
-                choices.append({'text': m_mrq.group(1).strip(), 'isCorrect': True})
-                has_mrq = True
-                has_correct = True
-            elif m_mrq_e:
-                choices.append({'text': '', 'isCorrect': True})
-                has_mrq = True
-                has_correct = True
-            elif m_sort:
-                choices.append({
-                    'text': m_sort.group(2).strip() if m_sort.group(2) else '',
-                    'isCorrect': False,
-                    'sortPosition': int(m_sort.group(1))
-                })
-                has_sort = True
-            elif m_wrong:
-                choices.append({'text': m_wrong.group(1).strip(), 'isCorrect': False})
-            elif m_empty:
-                choices.append({'text': '', 'isCorrect': False})
-
-        is_frq = (len(choices) == 0
-                  or (len(choices) == 1 and choices[0]['text'] == '')
-                  or (len(choices) == 1 and choices[0].get('isFRQRef')))
-
-        # Auto-mark first choice as correct if none marked and choices exist
-        if not is_frq and not has_correct and len(choices) > 0:
-            choices[0]['isCorrect'] = True
-
-        ref_answer = ''
-        if is_frq and len(choices) == 1 and choices[0].get('isFRQRef'):
-            ref_answer = choices[0]['text']
-        if is_frq:
-            qtype = 'frq'
-        elif has_sort:
-            qtype = 'srt'
-        elif has_mrq:
-            qtype = 'mrq'
-        else:
-            qtype = 'mcq'
-
-        questions.append({
-            'type': qtype,
-            'question': question_text,
-            'choices': [] if is_frq else choices,
-            'refAnswer': ref_answer,
-        })
-
-    return questions
+def _review_submission(request):
+    try:
+        submission_id = int(request.POST.get('submission_id', ''))
+    except (TypeError, ValueError):
+        return None, JsonResponse({'success': False, 'error': 'Invalid submission ID'}, status=400)
+    submission = get_object_or_404(QuizSubmission.objects.select_for_update(), pk=submission_id)
+    if not submission.episode.section.course.teacher_can(
+        request.user, CourseTeacherMembership.EDIT
+    ):
+        return None, JsonResponse({'success': False, 'error': 'Permission denied'}, status=403)
+    if request.POST.get('submission_version') != submission.submitted_at.isoformat():
+        return None, JsonResponse({
+            'success': False, 'error': 'The submission changed. Reload before reviewing it.'
+        }, status=409)
+    return submission, None
 
 
 @login_required
 @teacher_required
 @require_POST
+@transaction.atomic
 def grade_frq(request):
     """Grade a FRQ answer in a submission."""
     submission_id = request.POST.get('submission_id')
@@ -883,11 +1157,9 @@ def grade_frq(request):
     if not submission_id or question_index is None:
         return JsonResponse({'success': False, 'error': 'Missing parameters'})
 
-    submission = get_object_or_404(QuizSubmission, id=submission_id)
-    course = submission.episode.section.course
-
-    if not request.user.is_admin and course.creator != request.user:
-        return JsonResponse({'success': False, 'error': 'Permission denied'})
+    submission, error_response = _review_submission(request)
+    if error_response:
+        return error_response
 
     import json
     try:
@@ -895,6 +1167,17 @@ def grade_frq(request):
     except json.JSONDecodeError:
         grades = {}
 
+    questions = _parse_quiz_markdown(submission.episode.info_page_content or '')
+    try:
+        question_index = int(question_index)
+        if not 0 <= question_index < len(questions) or questions[question_index]['type'] != 'frq':
+            raise ValueError
+        if request.POST.get('is_correct') not in ('true', 'false'):
+            raise ValueError
+    except (TypeError, ValueError):
+        return JsonResponse({'success': False, 'error': 'Invalid FRQ grade'}, status=400)
+    if not isinstance(grades, dict):
+        grades = {}
     grades[str(question_index)] = is_correct
     submission.frq_grades = json.dumps(grades)
     submission.save(update_fields=['frq_grades'])
@@ -905,6 +1188,7 @@ def grade_frq(request):
 @login_required
 @teacher_required
 @require_POST
+@transaction.atomic
 def release_submission(request):
     """Release a submission back to the student."""
     submission_id = request.POST.get('submission_id')
@@ -912,26 +1196,19 @@ def release_submission(request):
     if not submission_id:
         return JsonResponse({'success': False, 'error': 'Missing submission ID'})
 
-    submission = get_object_or_404(QuizSubmission, id=submission_id)
-    course = submission.episode.section.course
+    submission, error_response = _review_submission(request)
+    if error_response:
+        return error_response
 
-    if not request.user.is_admin and course.creator != request.user:
-        return JsonResponse({'success': False, 'error': 'Permission denied'})
-
-    # Check all FRQs are graded
-    if submission.answers:
-        import json
-        try:
-            answers = json.loads(submission.answers)
-            grades = json.loads(submission.frq_grades) if submission.frq_grades else {}
-            for i, q in enumerate(answers.get('questions', [])):
-                if q.get('type') == 'frq' and str(i) not in grades:
-                    return JsonResponse({
-                        'success': False,
-                        'error': 'All FRQ questions must be graded before releasing.'
-                    })
-        except json.JSONDecodeError:
-            pass
+    try:
+        grades = json.loads(submission.frq_grades)
+    except (json.JSONDecodeError, TypeError):
+        grades = {}
+    if not isinstance(grades, dict):
+        grades = {}
+    questions = _parse_quiz_markdown(submission.episode.info_page_content or '')
+    if any(q['type'] == 'frq' and type(grades.get(str(i))) is not bool for i, q in enumerate(questions)):
+        return JsonResponse({'success': False, 'error': 'All FRQ questions must be graded before releasing.'}, status=400)
 
     submission.released_at = timezone.now()
     submission.save(update_fields=['released_at'])
@@ -942,17 +1219,16 @@ def release_submission(request):
 @login_required
 @teacher_required
 @require_POST
+@transaction.atomic
 def cancel_release(request):
     """Cancel a release — reverts submission back to unreleased state."""
     submission_id = request.POST.get('submission_id')
     if not submission_id:
         return JsonResponse({'success': False, 'error': 'Missing submission ID'})
 
-    submission = get_object_or_404(QuizSubmission, id=submission_id)
-    course = submission.episode.section.course
-
-    if not request.user.is_admin and course.creator != request.user:
-        return JsonResponse({'success': False, 'error': 'Permission denied'})
+    submission, error_response = _review_submission(request)
+    if error_response:
+        return error_response
 
     submission.released_at = None
     submission.save(update_fields=['released_at'])
@@ -963,17 +1239,16 @@ def cancel_release(request):
 @login_required
 @teacher_required
 @require_POST
+@transaction.atomic
 def reset_submission(request):
     """Reset a student's submission — deletes it so the student can redo."""
     submission_id = request.POST.get('submission_id')
     if not submission_id:
         return JsonResponse({'success': False, 'error': 'Missing submission ID'})
 
-    submission = get_object_or_404(QuizSubmission, id=submission_id)
-    course = submission.episode.section.course
-
-    if not request.user.is_admin and course.creator != request.user:
-        return JsonResponse({'success': False, 'error': 'Permission denied'})
+    submission, error_response = _review_submission(request)
+    if error_response:
+        return error_response
 
     # Keep references before delete
     episode = submission.episode
@@ -984,3 +1259,32 @@ def reset_submission(request):
     EpisodeReadStatus.objects.filter(user=user, episode=episode).update(is_read=False)
 
     return JsonResponse({'success': True, 'message': 'Submission reset. Student can redo the quiz.'})
+
+
+@login_required
+@teacher_required
+@require_POST
+@transaction.atomic
+def comment_question(request):
+    """Save or clear a comment on any question in the current submission."""
+    submission, error_response = _review_submission(request)
+    if error_response:
+        return error_response
+    questions = _parse_quiz_markdown(submission.episode.info_page_content or '')
+    try:
+        question_index = int(request.POST.get('question_index', ''))
+        if not 0 <= question_index < len(questions):
+            raise ValueError
+    except (TypeError, ValueError):
+        return JsonResponse({'success': False, 'error': 'Invalid question index'}, status=400)
+    comment = request.POST.get('comment', '').strip()
+    if len(comment) > 10000:
+        return JsonResponse({'success': False, 'error': 'Comment must be at most 10,000 characters.'}, status=400)
+    comments = dict(submission.question_comments or {})
+    if comment:
+        comments[str(question_index)] = comment
+    else:
+        comments.pop(str(question_index), None)
+    submission.question_comments = comments
+    submission.save(update_fields=['question_comments'])
+    return JsonResponse({'success': True, 'comment': comment})

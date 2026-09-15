@@ -64,6 +64,7 @@ const QUESTION_TYPES = {
     mrq: { label: 'MRQ', badgeClass: 'quiz-type-mrq', hasChoices: true, isSorting: false },
     frq: { label: 'FRQ', badgeClass: 'quiz-type-frq', hasChoices: false, isSorting: false },
     srt: { label: 'SRT', badgeClass: 'quiz-type-srt', hasChoices: true, isSorting: true },
+    cba: { label: 'CBA', badgeClass: 'quiz-type-cba', hasChoices: false, isSorting: false, isCodeBlocks: true },
 };
 
 const ALL_TYPES = Object.keys(QUESTION_TYPES);
@@ -88,6 +89,235 @@ function nextChoiceId() {
     return 'c-' + (++_choiceIdCounter);
 }
 
+// ---------------------------------------------------------------------------
+// Code-block assembly (CBA) helpers.  The serialized config intentionally only
+// stores structure.  Source code is always read from, and written to, the CBA
+// code fence rather than a JSON string.
+// ---------------------------------------------------------------------------
+
+const CBA_CONFIG_VERSION = 1;
+const CBA_OPERATORS = [
+    '>>=', '<<=', '**=', '//=', '...', '===', '!==', '=>', '==', '!=', '<=',
+    '>=', '<<', '>>', '**', '//', '+=', '-=', '*=', '/=', '%=', '&=', '|=',
+    '^=', '->', ':=', '&&', '||', '??', '?.', '++', '--', '(', ')', '[', ']',
+    '{', '}', ',', ':', ';', '.', '+', '-', '*', '/', '%', '<', '>', '=', '!',
+    '&', '|', '^', '~', '?', '@', '\\'
+];
+
+function codePointLength(value) {
+    return Array.from(value || '').length;
+}
+
+/**
+ * Tokenise one non-indentation line body.  Token end values are Unicode code
+ * point offsets, so emoji/non-BMP identifiers never produce UTF-16 cuts.
+ */
+function tokenizeCodeBody(body) {
+    const chars = Array.from(body || '');
+    const tokens = [];
+    let index = 0;
+    const isIdentifierStart = char => /[A-Za-z_$]/.test(char) || (char && char.codePointAt(0) > 0x7f && /\p{L}/u.test(char));
+    const isIdentifierPart = char => isIdentifierStart(char) || /[0-9]/.test(char);
+
+    while (index < chars.length) {
+        const start = index;
+        const char = chars[index];
+        if (/\s/.test(char)) {
+            index += 1;
+            continue;
+        }
+        // Line comments are one token.  Python (#), C-family (//), and SQL
+        // style (--), cover the languages currently offered by the editor.
+        if (char === '#' || (char === '/' && chars[index + 1] === '/') ||
+            (char === '-' && chars[index + 1] === '-')) {
+            tokens.push({ text: chars.slice(index).join(''), start, end: chars.length, type: 'comment' });
+            break;
+        }
+        // Optional string prefixes (f, r, b, u) are folded into the string.
+        let quoteIndex = index;
+        if (/[fFrRbBuU]/.test(chars[quoteIndex] || '') && /[fFrRbBuU]/.test(chars[quoteIndex + 1] || '') && /['\"]/.test(chars[quoteIndex + 2] || '')) quoteIndex += 2;
+        else if (/[fFrRbBuU]/.test(chars[quoteIndex] || '') && /['\"]/.test(chars[quoteIndex + 1] || '')) quoteIndex += 1;
+        if (/['\"]/.test(chars[quoteIndex] || '')) {
+            const quote = chars[quoteIndex];
+            const triple = chars[quoteIndex + 1] === quote && chars[quoteIndex + 2] === quote;
+            index = quoteIndex + (triple ? 3 : 1);
+            while (index < chars.length) {
+                if (chars[index] === '\\') { index += 2; continue; }
+                if (triple && chars[index] === quote && chars[index + 1] === quote && chars[index + 2] === quote) { index += 3; break; }
+                if (!triple && chars[index] === quote) { index += 1; break; }
+                index += 1;
+            }
+            tokens.push({ text: chars.slice(start, index).join(''), start, end: index, type: 'string' });
+            continue;
+        }
+        if (isIdentifierStart(char)) {
+            index += 1;
+            while (index < chars.length && isIdentifierPart(chars[index])) index += 1;
+            tokens.push({ text: chars.slice(start, index).join(''), start, end: index, type: 'identifier' });
+            continue;
+        }
+        if (/[0-9]/.test(char) || (char === '.' && /[0-9]/.test(chars[index + 1] || ''))) {
+            index += 1;
+            while (index < chars.length && /[A-Za-z0-9_.]/.test(chars[index])) index += 1;
+            tokens.push({ text: chars.slice(start, index).join(''), start, end: index, type: 'number' });
+            continue;
+        }
+        const operator = CBA_OPERATORS.find(candidate => chars.slice(index, index + Array.from(candidate).length).join('') === candidate);
+        index += operator ? Array.from(operator).length : 1;
+        tokens.push({ text: chars.slice(start, index).join(''), start, end: index, type: operator ? 'operator' : 'punctuation' });
+    }
+    return tokens;
+}
+
+function splitCodeLine(line) {
+    const match = /^(?:[ \t]*)/.exec(line || '');
+    const indent = match ? match[0] : '';
+    return { indent, body: (line || '').slice(indent.length) };
+}
+
+function defaultCbaLines(code, indentation) {
+    return String(code || '').split('\n').map(line => {
+        const body = splitCodeLine(line).body;
+        const cuts = tokenizeCodeBody(body).map(token => token.end);
+        if (body && (cuts.length === 0 || cuts[cuts.length - 1] !== codePointLength(body))) cuts.push(codePointLength(body));
+        return {
+            cuts,
+            hints: cuts.map(() => false),
+            // Added as optional v1 fields: legacy configs simply derive their
+            // initial hint state from the old global indentation mode.
+            indentMerged: false,
+            indentHint: indentation === 'visible'
+        };
+    });
+}
+
+function atomicCbaCutsForRange(line, start, end) {
+    const automatic = defaultCbaLines(line, 'sortable')[0].cuts;
+    return automatic.filter(cut => cut > start && cut <= end);
+}
+
+function canSplitCbaLineGroup(line, lineConfig, chunkIndex) {
+    if (!lineConfig || chunkIndex < 0 || chunkIndex >= lineConfig.cuts.length) return false;
+    if (lineConfig.indentMerged && chunkIndex === 0) return true;
+    const start = chunkIndex === 0 ? 0 : lineConfig.cuts[chunkIndex - 1];
+    return atomicCbaCutsForRange(line, start, lineConfig.cuts[chunkIndex]).length > 1;
+}
+
+/** Restore a grouped code card to the tokenizer's original boundaries. */
+function splitCbaLineGroup(line, lineConfig, chunkIndex) {
+    if (!canSplitCbaLineGroup(line, lineConfig, chunkIndex)) return false;
+    const start = chunkIndex === 0 ? 0 : lineConfig.cuts[chunkIndex - 1];
+    const end = lineConfig.cuts[chunkIndex];
+    const wasIndentMerged = lineConfig.indentMerged && chunkIndex === 0;
+    // Body hints stay independent of the global indentation mode.  A merged
+    // card is visibly fixed when indentHint is true, but must become movable
+    // again as soon as the teacher switches the mode to sortable.
+    const hint = Boolean(lineConfig.hints[chunkIndex]);
+    const cuts = atomicCbaCutsForRange(line, start, end);
+    lineConfig.cuts.splice(chunkIndex, 1, ...cuts);
+    lineConfig.hints.splice(chunkIndex, 1, ...cuts.map(() => hint));
+    if (wasIndentMerged) {
+        lineConfig.indentMerged = false;
+    }
+    return true;
+}
+
+function setCbaIndentationMode(cba, indentation) {
+    const mode = indentation === 'sortable' ? 'sortable' : 'visible';
+    cba.indentation = mode;
+    cba.lines.forEach(line => { line.indentHint = mode === 'visible'; });
+}
+
+/** Return a validated, complete CBA config or a freshly tokenised config. */
+function normalizeCbaConfig(code, rawConfig, language) {
+    let candidate = rawConfig;
+    if (typeof candidate === 'string') {
+        try { candidate = JSON.parse(candidate); } catch (_) { candidate = null; }
+    }
+    const fallbackIndentation = 'visible';
+    const fallback = {
+        v: CBA_CONFIG_VERSION,
+        language: language || 'python',
+        indentation: fallbackIndentation,
+        lines: defaultCbaLines(code, fallbackIndentation)
+    };
+    if (!candidate || typeof candidate !== 'object' || candidate.v !== CBA_CONFIG_VERSION || !Array.isArray(candidate.lines) ||
+        candidate.lines.length !== fallback.lines.length) return fallback;
+
+    const normalized = {
+        v: CBA_CONFIG_VERSION,
+        language: typeof candidate.language === 'string' && candidate.language.trim() ? candidate.language.trim() : fallback.language,
+        indentation: candidate.indentation === 'sortable' ? 'sortable' : 'visible',
+        lines: []
+    };
+    for (let index = 0; index < fallback.lines.length; index += 1) {
+        const item = candidate.lines[index];
+        const max = codePointLength(splitCodeLine(String(code || '').split('\n')[index]).body);
+        if (!item || typeof item !== 'object' || !Array.isArray(item.cuts) || !Array.isArray(item.hints) ||
+            (item.indentMerged !== undefined && typeof item.indentMerged !== 'boolean') ||
+            (item.indentHint !== undefined && typeof item.indentHint !== 'boolean')) return fallback;
+        const cuts = item.cuts.map(Number);
+        if (cuts.length !== item.hints.length || item.hints.some(hint => typeof hint !== 'boolean') || cuts.some((cut, i) => !Number.isInteger(cut) || cut <= 0 || cut > max || (i && cut <= cuts[i - 1])) ||
+            (max > 0 && cuts[cuts.length - 1] !== max) || (max === 0 && cuts.length !== 0)) return fallback;
+        normalized.lines.push({
+            cuts,
+            hints: item.hints.map(Boolean),
+            indentMerged: item.indentMerged === true,
+            indentHint: typeof item.indentHint === 'boolean'
+                ? item.indentHint
+                : normalized.indentation === 'visible'
+        });
+    }
+    return normalized;
+}
+
+/** Split on H2 delimiters, but never delimit a question while inside a fence. */
+function splitQuizBlocks(markdown) {
+    // HTML form submission uses CRLF even when the textarea contains LF.
+    // Normalize before matching line-anchored choices and code fences.
+    const source = String(markdown || '').replace(/\r\n?/g, '\n');
+    const lines = source.split('\n');
+    const blocks = [];
+    let block = null;
+    let inFence = false;
+    for (const line of lines) {
+        if (/^```/.test(line)) inFence = !inFence;
+        if (!inFence && /^## (?!#)/.test(line)) {
+            if (block !== null) blocks.push(block.join('\n'));
+            block = [line.slice(3)];
+        } else if (block !== null) {
+            block.push(line);
+        }
+    }
+    if (block !== null) blocks.push(block.join('\n'));
+    return blocks;
+}
+
+function parseCbaBlock(block) {
+    const opener = /^```quiz-cba(?:\s+([^\s`]+))?\s*$/m.exec(block);
+    if (!opener) return null;
+    const codeStart = opener.index + opener[0].length + (block[opener.index + opener[0].length] === '\n' ? 1 : 0);
+    const closeMatcher = /^```\s*$/gm;
+    closeMatcher.lastIndex = codeStart;
+    const closer = closeMatcher.exec(block);
+    if (!closer) return null;
+    const prompt = block.slice(0, opener.index).replace(/\n$/, '').trim();
+    const code = block.slice(codeStart, closer.index);
+    // The newline preceding a closing fence is syntax, not user code.  A
+    // deliberate blank line remains represented by one newline in `code`.
+    const preservedCode = code.endsWith('\n') ? code.slice(0, -1) : code;
+    const configRest = block.slice(closer.index + closer[0].length).replace(/^\n/, '');
+    const configOpener = /^```quiz-cba-config\s*\n?/m.exec(configRest);
+    let config = null;
+    if (configOpener) {
+        const configStart = configOpener.index + configOpener[0].length;
+        const configCloser = /^```\s*$/m.exec(configRest.slice(configStart));
+        const json = configCloser ? configRest.slice(configStart, configStart + configCloser.index).replace(/\n$/, '') : configRest.slice(configStart);
+        try { config = JSON.parse(json); } catch (_) { config = null; }
+    }
+    return { prompt, code: preservedCode, cba: normalizeCbaConfig(preservedCode, config, opener[1] || 'python') };
+}
+
 /**
  * Parse quiz markdown into structured question objects.
  * @param {string} markdown - Raw markdown string
@@ -98,12 +328,25 @@ function parseQuiz(markdown) {
     if (!markdown || !markdown.trim()) return [];
 
     const questions = [];
-    // Split by ## at line start (h2 only, not ###)
-    const blocks = markdown.split(/^## (?![#])/m);
+    const blocks = splitQuizBlocks(markdown);
 
     for (let i = 0; i < blocks.length; i++) {
         const block = blocks[i];
         if (!block) continue;
+
+        const cba = parseCbaBlock(block);
+        if (cba) {
+            if (!cba.prompt || cba.prompt === 'None') continue;
+            questions.push({
+                id: nextQuestionId(),
+                type: 'cba',
+                question: cba.prompt,
+                choices: [],
+                code: cba.code,
+                cba: cba.cba
+            });
+            continue;
+        }
 
         const lines = block.split('\n');
 
@@ -287,7 +530,16 @@ function serializeQuiz(questions) {
             }
         }
 
-        if (q.type === 'frq') {
+        if (q.type === 'cba') {
+            const code = q.code === undefined || q.code === null ? '' : String(q.code);
+            const cba = normalizeCbaConfig(code, q.cba, q.cba && q.cba.language);
+            lines.push('```quiz-cba ' + cba.language);
+            lines.push(code);
+            lines.push('```');
+            lines.push('```quiz-cba-config');
+            lines.push(JSON.stringify(cba));
+            lines.push('```');
+        } else if (q.type === 'frq') {
             if (q.refAnswer && q.refAnswer.trim()) {
                 lines.push('>= ' + q.refAnswer.trim());
             } else {
@@ -388,6 +640,15 @@ function initQuizEditor(config) {
             const card = createQuestionCard(q, qIndex);
             previewEl.appendChild(card);
         });
+    }
+
+    function labelControl(labelText, control) {
+        const wrapper = document.createElement('label');
+        wrapper.className = 'cba-control-label';
+        const label = document.createElement('span');
+        label.textContent = labelText;
+        wrapper.append(label, control);
+        return wrapper;
     }
 
     // ---- Create a question card DOM element ----
@@ -509,7 +770,9 @@ function initQuizEditor(config) {
         const choicesArea = document.createElement('div');
         choicesArea.className = 'quiz-choices-area';
 
-        if (typeCfg.hasChoices) {
+        if (typeCfg.isCodeBlocks) {
+            choicesArea.appendChild(createCbaEditor(qIndex));
+        } else if (typeCfg.hasChoices) {
             (q.choices || []).forEach((choice, cIndex) => {
                 const choiceRow = createChoiceRow(qIndex, cIndex, choice);
                 choicesArea.appendChild(choiceRow);
@@ -547,6 +810,288 @@ function initQuizEditor(config) {
         card.appendChild(body);
 
         return card;
+    }
+
+    // ---- CBA authoring surface ------------------------------------------------
+    // The textarea is the code source of truth.  Token cards only edit config,
+    // so no amount of grouping/hinting can accidentally rewrite teacher code.
+    function createCbaEditor(qIndex) {
+        const q = currentQuestions[qIndex];
+        q.code = q.code === undefined || q.code === null ? '' : String(q.code);
+        q.cba = normalizeCbaConfig(q.code, q.cba, q.cba && q.cba.language);
+        const panel = document.createElement('section');
+        panel.className = 'cba-editor';
+
+        const toolbar = document.createElement('div');
+        toolbar.className = 'cba-toolbar';
+        const language = document.createElement('select');
+        language.className = 'form-select form-select-sm cba-language';
+        ['python', 'javascript', 'java', 'c', 'cpp', 'text'].forEach(value => {
+            const option = document.createElement('option');
+            option.value = value;
+            option.textContent = value === 'cpp' ? 'C++' : value[0].toUpperCase() + value.slice(1);
+            option.selected = q.cba.language === value;
+            language.appendChild(option);
+        });
+        language.addEventListener('change', () => {
+            currentQuestions[qIndex].cba.language = language.value;
+            syncPreviewToSource();
+        });
+        toolbar.appendChild(labelControl('Language', language));
+
+        const indentationControl = document.createElement('div');
+        indentationControl.className = 'cba-control-label';
+        indentationControl.innerHTML = '<span>Indentation</span>';
+        const indentationGroup = document.createElement('div');
+        indentationGroup.className = 'btn-group btn-group-sm cba-indent-mode';
+        indentationGroup.setAttribute('role', 'group');
+        indentationGroup.setAttribute('aria-label', 'Indentation mode');
+        [['visible', 'Fixed hint'], ['sortable', 'Student arranges']].forEach(([value, label]) => {
+            const button = document.createElement('button');
+            const active = q.cba.indentation === value;
+            button.type = 'button';
+            button.className = 'btn cba-mode-btn ' + (active ? 'btn-primary is-active' : 'btn-outline-secondary');
+            button.textContent = label;
+            button.setAttribute('aria-pressed', String(active));
+            button.addEventListener('click', () => {
+                setCbaIndentationMode(currentQuestions[qIndex].cba, value);
+                indentationGroup.querySelectorAll('.cba-mode-btn').forEach(candidate => {
+                    const isActive = candidate === button;
+                    candidate.classList.toggle('btn-primary', isActive);
+                    candidate.classList.toggle('btn-outline-secondary', !isActive);
+                    candidate.classList.toggle('is-active', isActive);
+                    candidate.setAttribute('aria-pressed', String(isActive));
+                });
+                syncPreviewToSource();
+                renderCards();
+            });
+            indentationGroup.appendChild(button);
+        });
+        indentationControl.appendChild(indentationGroup);
+        toolbar.appendChild(indentationControl);
+
+        const reset = document.createElement('button');
+        reset.type = 'button';
+        reset.className = 'btn btn-sm btn-outline-secondary cba-reset-btn';
+        reset.innerHTML = '<i class="bi bi-arrow-counterclockwise"></i> Reset tokens';
+        reset.title = 'Restore automatic token groups and clear hints';
+        reset.addEventListener('click', () => {
+            const current = currentQuestions[qIndex];
+            current.cba = normalizeCbaConfig(current.code, null, current.cba.language);
+            syncPreviewToSource();
+            syncSourceToPreview();
+        });
+        toolbar.appendChild(reset);
+        panel.appendChild(toolbar);
+
+        const grid = document.createElement('div');
+        grid.className = 'cba-editor-grid';
+        const sourceColumn = document.createElement('div');
+        sourceColumn.className = 'cba-code-column';
+        const codeLabel = document.createElement('label');
+        codeLabel.className = 'form-label small fw-semibold';
+        codeLabel.textContent = 'Complete code';
+        const code = document.createElement('textarea');
+        code.className = 'form-control cba-code-input';
+        code.spellcheck = false;
+        code.wrap = 'off';
+        code.rows = Math.max(6, q.code.split('\n').length + 1);
+        code.value = q.code;
+        code.placeholder = 'Write the complete program here…';
+        const feedback = document.createElement('div');
+        feedback.className = 'cba-code-feedback';
+        code.addEventListener('input', () => {
+            currentQuestions[qIndex].code = code.value;
+            // A text edit invalidates offset-based groups. Rebuild immediately;
+            // the short note makes this explicit rather than silently dropping
+            // teacher-selected groups/hints.
+            currentQuestions[qIndex].cba = normalizeCbaConfig(code.value, null, currentQuestions[qIndex].cba.language);
+            feedback.textContent = 'Code changed: token groups and hints were reset.';
+            syncPreviewToSource();
+            clearTimeout(syncTimeout);
+            syncTimeout = setTimeout(syncSourceToPreview, 120);
+        });
+        sourceColumn.append(codeLabel, code, feedback);
+
+        const cardsColumn = document.createElement('div');
+        cardsColumn.className = 'cba-token-column';
+        const cardsLabel = document.createElement('div');
+        cardsLabel.className = 'cba-token-heading';
+        cardsLabel.innerHTML = '<span>Student cards</span><small>Select two adjacent cards to merge. Lock = student hint.</small>';
+        const cardList = document.createElement('div');
+        cardList.className = 'cba-token-lines';
+        let selected = [];
+
+        function isSelected(item) {
+            return selected.some(selectedItem => selectedItem.lineIndex === item.lineIndex &&
+                selectedItem.kind === item.kind && selectedItem.chunkIndex === item.chunkIndex);
+        }
+
+        function toggleSelection(item) {
+            const existing = selected.findIndex(selectedItem => selectedItem.lineIndex === item.lineIndex &&
+                selectedItem.kind === item.kind && selectedItem.chunkIndex === item.chunkIndex);
+            if (existing >= 0) selected.splice(existing, 1);
+            else if (selected.length >= 2 || (selected.length && selected[0].lineIndex !== item.lineIndex)) selected = [item];
+            else selected.push(item);
+            renderCards();
+        }
+
+        function createHintToggle(isHint, onToggle, disabled) {
+            const toggle = document.createElement('button');
+            toggle.type = 'button';
+            toggle.className = 'cba-hint-toggle' + (isHint ? ' is-hint' : '');
+            toggle.disabled = Boolean(disabled);
+            toggle.innerHTML = '<i class="bi bi-' + (isHint ? 'lock-fill' : 'unlock') + '"></i>';
+            toggle.title = disabled ? 'Fixed by the global Fixed hint indentation mode' : (isHint ? 'Unlock: hide this hint from students' : 'Lock this card as a student hint');
+            toggle.addEventListener('click', event => {
+                event.stopPropagation();
+                onToggle();
+                syncPreviewToSource();
+                renderCards();
+            });
+            return toggle;
+        }
+
+        function renderCards() {
+            cardList.innerHTML = '';
+            const current = currentQuestions[qIndex];
+            current.cba = normalizeCbaConfig(current.code, current.cba, current.cba.language);
+            current.code.split('\n').forEach((line, lineIndex) => {
+                const { indent, body: lineBody } = splitCodeLine(line);
+                const lineEl = document.createElement('div');
+                lineEl.className = 'cba-token-line';
+                const number = document.createElement('span');
+                number.className = 'cba-line-number';
+                number.textContent = String(lineIndex + 1);
+                lineEl.appendChild(number);
+                const lineConfig = current.cba.lines[lineIndex];
+                const { cuts, hints } = lineConfig;
+                const indentColumns = Array.from(indent).reduce((total, char) => total + (char === '\t' ? 4 : 1), 0);
+                const createIndentVisual = () => {
+                    const indentEl = document.createElement('span');
+                    indentEl.className = 'cba-indent-card ' + (current.cba.indentation === 'visible' ? 'is-visible' : 'is-sortable');
+                    indentEl.style.setProperty('--cba-indent-columns', indentColumns);
+                    indentEl.setAttribute('aria-label', current.cba.indentation === 'visible'
+                        ? 'Fixed indentation, ' + indentColumns + ' columns'
+                        : 'Sortable indentation, ' + indentColumns + ' columns');
+                    indentEl.textContent = '-'.repeat(Math.max(1, indentColumns)) + '|';
+                    return indentEl;
+                };
+                if (indent && !lineConfig.indentMerged) {
+                    const indentItem = { lineIndex, kind: 'indent', chunkIndex: -1 };
+                    const indentChip = document.createElement('button');
+                    indentChip.type = 'button';
+                    indentChip.className = 'cba-indent-select' + (isSelected(indentItem) ? ' is-selected' : '');
+                    indentChip.title = 'Select indentation; select the first code card to merge them';
+                    indentChip.appendChild(createIndentVisual());
+                    indentChip.addEventListener('click', () => toggleSelection(indentItem));
+                    lineEl.appendChild(indentChip);
+                }
+                let start = 0;
+                cuts.forEach((end, chunkIndex) => {
+                    const chunk = Array.from(lineBody).slice(start, end).join('');
+                    const chip = document.createElement('button');
+                    chip.type = 'button';
+                    const mergedIndent = Boolean(indent && lineConfig.indentMerged && chunkIndex === 0);
+                    const item = { lineIndex, kind: mergedIndent ? 'merged' : 'token', chunkIndex };
+                    chip.className = 'cba-token-chip' + (mergedIndent ? ' cba-indent-merged' : '') + (isSelected(item) ? ' is-selected' : '');
+                    if (mergedIndent) {
+                        chip.appendChild(createIndentVisual());
+                        const mergedText = document.createElement('span');
+                        mergedText.textContent = chunk || '∅';
+                        chip.appendChild(mergedText);
+                    } else {
+                        chip.textContent = chunk || '∅';
+                    }
+                    chip.title = mergedIndent ? 'Merged indentation and first code card' : 'Select this card';
+                    chip.addEventListener('click', () => toggleSelection(item));
+                    const effectiveHint = mergedIndent ? Boolean(lineConfig.indentHint || hints[chunkIndex]) : hints[chunkIndex];
+                    const group = document.createElement('span');
+                    group.className = 'cba-chip-group';
+                    const hintIsFixed = mergedIndent && lineConfig.indentHint;
+                    group.append(chip, createHintToggle(effectiveHint, () => {
+                        if (mergedIndent) {
+                            lineConfig.hints[chunkIndex] = !lineConfig.hints[chunkIndex];
+                        } else {
+                            lineConfig.hints[chunkIndex] = !lineConfig.hints[chunkIndex];
+                        }
+                    }, hintIsFixed));
+                    lineEl.appendChild(group);
+                    start = end;
+                });
+                if (!cuts.length && !lineBody && !indent) {
+                    const empty = document.createElement('span');
+                    empty.className = 'cba-empty-line';
+                    empty.textContent = 'blank line';
+                    lineEl.appendChild(empty);
+                }
+                cardList.appendChild(lineEl);
+            });
+            const merge = document.createElement('button');
+            merge.type = 'button';
+            merge.className = 'btn btn-sm btn-outline-primary cba-merge-btn';
+            const canMerge = selected.length === 2 && selected[0].lineIndex === selected[1].lineIndex && (() => {
+                const [first, second] = selected;
+                const indentAndFirstToken = (first.kind === 'indent' && second.kind === 'token' && second.chunkIndex === 0) ||
+                    (second.kind === 'indent' && first.kind === 'token' && first.chunkIndex === 0);
+                const isCodeCard = item => item.kind === 'token' || item.kind === 'merged';
+                return indentAndFirstToken || (isCodeCard(first) && isCodeCard(second) && Math.abs(first.chunkIndex - second.chunkIndex) === 1);
+            })();
+            merge.disabled = !canMerge;
+            merge.innerHTML = '<i class="bi bi-link-45deg"></i> Merge selected';
+            merge.addEventListener('click', () => {
+                if (!canMerge) return;
+                const [first, second] = selected;
+                const selectedLine = current.cba.lines[first.lineIndex];
+                const indentAndFirstToken = (first.kind === 'indent' && second.kind === 'token' && second.chunkIndex === 0) ||
+                    (second.kind === 'indent' && first.kind === 'token' && first.chunkIndex === 0);
+                if (indentAndFirstToken) {
+                    selectedLine.indentMerged = true;
+                    selected = [];
+                    syncPreviewToSource();
+                    renderCards();
+                    return;
+                }
+                // Delete the boundary after the first chip and keep the hint if
+                // either component was intentionally shown as a hint.
+                const leftIndex = Math.min(first.chunkIndex, second.chunkIndex);
+                const mergedHint = Boolean(selectedLine.hints[leftIndex] || selectedLine.hints[leftIndex + 1]);
+                selectedLine.cuts.splice(leftIndex, 1);
+                selectedLine.hints.splice(leftIndex, 2, mergedHint);
+                selected = [];
+                syncPreviewToSource();
+                renderCards();
+            });
+            cardList.appendChild(merge);
+            const split = document.createElement('button');
+            split.type = 'button';
+            split.className = 'btn btn-sm btn-outline-secondary cba-split-btn';
+            const splitItem = selected.length === 1 && (selected[0].kind === 'token' || selected[0].kind === 'merged') ? selected[0] : null;
+            const canSplit = splitItem && canSplitCbaLineGroup(
+                current.code.split('\n')[splitItem.lineIndex],
+                current.cba.lines[splitItem.lineIndex],
+                splitItem.chunkIndex
+            );
+            split.disabled = !canSplit;
+            split.innerHTML = '<i class="bi bi-distribute-horizontal"></i> Split selected';
+            split.addEventListener('click', () => {
+                if (!canSplit) return;
+                splitCbaLineGroup(
+                    current.code.split('\n')[splitItem.lineIndex],
+                    current.cba.lines[splitItem.lineIndex],
+                    splitItem.chunkIndex
+                );
+                selected = [];
+                syncPreviewToSource();
+                renderCards();
+            });
+            cardList.appendChild(split);
+        }
+        renderCards();
+        cardsColumn.append(cardsLabel, cardList);
+        grid.append(sourceColumn, cardsColumn);
+        panel.appendChild(grid);
+        return panel;
     }
 
     // ---- Create a choice row DOM element ----
@@ -765,6 +1310,25 @@ function initQuizEditor(config) {
         if (lastCard) lastCard.focus();
     }
 
+    // ---- Add a code-block assembly question ----
+    function addCBA() {
+        const code = 'print("Hello, world!")';
+        const newQ = {
+            id: nextQuestionId(),
+            type: 'cba',
+            question: 'Put the program in the correct order.',
+            choices: [],
+            code,
+            cba: normalizeCbaConfig(code, null, 'python')
+        };
+        currentQuestions.push(newQ);
+        syncPreviewToSource();
+        syncSourceToPreview();
+        previewEl.scrollTop = previewEl.scrollHeight;
+        const lastCard = previewEl.querySelector('.quiz-question-card:last-child .quiz-question-input');
+        if (lastCard) lastCard.focus();
+    }
+
     // ---- Delete a question ----
     function deleteQuestion(qIndex) {
         if (currentQuestions.length <= 0) return;
@@ -792,7 +1356,25 @@ function initQuizEditor(config) {
         const newCfg = QUESTION_TYPES[newType];
         q.type = newType;
 
-        if (!newCfg.hasChoices) {
+        if (newCfg.isCodeBlocks) {
+            const code = typeof q.code === 'string' ? q.code : '';
+            q.choices = [];
+            q.refAnswer = undefined;
+            q.code = code;
+            q.cba = normalizeCbaConfig(code, q.cba, q.cba && q.cba.language);
+        } else if (oldType === 'cba') {
+            delete q.code;
+            delete q.cba;
+            if (!newCfg.hasChoices) {
+                q.choices = [];
+                q.refAnswer = '';
+            } else {
+                q.choices = [
+                    { id: nextChoiceId(), text: '', isCorrect: true },
+                    { id: nextChoiceId(), text: '', isCorrect: false }
+                ];
+            }
+        } else if (!newCfg.hasChoices) {
             // Switching to FRQ: clear choices, init refAnswer
             q.choices = [];
             if (q.refAnswer === undefined) q.refAnswer = '';
@@ -880,6 +1462,10 @@ function initQuizEditor(config) {
     if (addMrqBtn) addMrqBtn.addEventListener('click', addMRQ);
     if (addSrtBtn) addSrtBtn.addEventListener('click', addSRT);
     if (addFrqBtn) addFrqBtn.addEventListener('click', addFRQ);
+    if (config.addCbaBtnId) {
+        const addCbaBtn = document.getElementById(config.addCbaBtnId);
+        if (addCbaBtn) addCbaBtn.addEventListener('click', addCBA);
+    }
 
     // ---- Auto-scroll during drag (document-level for reliability) ----
     const SCROLL_ZONE = 60;   // px from edge to trigger scroll
@@ -946,6 +1532,7 @@ function initQuizEditor(config) {
         addMRQ,
         addSRT,
         addFRQ,
+        addCBA,
         refresh: syncSourceToPreview,
         getQuestions: () => currentQuestions,
         setMarkdown: (md) => {
@@ -956,8 +1543,18 @@ function initQuizEditor(config) {
 }
 
 // Expose to global scope (non-module script)
-window.QuizEditor = {
+const QuizEditorApi = {
     parseQuiz,
     serializeQuiz,
-    initQuizEditor
+    initQuizEditor,
+    splitQuizBlocks,
+    tokenizeCodeBody,
+    normalizeCbaConfig,
+    codePointLength,
+    canSplitCbaLineGroup,
+    splitCbaLineGroup,
+    setCbaIndentationMode
 };
+
+if (typeof window !== 'undefined') window.QuizEditor = QuizEditorApi;
+if (typeof module !== 'undefined' && module.exports) module.exports = QuizEditorApi;

@@ -3,13 +3,13 @@ Teacher authorization decorators.
 
 Three-layer permission system:
   1. teacher_required        — user must be verified teacher or admin
-  2. require_course_ownership — course must belong to user (admin bypass)
-  3. require_episode_ownership — episode's parent course must belong to user (admin bypass)
+  2. require_course_permission — user must have scoped course access
+  3. require_episode_ownership — episode's parent course must allow editing
 """
 
 from django.shortcuts import redirect, get_object_or_404
 from django.core.exceptions import PermissionDenied
-from courses.models import Course, Section, Episode
+from courses.models import Course, CourseTeacherMembership, Section, Episode
 
 
 def teacher_required(view_func):
@@ -28,28 +28,36 @@ def teacher_required(view_func):
     return wrapper
 
 
-def require_course_ownership(view_func):
+def require_course_permission(required_role):
     """
-    Decorator: ensure the teacher owns the course identified by URL kwarg 'course_id'.
+    Decorator factory: ensure the teacher has the requested access to the course
+    identified by URL kwarg ``course_id``.
 
     Admin users automatically bypass this check.
     Injects request.course (already fetched) to avoid duplicate DB queries.
 
     Must be placed BELOW @teacher_required so request.user is guaranteed.
     """
-    def wrapper(request, *args, **kwargs):
-        course_id = kwargs.get('course_id')
-        if course_id is None:
-            raise ValueError("require_course_ownership requires a 'course_id' URL kwarg.")
+    def decorator(view_func):
+        def wrapper(request, *args, **kwargs):
+            course_id = kwargs.get('course_id')
+            if course_id is None:
+                raise ValueError("require_course_permission requires a 'course_id' URL kwarg.")
 
-        course = get_object_or_404(Course, id=course_id)
+            course = get_object_or_404(Course, id=course_id)
 
-        if not request.user.is_admin and course.creator != request.user:
-            raise PermissionDenied("You can only edit your own courses.")
+            if not course.teacher_can(request.user, required_role):
+                raise PermissionDenied("You do not have access to this course.")
 
-        request.course = course
-        return view_func(request, *args, **kwargs)
-    return wrapper
+            request.course = course
+            return view_func(request, *args, **kwargs)
+        return wrapper
+    return decorator
+
+
+def require_course_ownership(view_func):
+    """Backward-compatible creator/manager check for course-level changes."""
+    return require_course_permission(CourseTeacherMembership.MANAGE)(view_func)
 
 
 def require_episode_ownership(view_func):
@@ -73,8 +81,8 @@ def require_episode_ownership(view_func):
         )
         course = episode.section.course
 
-        if not request.user.is_admin and course.creator != request.user:
-            raise PermissionDenied("You can only edit your own content.")
+        if not course.teacher_can(request.user, CourseTeacherMembership.EDIT):
+            raise PermissionDenied("You can only edit course content you are assigned to.")
 
         request.episode = episode
         request.course = course
@@ -95,7 +103,7 @@ def check_section_ownership(request, section_id):
     )
     course = section.course
 
-    if not request.user.is_admin and course.creator != request.user:
-        raise PermissionDenied("You can only modify your own course content.")
+    if not course.teacher_can(request.user, CourseTeacherMembership.EDIT):
+        raise PermissionDenied("You can only modify course content you are assigned to.")
 
     return section, course

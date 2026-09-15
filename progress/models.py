@@ -108,6 +108,10 @@ class QuizSubmission(models.Model):
         blank=True, default='{}',
         help_text='JSON: question_index -> is_correct for FRQ grading'
     )
+    question_comments = models.JSONField(
+        default=dict, blank=True,
+        help_text='Teacher comments keyed by question index, released with quiz results'
+    )
     submitted_at = models.DateTimeField(auto_now_add=True)
     released_at = models.DateTimeField(null=True, blank=True)
 
@@ -117,3 +121,70 @@ class QuizSubmission(models.Model):
     class Meta:
         unique_together = ['user', 'episode']
         ordering = ['-submitted_at']
+
+
+class CodeSubmission(models.Model):
+    """
+    Stores a student's latest uploaded Python code for a code episode.
+    A record becomes visible to teachers only after formal submission.
+    """
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='code_submissions'
+    )
+    episode = models.ForeignKey(
+        Episode,
+        on_delete=models.CASCADE,
+        related_name='code_submissions'
+    )
+    code = models.TextField(
+        blank=True,
+        help_text='Submitted Python code'
+    )
+    test_results = models.TextField(
+        blank=True, default='[]',
+        help_text='JSON: [{passed, input, expected, actual, error}] per test case'
+    )
+    is_submitted = models.BooleanField(
+        default=False,
+        help_text='Whether the student has formally submitted this upload'
+    )
+    uploaded_at = models.DateTimeField(auto_now=True)
+    submitted_at = models.DateTimeField(null=True, blank=True)
+
+    def __str__(self):
+        return f"{self.user.username} - {self.episode.title}"
+
+    class Meta:
+        unique_together = ['user', 'episode']
+        ordering = ['-submitted_at', '-uploaded_at']
+        verbose_name_plural = 'Code Submissions'
+
+
+class CodeSubmissionHistory(models.Model):
+    """An immutable snapshot created for every formal code submission."""
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='code_submission_history',
+    )
+    episode = models.ForeignKey(
+        Episode,
+        on_delete=models.CASCADE,
+        related_name='code_submission_history',
+    )
+    code = models.TextField(blank=True, help_text='Submitted Python code snapshot')
+    test_results = models.TextField(
+        blank=True,
+        default='[]',
+        help_text='JSON test-result snapshot from formal submission',
+    )
+    submitted_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-submitted_at', '-id']
+        verbose_name_plural = 'Code Submission History'
+
+    def __str__(self):
+        return f"{self.user.username} - {self.episode.title} ({self.submitted_at})"

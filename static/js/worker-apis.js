@@ -15,6 +15,10 @@
 // API Registry — add custom API handlers here
 // ============================================================================
 
+import {
+    STDIN_SAB_SIZE, STDIN_HEADER_SIZE, STDIN_IDLE, STDIN_WAITING, STDIN_READY,
+} from './stdin-channel.mjs?v=1';
+
 const registry = new Map();
 
 // Example API: sends a message to the main thread (verifies the pipeline works)
@@ -74,15 +78,16 @@ export function getRegisteredApiNames() {
 // SharedArrayBuffer stdin — supports Python's input() via Atomics.wait
 // ============================================================================
 
-const STDIN_SAB_SIZE = 4096;
-const STDIN_STATUS_IDLE = 0;
-const STDIN_STATUS_NEEDS_INPUT = 1;
-const STDIN_STATUS_HAS_RESPONSE = 2;
-
 let _stdinSab = null;
 let _stdinStatus = null;
 let _stdinDataLen = null;
 let _stdinAvailable = false; // true if SharedArrayBuffer+Atomics are usable
+let _beforeInput = () => {};
+let _executionId = null;
+
+export function setStdinExecution(id) {
+    _executionId = id;
+}
 
 // ---- Diagnostic helpers ----
 
@@ -110,7 +115,8 @@ export function getDiagnostics() {
  * Initialize the SharedArrayBuffer for stdin.
  * Gracefully degrades if cross-origin isolation is not available.
  */
-export function initStdin() {
+export function initStdin(beforeInput = () => {}) {
+    _beforeInput = beforeInput;
     const diag = _diagnose();
     console.log('[worker-apis] Cross-origin isolation diagnostics:', JSON.stringify(diag));
 
@@ -147,7 +153,7 @@ export function initStdin() {
  * Blocks synchronously via Atomics.wait until the main thread provides input.
  *
  * @param {string} prompt - The prompt string from Python's input("...")
- * @returns {string} The user's input
+ * @returns {[boolean, string]} Whether input was supplied, and its text
  */
 export function stdinWithPrompt(prompt) {
     if (!_stdinAvailable || !_stdinSab) {
@@ -155,28 +161,26 @@ export function stdinWithPrompt(prompt) {
     }
 
     // Signal main thread with the real prompt
-    Atomics.store(_stdinStatus, 0, STDIN_STATUS_NEEDS_INPUT);
+    _beforeInput();
+    Atomics.store(_stdinStatus, 0, STDIN_WAITING);
 
     // Send prompt via postMessage (no SAB encoding needed — main thread reads data.prompt)
-    self.postMessage({ type: 'stdin-request', prompt: String(prompt || '') });
+    self.postMessage({ type: 'stdin-request', runId: _executionId, prompt: String(prompt || '') });
 
     // Block until main thread responds (interruptible: 200ms chunks)
-    while (Atomics.load(_stdinStatus, 0) === STDIN_STATUS_NEEDS_INPUT) {
+    try {
+        while (Atomics.load(_stdinStatus, 0) === STDIN_WAITING) {
+            self._pyodide?.checkInterrupt();
+            Atomics.wait(_stdinStatus, 0, STDIN_WAITING, 200);
+        }
         self._pyodide?.checkInterrupt();
-        Atomics.wait(_stdinStatus, 0, STDIN_STATUS_NEEDS_INPUT, 200);
+        if (Atomics.load(_stdinStatus, 0) !== STDIN_READY) return [false, ''];
+
+        const respLen = Atomics.load(_stdinDataLen, 0);
+        const respCopy = new Uint8Array(respLen);
+        respCopy.set(new Uint8Array(_stdinSab, STDIN_HEADER_SIZE, respLen));
+        return [true, new TextDecoder().decode(respCopy)];
+    } finally {
+        Atomics.store(_stdinStatus, 0, STDIN_IDLE);
     }
-
-    if (Atomics.load(_stdinStatus, 0) !== STDIN_STATUS_HAS_RESPONSE) {
-        Atomics.store(_stdinStatus, 0, STDIN_STATUS_IDLE);
-        throw new Error('input() interrupted');
-    }
-
-    // Read response from SAB
-    const respLen = Atomics.load(_stdinDataLen, 0);
-    const respCopy = new Uint8Array(respLen);
-    respCopy.set(new Uint8Array(_stdinSab, 8, respLen));
-    const response = new TextDecoder().decode(respCopy);
-
-    Atomics.store(_stdinStatus, 0, STDIN_STATUS_IDLE);
-    return response;
 }

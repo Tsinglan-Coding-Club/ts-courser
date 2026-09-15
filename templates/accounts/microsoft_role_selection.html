@@ -1,0 +1,63 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Choose your role - TS-Courser{% endblock %}
+{% block body_class %}auth-page{% endblock %}
+{% block footer %}{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/accounts.css' %}">
+{% endblock %}
+
+{% block content %}
+<div class="auth-canvas">
+    <canvas class="auth-fluid-background" aria-hidden="true" tabindex="-1"></canvas>
+    <section class="auth-panel role-panel" aria-labelledby="role-heading">
+        <div class="verified-identity">
+            <i class="bi bi-check-circle-fill" aria-hidden="true"></i>
+            <div>
+                <span>Microsoft school account verified</span>
+                <strong>{{ principal.display_name|default:principal.principal_name }}</strong>
+                <small>{{ principal.principal_name }}</small>
+            </div>
+        </div>
+
+        <div class="auth-heading role-heading">
+            <span class="auth-eyebrow">FIRST SIGN-IN</span>
+            <h1 id="role-heading">Choose your role</h1>
+            <p>Your choice will be linked to this Microsoft account, so you will not be asked again.</p>
+        </div>
+
+        <form method="post" class="role-options">
+            {% csrf_token %}
+            <button type="submit" name="role" value="student" class="role-option">
+                <span class="role-icon student"><i class="bi bi-mortarboard-fill" aria-hidden="true"></i></span>
+                <span class="role-copy">
+                    <strong>I'm a student</strong>
+                    <small>Continue directly to courses and learning content</small>
+                </span>
+                <i class="bi bi-arrow-right" aria-hidden="true"></i>
+            </button>
+
+            <button type="submit" name="role" value="teacher" class="role-option">
+                <span class="role-icon teacher"><i class="bi bi-person-workspace" aria-hidden="true"></i></span>
+                <span class="role-copy">
+                    <strong>I'm a teacher</strong>
+                    <small>Wait for a platform administrator to approve access</small>
+                </span>
+                <i class="bi bi-arrow-right" aria-hidden="true"></i>
+            </button>
+        </form>
+
+        <form method="post" action="{% url 'accounts:logout' %}" class="auth-cancel-form">
+            {% csrf_token %}
+            <button type="submit" class="auth-cancel-button">Not this account? Return to sign in</button>
+        </form>
+    </section>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'vendor/webgl-fluid/webgl-fluid.umd.js' %}"></script>
+<script src="{% static 'js/auth-fluid.js' %}"></script>
+{% endblock %}

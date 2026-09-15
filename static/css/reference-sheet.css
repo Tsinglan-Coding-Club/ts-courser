@@ -1,0 +1,98 @@
+/* Shared Reference Sheet presentation for teacher previews and student pages. */
+
+.markdown-body.reference-sheet,
+.md-preview.reference-sheet {
+    padding: 0.75rem 1rem;
+    background: transparent;
+    font-size: 0.82rem;
+}
+
+.reference-sheet .ref-section {
+    margin-bottom: 1rem;
+}
+
+.reference-sheet .ref-section:last-child {
+    margin-bottom: 0;
+}
+
+.reference-sheet .ref-heading {
+    margin: 0.75rem 0 0.4rem;
+    padding-bottom: 0.2rem;
+    border-bottom: 2px solid var(--primary-color);
+    color: var(--primary-color);
+    font-size: 0.9rem;
+    font-weight: 700;
+}
+
+.reference-sheet .ref-heading:first-child {
+    margin-top: 0;
+}
+
+.reference-sheet .ref-code-block {
+    margin: 0 0 0.4rem;
+    padding: 0.5rem 0.75rem;
+    overflow-x: auto;
+    border-radius: 0.35rem;
+    background: #1e1e2e;
+    color: #cdd6f4;
+    font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+    font-size: 0.78rem;
+    line-height: 1.55;
+    tab-size: 4;
+    white-space: pre;
+}
+
+.reference-sheet .ref-code-block > code {
+    display: block;
+    margin: 0;
+    padding: 0;
+    background: transparent;
+    border-radius: 0;
+    color: inherit;
+    font-family: inherit;
+    font-size: inherit;
+    line-height: inherit;
+}
+
+.reference-sheet .ref-indent-0 {
+    background: transparent;
+}
+
+.reference-sheet .ref-indent-1,
+.reference-sheet .ref-indent-2,
+.reference-sheet .ref-indent-3 {
+    display: inline-block;
+    width: 100%;
+}
+
+.reference-sheet .ref-indent-1 { background: rgba(100, 140, 255, 0.05); }
+.reference-sheet .ref-indent-2 { background: rgba(100, 140, 255, 0.10); }
+.reference-sheet .ref-indent-3 { background: rgba(100, 140, 255, 0.14); }
+
+.reference-sheet .ref-annotation {
+    padding: 0.1rem 0 0.1rem 0.75rem;
+    color: var(--text-secondary);
+    font-size: 0.76rem;
+    line-height: 1.45;
+}
+
+.reference-sheet .ref-annotation code {
+    padding: 0.1em 0.3em;
+    border-radius: 0.15rem;
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    font-size: 0.92em;
+}
+
+.reference-sheet .py-keyword { color: #c792ea; font-weight: 700; }
+.reference-sheet .py-builtin { color: #82aaff; }
+.reference-sheet .py-string { color: #c3e88d; }
+.reference-sheet .py-comment { color: #676e95; font-style: italic; }
+.reference-sheet .py-number { color: #f78c6c; }
+.reference-sheet .py-placeholder {
+    padding: 0 0.15rem;
+    border-radius: 0.12rem;
+    background: rgba(251, 191, 36, 0.18);
+    color: #e6a817;
+    font-weight: 600;
+}

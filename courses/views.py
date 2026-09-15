@@ -3,7 +3,8 @@ from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.db.models import Q, Prefetch
-from .models import Course, Tag, Section, Episode
+from .models import Course, CourseTeacherMembership, Tag, Section, Episode
+from .quiz import review_answers, student_questions
 from progress.models import UserProgress, EpisodeReadStatus, CourseEnrollment
 
 
@@ -50,7 +51,7 @@ def course_overview(request, course_id):
         user=request.user,
         course=course
     ).exists()
-    is_teacher_or_admin = request.user.is_teacher or request.user.is_admin
+    is_teacher_or_admin = course.teacher_can(request.user, CourseTeacherMembership.VIEW)
 
     # Enrolled students should use the dashboard, not the overview
     if is_enrolled:
@@ -60,7 +61,7 @@ def course_overview(request, course_id):
     sections = Section.objects.filter(course=course).prefetch_related(
         Prefetch(
             'episodes',
-            queryset=Episode.objects.all().order_by('order')
+            queryset=Episode.objects.all().order_by('order', 'id')
         )
     )
 
@@ -69,6 +70,7 @@ def course_overview(request, course_id):
         'sections': sections,
         'is_enrolled': is_enrolled,
         'is_teacher_or_admin': is_teacher_or_admin,
+        'can_edit_course': course.teacher_can(request.user, CourseTeacherMembership.EDIT),
     }
     return render(request, 'courses/course_overview.html', context)
 
@@ -81,7 +83,7 @@ def course_dashboard(request, course_id):
     is_enrolled = CourseEnrollment.objects.filter(
         user=request.user, course=course
     ).exists()
-    is_teacher_or_admin = request.user.is_teacher or request.user.is_admin
+    is_teacher_or_admin = course.teacher_can(request.user, CourseTeacherMembership.VIEW)
 
     # Guard: must be enrolled (or teacher/admin) to access dashboard
     if not is_enrolled and not is_teacher_or_admin:
@@ -98,7 +100,7 @@ def course_dashboard(request, course_id):
     sections = Section.objects.filter(course=course).prefetch_related(
         Prefetch(
             'episodes',
-            queryset=Episode.objects.all().order_by('order')
+            queryset=Episode.objects.all().order_by('order', 'id')
         )
     )
 
@@ -132,9 +134,9 @@ def learning_interface(request, course_id, episode_id=None):
     is_enrolled = CourseEnrollment.objects.filter(
         user=request.user, course=course
     ).exists()
-    is_teacher_or_admin = request.user.is_teacher or request.user.is_admin
+    is_teacher_or_admin = course.teacher_can(request.user, CourseTeacherMembership.VIEW)
 
-    if not is_enrolled and course.enrollment_mode == 'open':
+    if not is_enrolled and course.enrollment_mode == 'open' and course.enrollment_open:
         CourseEnrollment.objects.get_or_create(user=request.user, course=course)
         is_enrolled = True
 
@@ -153,7 +155,7 @@ def learning_interface(request, course_id, episode_id=None):
     sections = Section.objects.filter(course=course).prefetch_related(
         Prefetch(
             'episodes',
-            queryset=Episode.objects.all().order_by('order')
+            queryset=Episode.objects.all().order_by('order', 'id')
         )
     )
 
@@ -172,6 +174,15 @@ def learning_interface(request, course_id, episode_id=None):
         progress.current_episode = current_episode
         progress.save()
 
+    # Keep the sidebar accordion focused on the section containing the episode
+    # being viewed. Fall back to the first section when the course has no
+    # current episode yet.
+    if current_episode:
+        expanded_section_id = current_episode.section_id
+    else:
+        first_section = sections.first()
+        expanded_section_id = first_section.id if first_section else None
+
     # Get read statuses for all episodes
     read_statuses = EpisodeReadStatus.objects.filter(
         user=request.user,
@@ -183,6 +194,7 @@ def learning_interface(request, course_id, episode_id=None):
     current_read_status = None
     quiz_submission = None
     quiz_answers_json = None
+    quiz_questions = []
     if current_episode:
         current_read_status, _ = EpisodeReadStatus.objects.get_or_create(
             user=request.user,
@@ -195,19 +207,43 @@ def learning_interface(request, course_id, episode_id=None):
                 user=request.user, episode=current_episode
             ).first()
             quiz_answers_json = None
-            if quiz_submission and quiz_submission.released_at and quiz_submission.answers:
-                quiz_answers_json = quiz_submission.answers
+            released = bool(quiz_submission and quiz_submission.released_at)
+            if released:
+                quiz_answers_json = _json.dumps(review_answers(current_episode, quiz_submission.answers))
+            if not quiz_submission or released:
+                quiz_questions = student_questions(current_episode, released=released)
+                if released:
+                    comments = quiz_submission.question_comments or {}
+                    for index, question in enumerate(quiz_questions):
+                        question['teacherComment'] = comments.get(str(index), '')
+
+    # Get code submission context
+    code_submission = None
+    code_oj_enabled = False
+    code_oj_testcases = '[]'
+    if current_episode and current_episode.type == 'code':
+        from progress.models import CodeSubmission
+        code_submission = CodeSubmission.objects.filter(
+            user=request.user, episode=current_episode
+        ).first()
+        code_oj_enabled = getattr(current_episode, 'code_oj_enabled', False)
+        code_oj_testcases = getattr(current_episode, 'code_oj_testcases', '[]')
 
     context = {
         'course': course,
         'sections': sections,
         'current_episode': current_episode,
+        'expanded_section_id': expanded_section_id,
         'current_read_status': current_read_status,
         'read_status_dict': read_status_dict,
         'is_teacher': request.user.is_teacher,
+        'can_edit_course': course.teacher_can(request.user, CourseTeacherMembership.EDIT),
         'quiz_submission': quiz_submission,
         'quiz_answers_json': quiz_answers_json,
+        'quiz_questions': quiz_questions,
         'quiz_require_all': getattr(current_episode, 'quiz_require_all', True) if current_episode else True,
-        'quiz_show_results': getattr(current_episode, 'quiz_show_results', False) if current_episode else False,
+        'code_submission': code_submission,
+        'code_oj_enabled': code_oj_enabled,
+        'code_oj_testcases': code_oj_testcases,
     }
     return render(request, 'courses/learning_interface.html', context)

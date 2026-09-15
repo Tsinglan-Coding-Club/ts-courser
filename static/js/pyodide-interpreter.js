@@ -10,7 +10,7 @@
  *   PyodideInterpreter.registerAPI('draw_circle');
  */
 
-import { asyncRun, ping, resetNamespace as workerReset, onStreamOutput, writeInterrupt, terminateWorker } from '/static/js/pyodide-api.js';
+import { asyncRun, asyncJudge, ping, resetNamespace as workerReset, onStreamOutput, onInputRequest, onInteractive, writeInterrupt, terminateWorker } from '/static/js/pyodide-api.js?v=7';
 
 const PyodideInterpreter = {
     // ---- State ----
@@ -31,6 +31,10 @@ const PyodideInterpreter = {
     /** @type {function(error: Error): void} */
     onError: null,
 
+    onInteractive: null,
+    onInputRequest: null,
+    onInputClosed: null,
+
     // ---- Public API ----
 
     /**
@@ -50,6 +54,11 @@ const PyodideInterpreter = {
                     this.onOutput(type, text);
                 }
             });
+            onInteractive(events => this.onInteractive?.(events));
+            onInputRequest(request => {
+                if (this.onInputRequest) this.onInputRequest(request);
+                else request.cancel();
+            }, () => this.onInputClosed?.());
             this._streamWired = true;
         }
 
@@ -82,6 +91,7 @@ const PyodideInterpreter = {
         if (!this._ready) {
             throw new Error('Interpreter not initialized. Call PyodideInterpreter.init() first.');
         }
+        if (this._running) throw new Error('Python is already running.');
 
         this._running = true;
         try {
@@ -96,6 +106,28 @@ const PyodideInterpreter = {
      */
     stop() {
         writeInterrupt();
+    },
+
+    /**
+     * Check Python code against test cases.
+     * Each test case runs in isolation with custom stdin.
+     * Results are streamed in real-time via onOutput.
+     * @param {string} code - Python source code
+     * @param {Array<{input: string, expected: string}>} testCases
+     * @returns {Promise<{results: Array}>}
+     */
+    async judgeCode(code, testCases) {
+        if (!this._ready) {
+            throw new Error('Interpreter not initialized. Call PyodideInterpreter.init() first.');
+        }
+        if (this._running) throw new Error('Python is already running.');
+
+        this._running = true;
+        try {
+            return await asyncJudge(code, testCases, this._registeredApis);
+        } finally {
+            this._running = false;
+        }
     },
 
     /**
