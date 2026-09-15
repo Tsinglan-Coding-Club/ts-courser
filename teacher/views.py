@@ -473,6 +473,9 @@ def validate_pdf(pdf_file):
 def course_manage(request, course_id):
     """Teacher dashboard: student progress, enrollment management, assignments."""
     course = request.course
+    can_manage_course = course.teacher_can(
+        request.user, CourseTeacherMembership.MANAGE
+    )
 
     # Get all enrolled students
     enrollments = CourseEnrollment.objects.filter(
@@ -480,12 +483,12 @@ def course_manage(request, course_id):
     ).select_related('user').order_by('-enrolled_at')
 
     # Registered student accounts that can be added to this course.
-    available_students = User.objects.filter(
-        role='student',
-        is_active=True,
-    ).exclude(
-        enrolled_courses__course=course
-    ).order_by('display_name', 'username', 'email')
+    available_students = (
+        User.objects.filter(role='student', is_active=True).exclude(
+            enrolled_courses__course=course
+        ).order_by('display_name', 'username', 'email')
+        if can_manage_course else User.objects.none()
+    )
 
     # Total episodes for progress calculation
     total_episodes = Episode.objects.filter(section__course=course).count()
@@ -589,7 +592,7 @@ def course_manage(request, course_id):
             else User.objects.none()
         ),
         'can_edit_course': course.teacher_can(request.user, CourseTeacherMembership.EDIT),
-        'can_manage_course': course.teacher_can(request.user, CourseTeacherMembership.MANAGE),
+        'can_manage_course': can_manage_course,
     }
     return render(request, 'teacher/course_manage.html', context)
 
@@ -610,7 +613,7 @@ def add_student(request):
 
     course = get_object_or_404(Course, id=course_id)
 
-    if not request.user.is_admin and course.creator != request.user:
+    if not course.teacher_can(request.user, CourseTeacherMembership.MANAGE):
         return JsonResponse(
             {'success': False, 'error': 'Permission denied'},
             status=403,

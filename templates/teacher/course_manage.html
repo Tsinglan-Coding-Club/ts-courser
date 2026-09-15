@@ -33,9 +33,15 @@
 
     {% if can_manage_course %}
     <div class="card section-card mb-4">
-        <div class="card-header section-card-header">
-            <h2 class="section-card-title"><i class="bi bi-person-gear"></i> Teacher access</h2>
+        <div class="card-header section-card-header p-0">
+            <button class="teacher-collapse-toggle" type="button"
+                    data-bs-toggle="collapse" data-bs-target="#teacherAccessCollapse"
+                    aria-expanded="false" aria-controls="teacherAccessCollapse">
+                <span class="section-card-title"><i class="bi bi-person-gear"></i> Teacher access</span>
+                <i class="bi bi-chevron-down" aria-hidden="true"></i>
+            </button>
         </div>
+        <div id="teacherAccessCollapse" class="collapse">
         <div class="card-body">
             <p class="text-muted small">View includes student progress and assignment submissions. Edit also allows content changes, grading, and feedback. Manage also allows course settings and teacher access. Selecting a teacher already in this course updates their role. Every course must retain at least one manager.</p>
             <form method="post" action="{% url 'teacher:course_member_save' course.id %}" class="row g-2 align-items-end mb-3">
@@ -82,6 +88,7 @@
                     </tbody>
                 </table>
             </div>
+        </div>
         </div>
     </div>
     {% endif %}
@@ -199,6 +206,7 @@
 
     <!-- Tab 2: Student Management -->
     <div id="panelStudents" class="manage-panel" style="display:none;">
+        {% if can_manage_course %}
         <div class="card shadow-sm mb-4">
             <div class="card-header bg-info text-white">
                 <h5 class="mb-0"><i class="bi bi-person-plus-fill"></i> Add Registered Student</h5>
@@ -207,15 +215,20 @@
                 {% if available_students %}
                     <form id="addStudentForm" class="row g-2 align-items-end">
                         <div class="col-md">
-                            <label for="studentToAdd" class="form-label">Student account</label>
-                            <select class="form-select" id="studentToAdd" name="user_id" required>
+                            <label for="studentSearch" class="form-label">Student account</label>
+                            <input id="studentSearch" type="search" class="form-control mb-2"
+                                   placeholder="Search by name, username, or email" autocomplete="off"
+                                   aria-controls="studentToAdd">
+                            <select class="form-select" id="studentToAdd" name="user_id" size="5" required
+                                    aria-label="Select a registered student" aria-describedby="studentSearchStatus">
                                 <option value="" selected disabled>Select a registered student</option>
                                 {% for student in available_students %}
                                     <option value="{{ student.id }}">
-                                        {{ student.get_display_name }} — {{ student.email }}
+                                        {{ student.get_display_name }} ({{ student.username }}) — {{ student.email }}
                                     </option>
                                 {% endfor %}
                             </select>
+                            <small id="studentSearchStatus" class="text-muted" role="status">{{ available_students|length }} students</small>
                         </div>
                         <div class="col-md-auto">
                             <button type="submit" class="btn btn-info text-white" id="addStudentBtn">
@@ -228,6 +241,7 @@
                 {% endif %}
             </div>
         </div>
+        {% endif %}
 
         {% if students_data %}
             <div class="card section-card">
