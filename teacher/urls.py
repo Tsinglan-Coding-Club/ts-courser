@@ -17,6 +17,7 @@ urlpatterns = [
     path('episodes/<int:episode_id>/delete/', views.episode_delete, name='episode_delete'),
     path('episodes/reorder/', views.episode_reorder, name='episode_reorder'),
     path('tags/create/', views.tag_create, name='tag_create'),
+    path('courses/add-student/', views.add_student, name='add_student'),
     path('courses/remove-student/', views.remove_student, name='remove_student'),
     path('courses/<int:course_id>/assignments/<int:episode_id>/', views.assignment_review, name='assignment_review'),
     path('assignments/grade-frq/', views.grade_frq, name='grade_frq'),

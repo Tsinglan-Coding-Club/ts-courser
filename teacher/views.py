@@ -1,5 +1,6 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
+from django.contrib.auth import get_user_model
 from django.contrib import messages
 from django.core.exceptions import PermissionDenied
 from django.http import JsonResponse
@@ -21,6 +22,7 @@ import os
 from ts_courser.utils import compress_image
 
 logger = logging.getLogger(__name__)
+User = get_user_model()
 
 
 @teacher_required
@@ -451,6 +453,14 @@ def course_manage(request, course_id):
         course=course
     ).select_related('user').order_by('-enrolled_at')
 
+    # Registered student accounts that can be added to this course.
+    available_students = User.objects.filter(
+        role='student',
+        is_active=True,
+    ).exclude(
+        enrolled_courses__course=course
+    ).order_by('display_name', 'username', 'email')
+
     # Total episodes for progress calculation
     total_episodes = Episode.objects.filter(section__course=course).count()
 
@@ -530,10 +540,60 @@ def course_manage(request, course_id):
     context = {
         'course': course,
         'students_data': students_data,
+        'available_students': available_students,
         'stats': stats,
         'quiz_episodes': quiz_episodes,
     }
     return render(request, 'teacher/course_manage.html', context)
+
+
+@login_required
+@teacher_required
+@require_POST
+def add_student(request):
+    """Add a registered student account to a course (teacher only)."""
+    course_id = request.POST.get('course_id')
+    user_id = request.POST.get('user_id')
+
+    if not course_id or not user_id:
+        return JsonResponse(
+            {'success': False, 'error': 'Please select a student.'},
+            status=400,
+        )
+
+    course = get_object_or_404(Course, id=course_id)
+
+    if not request.user.is_admin and course.creator != request.user:
+        return JsonResponse(
+            {'success': False, 'error': 'Permission denied'},
+            status=403,
+        )
+
+    student = User.objects.filter(
+        id=user_id,
+        role='student',
+        is_active=True,
+    ).first()
+    if student is None:
+        return JsonResponse(
+            {'success': False, 'error': 'Registered student not found.'},
+            status=404,
+        )
+
+    _, created = CourseEnrollment.objects.get_or_create(
+        course=course,
+        user=student,
+    )
+    if not created:
+        return JsonResponse(
+            {'success': False, 'error': 'Student is already enrolled in this course.'},
+            status=409,
+        )
+
+    return JsonResponse({
+        'success': True,
+        'message': f'{student.get_display_name} added successfully.',
+    })
 
 
 @login_required
