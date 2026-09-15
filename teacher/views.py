@@ -476,7 +476,7 @@ def course_manage(request, course_id):
 
     # Get all enrolled students
     enrollments = CourseEnrollment.objects.filter(
-        course=course
+        course=course, user__role='student'
     ).select_related('user').order_by('-enrolled_at')
 
     # Registered student accounts that can be added to this course.
@@ -559,10 +559,13 @@ def course_manage(request, course_id):
         section__course=course, type__in=assignable_types
     ).select_related('section'):
         if ep.type == 'quiz':
-            count = QuizSubmission.objects.filter(episode=ep).count()
+            count = QuizSubmission.objects.filter(
+                episode=ep, user_id__in=enrollments.values('user_id'),
+            ).count()
         else:
             count = CodeSubmission.objects.filter(
-                episode=ep, is_submitted=True
+                episode=ep, is_submitted=True,
+                user_id__in=enrollments.values('user_id'),
             ).count()
         quiz_episodes.append({
             'id': ep.id,
@@ -875,20 +878,28 @@ def assignment_review(request, course_id, episode_id):
         raise PermissionDenied("You do not have access to this course's student work.")
 
     # Get all enrolled students and their submissions
-    enrollments = CourseEnrollment.objects.filter(course=course).select_related('user')
+    enrollments = CourseEnrollment.objects.filter(
+        course=course, user__role='student'
+    ).select_related('user')
 
     if episode.type == 'quiz':
         submissions_by_user = {
-            s.user_id: s for s in QuizSubmission.objects.filter(episode=episode)
+            s.user_id: s for s in QuizSubmission.objects.filter(
+                episode=episode, user_id__in=enrollments.values('user_id'),
+            )
         }
     else:
         submissions_by_user = {}
         code_history_by_user = {}
-        for snapshot in CodeSubmissionHistory.objects.filter(episode=episode):
+        for snapshot in CodeSubmissionHistory.objects.filter(
+            episode=episode, user__role='student',
+        ):
             code_history_by_user.setdefault(snapshot.user_id, []).append(snapshot)
             submissions_by_user.setdefault(snapshot.user_id, snapshot)
         # Keep pre-history formal submissions visible after this migration.
-        for submission in CodeSubmission.objects.filter(episode=episode, is_submitted=True):
+        for submission in CodeSubmission.objects.filter(
+            episode=episode, is_submitted=True, user__role='student',
+        ):
             submissions_by_user.setdefault(submission.user_id, submission)
 
     students = []
