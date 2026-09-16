@@ -156,6 +156,30 @@
     border-bottom: 1px solid var(--border-color);
 }
 
+.teacher-collapse-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    padding: 1rem 1.25rem;
+    border: 0;
+    background: transparent;
+    color: var(--text-primary);
+    text-align: left;
+}
+
+.teacher-collapse-toggle:hover {
+    background: var(--bg-tertiary);
+}
+
+.teacher-collapse-toggle .bi-chevron-down {
+    transition: transform 0.2s ease;
+}
+
+.teacher-collapse-toggle[aria-expanded="true"] .bi-chevron-down {
+    transform: rotate(180deg);
+}
+
 .section-card-title {
     display: inline-flex;
     align-items: center;

@@ -4,6 +4,7 @@
 {% block title %}Login - TS-Courser{% endblock %}
 {% block body_class %}auth-page{% endblock %}
 {% block footer %}{% endblock %}
+{% block messages %}{% endblock %}
 
 {% block extra_css %}
 <link rel="stylesheet" href="{% static 'css/accounts.css' %}">
@@ -12,45 +13,57 @@
 {% block content %}
 <div class="auth-canvas">
     <canvas class="auth-fluid-background" aria-hidden="true" tabindex="-1"></canvas>
-    <section class="auth-panel login-panel" aria-labelledby="login-heading">
-        <div class="auth-heading">
-            <h1 id="login-heading">Log in</h1>
-        </div>
-
-        <form method="post" action="{% url 'accounts:microsoft_login' %}">
-            {% csrf_token %}
-            {% if request.GET.next %}<input type="hidden" name="next" value="{{ request.GET.next }}">{% endif %}
-            <button type="submit" class="microsoft-signin-button">
-                <span class="microsoft-mark" aria-hidden="true">
-                    <span></span><span></span><span></span><span></span>
-                </span>
-                <span>Sign in with your school account</span>
-                <i class="bi bi-arrow-right" aria-hidden="true"></i>
-            </button>
-        </form>
-
-        <details class="local-login-panel">
-            <summary>
-                <span><i class="bi bi-key" aria-hidden="true"></i> Sign in with username and password</span>
-                <i class="bi bi-chevron-down local-login-chevron" aria-hidden="true"></i>
-            </summary>
-            <div class="local-login-content">
-                <form method="post">
-                    {% csrf_token %}
-                    {% if request.GET.next %}<input type="hidden" name="next" value="{{ request.GET.next }}">{% endif %}
-                    <div class="mb-3">
-                        <label for="username" class="form-label">Username</label>
-                        <input type="text" class="form-control" id="username" name="username" autocomplete="username" required>
+    <div class="auth-content">
+        {% if messages %}
+            <div class="auth-messages">
+                {% for message in messages %}
+                    <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
                     </div>
-                    <div class="mb-3">
-                        <label for="password" class="form-label">Password</label>
-                        <input type="password" class="form-control" id="password" name="password" autocomplete="current-password" required>
-                    </div>
-                    <button type="submit" class="btn btn-primary w-100">Sign in</button>
-                </form>
+                {% endfor %}
             </div>
-        </details>
-    </section>
+        {% endif %}
+        <section class="auth-panel login-panel" aria-labelledby="login-heading">
+            <div class="auth-heading">
+                <h1 id="login-heading">Log in</h1>
+            </div>
+
+            <form method="post" action="{% url 'accounts:microsoft_login' %}">
+                {% csrf_token %}
+                {% if request.GET.next %}<input type="hidden" name="next" value="{{ request.GET.next }}">{% endif %}
+                <button type="submit" class="microsoft-signin-button">
+                    <span class="microsoft-mark" aria-hidden="true">
+                        <span></span><span></span><span></span><span></span>
+                    </span>
+                    <span>Sign in with your school account</span>
+                    <i class="bi bi-arrow-right" aria-hidden="true"></i>
+                </button>
+            </form>
+
+            <details class="local-login-panel">
+                <summary>
+                    <span><i class="bi bi-key" aria-hidden="true"></i> Sign in with username and password</span>
+                    <i class="bi bi-chevron-down local-login-chevron" aria-hidden="true"></i>
+                </summary>
+                <div class="local-login-content">
+                    <form method="post">
+                        {% csrf_token %}
+                        {% if request.GET.next %}<input type="hidden" name="next" value="{{ request.GET.next }}">{% endif %}
+                        <div class="mb-3">
+                            <label for="username" class="form-label">Username</label>
+                            <input type="text" class="form-control" id="username" name="username" autocomplete="username" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="password" class="form-label">Password</label>
+                            <input type="password" class="form-control" id="password" name="password" autocomplete="current-password" required>
+                        </div>
+                        <button type="submit" class="btn btn-primary w-100">Sign in</button>
+                    </form>
+                </div>
+            </details>
+        </section>
+    </div>
 </div>
 {% endblock %}
 
