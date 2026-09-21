@@ -98,6 +98,10 @@
     border-top: 3px solid var(--primary-color) !important;
 }
 
+.episodes-container {
+    min-height: 64px;
+}
+
 .drag-handle {
     cursor: move;
     color: var(--text-secondary);
@@ -306,7 +310,7 @@
                 </div>
             </div>
 
-            <p class="text-muted small">Drag sections or episodes to reorder them. New items are added at the end.</p>
+            <p class="text-muted small">Drag sections or episodes to reorder them, or drag an episode into another section. New items are added at the end.</p>
             <p id="orderSaveStatus" class="small text-muted" role="status" aria-live="polite"></p>
             <div id="sectionsContainer">
             {% for section in sections %}
@@ -317,9 +321,13 @@
                             <i class="bi bi-grip-vertical drag-handle me-2"></i>
                             <i class="bi bi-folder"></i>
                             <strong>{{ section.title }}</strong>
-                            <span class="badge bg-secondary ms-2">{{ section.episodes.all|length }} episodes</span>
+                            <span class="badge bg-secondary ms-2 episode-count">{{ section.episodes.all|length }} episodes</span>
                         </div>
                         <div class="d-flex gap-1 align-items-center">
+                            <button type="button" class="btn btn-sm btn-outline-primary btn-action rename-section-btn"
+                                    data-rename-url="{% url 'teacher:section_rename' section.id %}" data-section-title="{{ section.title }}">
+                                <i class="bi bi-pencil"></i> Rename
+                            </button>
                             <button class="btn btn-sm btn-outline-danger btn-action hover-action" onclick="event.stopPropagation(); confirmDelete('section', {{ section.id }}, '{{ section.title|escapejs }}')" title="Delete section">
                                 <i class="bi bi-trash"></i> Delete
                             </button>
@@ -370,7 +378,7 @@
                                     </div>
                                 </div>
                             {% empty %}
-                                <div class="list-group-item text-muted text-center py-4">
+                                <div class="list-group-item text-muted text-center py-4 empty-episodes">
                                     <i class="bi bi-inbox"></i> No episodes yet. Click "Add Episode" to create one.
                                 </div>
                             {% endfor %}
@@ -384,6 +392,26 @@
             {% endfor %}
             </div>
         </div>
+    </div>
+</div>
+
+<div class="modal fade" id="renameSectionModal" tabindex="-1" aria-labelledby="renameSectionHeading" aria-hidden="true">
+    <div class="modal-dialog">
+        <form id="renameSectionForm" method="post" class="modal-content">
+            {% csrf_token %}
+            <div class="modal-header">
+                <h5 class="modal-title" id="renameSectionHeading">Rename Section</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <label for="renameSectionTitle" class="form-label">Section title</label>
+                <input id="renameSectionTitle" name="title" class="form-control" maxlength="200" required>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="submit" class="btn btn-primary">Save</button>
+            </div>
+        </form>
     </div>
 </div>
 
@@ -451,6 +479,20 @@
 <script>
 const csrftoken = document.querySelector('[name=csrfmiddlewaretoken]').value;
 
+document.querySelectorAll('.rename-section-btn').forEach(button => {
+    button.addEventListener('click', event => {
+        event.stopPropagation();
+        document.getElementById('renameSectionForm').action = button.dataset.renameUrl;
+        document.getElementById('renameSectionTitle').value = button.dataset.sectionTitle;
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('renameSectionModal')).show();
+    });
+});
+document.getElementById('renameSectionModal').addEventListener('shown.bs.modal', () => {
+    const input = document.getElementById('renameSectionTitle');
+    input.focus();
+    input.select();
+});
+
 function addEpisode(sectionId) {
     document.getElementById('episodeSectionId').value = sectionId;
     document.getElementById('addEpisodeForm').submit();
@@ -484,87 +526,118 @@ document.querySelectorAll('.collapsible-header').forEach(header => {
     });
 });
 
-// Each list saves a complete sibling order. Failed saves restore the visible order.
+// Share drag state across episode lists; save both affected sections atomically.
 let reorderSaving = false;
-function initializeOrdering(container, selector, url, payloadKey, idKey) {
-    if (!container) return;
+function initializeOrdering(containers, selector, url, payloadKey, idKey) {
     let dragged = null;
-    const items = () => Array.from(container.children).filter(item => item.matches(selector));
+    const items = container => Array.from(container.children).filter(item => item.matches(selector));
+    const clearHighlights = () => containers.forEach(container => {
+        container.classList.remove('drag-over');
+        items(container).forEach(row => row.classList.remove('drag-over'));
+    });
+    function refreshEpisodes() {
+        if (idKey !== 'episodeId') return;
+        containers.forEach(container => {
+            const count = items(container).length;
+            container.closest('.section-card').querySelector('.episode-count').textContent = `${count} episodes`;
+            let empty = container.querySelector('.empty-episodes');
+            if (count && empty) empty.remove();
+            if (!count && !empty) {
+                empty = document.createElement('div');
+                empty.className = 'list-group-item text-muted text-center py-4 empty-episodes';
+                empty.textContent = 'No episodes yet. Drop an episode here or click "Add Episode".';
+                container.appendChild(empty);
+            }
+        });
+    }
     async function saveOrder(previous) {
         reorderSaving = true;
         const status = document.getElementById('orderSaveStatus');
         status.className = 'small text-muted';
         status.textContent = 'Saving order…';
         try {
-            const payload = items().map((row, index) => ({
-                id: Number(row.dataset[idKey]), order: index
-            }));
+            const payload = idKey === 'episodeId' ? {
+                episode_sections: previous.map(({container}) => ({
+                    section_id: Number(container.dataset.sectionId),
+                    episode_ids: items(container).map(row => Number(row.dataset.episodeId))
+                }))
+            } : {
+                [payloadKey]: items(previous[0].container).map((row, order) => ({
+                    id: Number(row.dataset[idKey]), order
+                }))
+            };
             const response = await fetch(url, {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrftoken},
-                body: JSON.stringify({[payloadKey]: payload})
+                body: JSON.stringify(payload)
             });
             const data = await response.json();
             if (!response.ok || !data.success) throw new Error(data.error || 'Unable to save order.');
             status.className = 'small text-success';
             status.textContent = 'Order saved.';
         } catch (error) {
-            previous.forEach(row => container.appendChild(row));
+            previous.forEach(({container, rows}) => rows.forEach(row => container.appendChild(row)));
             status.className = 'small text-danger';
             status.textContent = 'Order was not saved. ' + error.message;
         } finally {
+            refreshEpisodes();
             reorderSaving = false;
         }
     }
-    items().forEach(item => {
-        item.addEventListener('dragstart', event => {
-            event.stopPropagation();
-            if (reorderSaving || event.target.closest('button, a, input')) {
-                event.preventDefault();
-                return;
-            }
-            dragged = item;
-            item.classList.add('dragging');
-            event.dataTransfer.effectAllowed = 'move';
-            event.dataTransfer.setData('text/plain', item.dataset[idKey]);
+    containers.forEach(container => {
+        items(container).forEach(item => {
+            item.addEventListener('dragstart', event => {
+                event.stopPropagation();
+                if (reorderSaving || event.target.closest('button, a, input')) {
+                    event.preventDefault();
+                    return;
+                }
+                dragged = item;
+                item.classList.add('dragging');
+                event.dataTransfer.effectAllowed = 'move';
+                event.dataTransfer.setData('text/plain', item.dataset[idKey]);
+            });
+            item.addEventListener('dragend', event => {
+                event.stopPropagation();
+                item.classList.remove('dragging');
+                clearHighlights();
+                dragged = null;
+            });
         });
-        item.addEventListener('dragend', event => {
-            event.stopPropagation();
-            item.classList.remove('dragging');
-            items().forEach(other => other.classList.remove('drag-over'));
-            dragged = null;
-        });
-        item.addEventListener('dragover', event => {
+        container.addEventListener('dragover', event => {
             if (!dragged) return;
             event.stopPropagation();
-            if (dragged === item || reorderSaving) return;
+            if (reorderSaving) return;
             event.preventDefault();
-            item.classList.add('drag-over');
+            event.dataTransfer.dropEffect = 'move';
+            clearHighlights();
+            const target = event.target.closest(selector);
+            (target && target.parentElement === container ? target : container).classList.add('drag-over');
         });
-        item.addEventListener('dragleave', event => {
-            if (!dragged) return;
-            event.stopPropagation();
-            item.classList.remove('drag-over');
+        container.addEventListener('dragleave', event => {
+            if (dragged && !container.contains(event.relatedTarget)) clearHighlights();
         });
-        item.addEventListener('drop', async event => {
+        container.addEventListener('drop', async event => {
             if (!dragged) return;
             event.stopPropagation();
             event.preventDefault();
-            if (dragged === item || reorderSaving) return;
-            const previous = items();
-            const after = previous.indexOf(dragged) < previous.indexOf(item);
-            container.insertBefore(dragged, after ? item.nextSibling : item);
-            items().forEach(other => other.classList.remove('drag-over'));
+            if (reorderSaving) return;
+            const target = event.target.closest(selector);
+            clearHighlights();
+            if (target === dragged) return;
+            const source = dragged.parentElement;
+            const previous = [...new Set([source, container])].map(list => ({container: list, rows: items(list)}));
+            const after = source === container && items(container).indexOf(dragged) < items(container).indexOf(target);
+            container.insertBefore(dragged, target && target.parentElement === container ? (after ? target.nextSibling : target) : null);
+            refreshEpisodes();
             await saveOrder(previous);
         });
     });
 }
-initializeOrdering(document.getElementById('sectionsContainer'), '.section-card',
+initializeOrdering([document.getElementById('sectionsContainer')], '.section-card',
     '{% url "teacher:section_reorder" %}', 'section_orders', 'sectionId');
-document.querySelectorAll('.episodes-container').forEach(container => {
-    initializeOrdering(container, '.episode-list-item',
-        '{% url "teacher:episode_reorder" %}', 'episode_orders', 'episodeId');
-});
+initializeOrdering(Array.from(document.querySelectorAll('.episodes-container')), '.episode-list-item',
+    '{% url "teacher:episode_reorder" %}', 'episode_orders', 'episodeId');
 // ---- Enrollment Settings ----
 const emRadios = document.querySelectorAll('input[name="enrollment_mode"]');
 const courseCodeSection = document.getElementById('courseCodeSection');
