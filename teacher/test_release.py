@@ -213,6 +213,92 @@ class TeacherReleaseRegressionTests(TestCase):
             ['Second', 'Third', 'First'],
         )
 
+    def test_episode_move_saves_both_sections_and_preserves_submission(self):
+        source = self.section('Source')
+        destination = self.section('Destination')
+        first = self.episode(source, 'First')
+        moved = self.episode(source, 'Moved', 1)
+        last = self.episode(destination, 'Last')
+        submission = CodeSubmission.objects.create(user=self.teacher, episode=moved, code='print(1)')
+        response = self.post_json(reverse('teacher:episode_reorder'), {'episode_sections': [
+            {'section_id': source.pk, 'episode_ids': [first.pk]},
+            {'section_id': destination.pk, 'episode_ids': [moved.pk, last.pk]},
+        ]})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(list(source.episodes.values_list('pk', 'order')), [(first.pk, 0)])
+        self.assertEqual(list(destination.episodes.values_list('pk', 'order')), [(moved.pk, 0), (last.pk, 1)])
+        submission.refresh_from_db()
+        self.assertEqual(submission.episode_id, moved.pk)
+        self.assertEqual(submission.code, 'print(1)')
+
+    def test_episode_move_to_empty_section_can_empty_source(self):
+        source = self.section('Source')
+        destination = self.section('Empty')
+        moved = self.episode(source, 'Moved')
+        response = self.post_json(reverse('teacher:episode_reorder'), {'episode_sections': [
+            {'section_id': source.pk, 'episode_ids': []},
+            {'section_id': destination.pk, 'episode_ids': [moved.pk]},
+        ]})
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(source.episodes.exists())
+        moved.refresh_from_db()
+        self.assertEqual((moved.section_id, moved.order), (destination.pk, 0))
+
+    def test_episode_moves_reject_invalid_or_stale_lists_without_changes(self):
+        source = self.section('Source')
+        destination = self.section('Destination')
+        first = self.episode(source, 'First')
+        second = self.episode(destination, 'Second')
+        for groups, status in [
+            ([{'section_id': source.pk, 'episode_ids': []},
+              {'section_id': destination.pk, 'episode_ids': [first.pk]}], 409),
+            ([{'section_id': source.pk, 'episode_ids': [first.pk]},
+              {'section_id': destination.pk, 'episode_ids': [first.pk, second.pk]}], 400),
+            ([{'section_id': destination.pk, 'episode_ids': [first.pk, second.pk]}], 409),
+            ([{'section_id': source.pk, 'episode_ids': [True]}], 400),
+        ]:
+            with self.subTest(groups=groups):
+                response = self.post_json(reverse('teacher:episode_reorder'), {'episode_sections': groups})
+                self.assertEqual(response.status_code, status)
+                self.assertEqual(list(source.episodes.values_list('pk', flat=True)), [first.pk])
+                self.assertEqual(list(destination.episodes.values_list('pk', flat=True)), [second.pk])
+
+    def test_episode_move_rejects_other_course_and_unauthorized_teacher(self):
+        source = self.section('Source')
+        first = self.episode(source, 'First')
+        other_course = Course.objects.create(title='Other', creator=self.teacher)
+        destination = self.section('Other course section', course=other_course)
+        groups = [{'section_id': source.pk, 'episode_ids': []},
+                  {'section_id': destination.pk, 'episode_ids': [first.pk]}]
+        response = self.post_json(reverse('teacher:episode_reorder'), {'episode_sections': groups})
+        self.assertEqual(response.status_code, 400)
+        destination.course = self.course
+        destination.save()
+        self.client.force_login(self.other_teacher)
+        response = self.post_json(reverse('teacher:episode_reorder'), {'episode_sections': groups})
+        self.assertEqual(response.status_code, 403)
+        first.refresh_from_db()
+        self.assertEqual(first.section_id, source.pk)
+
+    def test_section_rename_updates_only_title_and_rejects_invalid_titles(self):
+        section = self.section('Original', order=3)
+        episode = self.episode(section, 'Lesson')
+        url = reverse('teacher:section_rename', args=[section.pk])
+        response = self.client.post(url, {'title': '  New title  '})
+        self.assertRedirects(response, reverse('teacher:course_edit', args=[self.course.pk]))
+        section.refresh_from_db()
+        self.assertEqual((section.title, section.order), ('New title', 3))
+        self.assertEqual(list(section.episodes.all()), [episode])
+        for title in ['', '   ', 'x' * 201]:
+            self.client.post(url, {'title': title})
+            section.refresh_from_db()
+            self.assertEqual(section.title, 'New title')
+        self.assertEqual(self.client.get(url).status_code, 405)
+        self.client.force_login(self.other_teacher)
+        self.assertEqual(self.client.post(url, {'title': 'Forbidden'}).status_code, 403)
+        section.refresh_from_db()
+        self.assertEqual(section.title, 'New title')
+
     def test_assignment_review_tolerates_legacy_invalid_code_test_results(self):
         section = self.section('Code section')
         episode = self.episode(section, 'Code episode', episode_type='code')

@@ -203,6 +203,20 @@ def section_create(request):
 
 
 @teacher_required
+@require_POST
+def section_rename(request, section_id):
+    section, course = check_section_ownership(request, section_id)
+    title = request.POST.get('title', '').strip()
+    if not title or len(title) > Section._meta.get_field('title').max_length:
+        messages.error(request, 'Section title must contain 1 to 200 characters.')
+    else:
+        section.title = title
+        section.save(update_fields=['title'])
+        messages.success(request, 'Section renamed successfully.')
+    return redirect('teacher:course_edit', course_id=course.pk)
+
+
+@teacher_required
 def episode_create(request):
     """Create a new episode. Only the parent course owner (or admin) can add episodes."""
     if request.method == 'POST':
@@ -380,7 +394,47 @@ def section_reorder(request):
 @teacher_required
 @require_POST
 def episode_reorder(request):
-    return _reorder_content(request, Episode, 'episode_orders')
+    try:
+        data = json.loads(request.body)
+    except (json.JSONDecodeError, ValueError):
+        return JsonResponse({'success': False, 'error': 'Invalid ordering data.'}, status=400)
+    if not isinstance(data, dict) or 'episode_sections' not in data:
+        return _reorder_content(request, Episode, 'episode_orders')
+
+    # Submit the complete source and destination lists together so a move is atomic.
+    groups = data['episode_sections']
+    if (not isinstance(groups, list) or not 1 <= len(groups) <= 2
+            or any(not isinstance(group, dict)
+                   or type(group.get('section_id')) is not int
+                   or not isinstance(group.get('episode_ids'), list)
+                   for group in groups)):
+        return JsonResponse({'success': False, 'error': 'Invalid section ordering.'}, status=400)
+    section_ids = [group['section_id'] for group in groups]
+    episode_ids = [pk for group in groups for pk in group['episode_ids']]
+    if (len(set(section_ids)) != len(section_ids) or len(episode_ids) > 5000
+            or any(type(pk) is not int for pk in episode_ids)
+            or len(set(episode_ids)) != len(episode_ids)):
+        return JsonResponse({'success': False, 'error': 'Invalid episode ordering.'}, status=400)
+
+    with transaction.atomic():
+        sections = list(Section.objects.filter(pk__in=section_ids))
+        if len(sections) != len(section_ids):
+            return JsonResponse({'success': False, 'error': 'Section changed. Reload and try again.'}, status=409)
+        if len({section.course_id for section in sections}) != 1:
+            return JsonResponse({'success': False, 'error': 'Sections must belong to the same course.'}, status=400)
+        course = Course.objects.select_for_update().get(pk=sections[0].course_id)
+        if not course.teacher_can(request.user, CourseTeacherMembership.EDIT):
+            return JsonResponse({'success': False, 'error': 'Permission denied'}, status=403)
+        episodes = {episode.pk: episode for episode in
+                    Episode.objects.select_for_update().filter(section_id__in=section_ids)}
+        if set(episodes) != set(episode_ids):
+            return JsonResponse({'success': False, 'error': 'Content changed. Reload and try again.'}, status=409)
+        for group in groups:
+            for order, pk in enumerate(group['episode_ids']):
+                episodes[pk].section_id = group['section_id']
+                episodes[pk].order = order
+        Episode.objects.bulk_update(episodes.values(), ['section', 'order'])
+    return JsonResponse({'success': True})
 
 
 # ========== Delete Views ==========
