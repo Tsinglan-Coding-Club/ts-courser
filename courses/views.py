@@ -105,10 +105,14 @@ def course_dashboard(request, course_id):
     )
 
     # Progress calculation
-    all_episodes = Episode.objects.filter(section__course=course)
+    all_episodes = Episode.objects.filter(
+        section__course=course,
+        counts_toward_progress=True,
+    )
     read_episodes = EpisodeReadStatus.objects.filter(
         user=request.user,
         episode__section__course=course,
+        episode__counts_toward_progress=True,
         is_read=True
     ).count()
     total_episodes = all_episodes.count()

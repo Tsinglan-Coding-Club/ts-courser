@@ -3,7 +3,7 @@ from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 
-from progress.models import QuizSubmission
+from progress.models import CourseEnrollment, EpisodeReadStatus, QuizSubmission
 from .models import Course, Episode, Section
 
 
@@ -197,6 +197,36 @@ class QuizLearningInterfaceTests(TestCase):
             code_episode.starter_code,
             '# Write your Python code here\n',
         )
+
+    def test_course_dashboard_ignores_episodes_excluded_from_progress(self):
+        excluded_episode = Episode.objects.create(
+            section=self.section,
+            title='Optional reference',
+            type='material',
+            counts_toward_progress=False,
+        )
+        CourseEnrollment.objects.get_or_create(
+            user=self.student,
+            course=self.course,
+        )
+        EpisodeReadStatus.objects.create(
+            user=self.student,
+            episode=self.episode,
+            is_read=True,
+        )
+        EpisodeReadStatus.objects.create(
+            user=self.student,
+            episode=excluded_episode,
+            is_read=True,
+        )
+
+        response = self.client.get(
+            reverse('courses:course_dashboard', args=[self.course.id])
+        )
+
+        self.assertEqual(response.context['total_episodes'], 2)
+        self.assertEqual(response.context['read_episodes'], 1)
+        self.assertEqual(response.context['progress_percentage'], 50.0)
 
     def test_sidebar_expands_section_containing_current_episode(self):
         second_section = Section.objects.create(

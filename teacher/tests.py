@@ -746,6 +746,35 @@ class AssignmentCompletionTests(TestCase):
         )
         self.assertContains(response, '<span class="section-count">1/2</span>', html=True)
 
+    def test_progress_overview_ignores_excluded_episodes(self):
+        excluded = Episode.objects.create(
+            section=self.quiz.section,
+            title='Optional material',
+            type='material',
+            counts_toward_progress=False,
+        )
+        EpisodeReadStatus.objects.create(
+            episode=excluded,
+            user=self.pending_student,
+            is_read=True,
+        )
+
+        response = self.client.get(
+            reverse('teacher:course_manage', args=[self.course.id])
+        )
+
+        progress_by_user = {
+            row['user'].username: (
+                row['read_episodes'],
+                row['total_episodes'],
+                row['progress_pct'],
+            )
+            for row in response.context['students_data']
+        }
+        self.assertEqual(progress_by_user['student'], (1, 1, 100))
+        self.assertEqual(progress_by_user['pending'], (0, 1, 0))
+        self.assertEqual(response.context['stats']['median'], 50)
+
     def test_manage_without_students_does_not_count_preview_submissions(self):
         CourseEnrollment.objects.filter(course=self.course, user__role='student').delete()
 

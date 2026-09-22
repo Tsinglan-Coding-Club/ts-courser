@@ -226,6 +226,10 @@ class Episode(models.Model):
     title = models.CharField(max_length=200)
     type = models.CharField(max_length=10, choices=TYPE_CHOICES)
     order = models.IntegerField(default=0)
+    counts_toward_progress = models.BooleanField(
+        default=True,
+        help_text='Include this episode in course progress calculations'
+    )
 
     # Content fields
     info_page_content = models.TextField(

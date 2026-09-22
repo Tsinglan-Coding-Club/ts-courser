@@ -126,6 +126,32 @@ class ProgressAccessAndSubmissionTests(TestCase):
             self.assertContains(response, tag.name)
         self.assertContains(response, 'class="mb-3 course-tags"')
 
+    def test_my_courses_ignores_episodes_excluded_from_progress(self):
+        excluded_episode = Episode.objects.create(
+            section=self.section,
+            title='Optional reference',
+            type='material',
+            counts_toward_progress=False,
+        )
+        EpisodeReadStatus.objects.create(
+            user=self.student,
+            episode=self.material,
+            is_read=True,
+        )
+        EpisodeReadStatus.objects.create(
+            user=self.student,
+            episode=excluded_episode,
+            is_read=True,
+        )
+        self.client.force_login(self.student)
+
+        response = self.client.get(reverse('progress:my_courses'))
+
+        course_data = response.context['courses_data'][0]
+        self.assertEqual(course_data['total_episodes'], 4)
+        self.assertEqual(course_data['read_episodes'], 1)
+        self.assertEqual(course_data['progress_percentage'], 25)
+
     def test_upload_stores_draft_without_creating_teacher_visible_submission(self):
         self.client.force_login(self.student)
 

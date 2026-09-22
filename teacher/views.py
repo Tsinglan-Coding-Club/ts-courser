@@ -262,6 +262,9 @@ def episode_edit(request, episode_id):
     if request.method == 'POST':
         episode.title = request.POST.get('title', episode.title)
         episode.type = request.POST.get('type', episode.type)
+        episode.counts_toward_progress = (
+            request.POST.get('counts_toward_progress') == 'on'
+        )
         episode.info_page_content = request.POST.get('info_page_content', '')
         if episode.type == 'quiz':
             # Browser form encoding converts textarea LF to CRLF. Keep the
@@ -545,7 +548,10 @@ def course_manage(request, course_id):
     )
 
     # Total episodes for progress calculation
-    total_episodes = Episode.objects.filter(section__course=course).count()
+    total_episodes = Episode.objects.filter(
+        section__course=course,
+        counts_toward_progress=True,
+    ).count()
 
     # Calculate progress for each student
     students_data = []
@@ -556,6 +562,7 @@ def course_manage(request, course_id):
             read_count = EpisodeReadStatus.objects.filter(
                 user=enrollment.user,
                 episode__section__course=course,
+                episode__counts_toward_progress=True,
                 is_read=True
             ).count()
             progress_pct = int((read_count / total_episodes) * 100)

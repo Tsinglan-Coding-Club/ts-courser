@@ -32,7 +32,10 @@ class CourseAdmin(admin.ModelAdmin):
 class EpisodeInline(admin.TabularInline):
     model = Episode
     extra = 1
-    fields = ['title', 'type', 'order', 'info_page_content', 'content_pdf', 'answer_pdf']
+    fields = [
+        'title', 'type', 'order', 'counts_toward_progress',
+        'info_page_content', 'content_pdf', 'answer_pdf',
+    ]
 
 
 @admin.register(Section)
@@ -45,7 +48,10 @@ class SectionAdmin(admin.ModelAdmin):
 
 @admin.register(Episode)
 class EpisodeAdmin(admin.ModelAdmin):
-    list_display = ['title', 'section', 'type', 'order', 'has_content', 'created_at']
-    list_filter = ['type', 'section__course']
+    list_display = [
+        'title', 'section', 'type', 'order', 'counts_toward_progress',
+        'has_content', 'created_at',
+    ]
+    list_filter = ['type', 'counts_toward_progress', 'section__course']
     search_fields = ['title', 'section__title']
     readonly_fields = ['created_at', 'updated_at']
