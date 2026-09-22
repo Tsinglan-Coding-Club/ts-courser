@@ -443,7 +443,7 @@ def my_courses(request):
         read_episodes = 0
 
         for section in course.sections.all():
-            episodes = section.episodes.all()
+            episodes = section.episodes.filter(counts_toward_progress=True)
             total_episodes += episodes.count()
 
             # Count read episodes

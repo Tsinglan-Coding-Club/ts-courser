@@ -126,6 +126,49 @@ class TeacherReleaseRegressionTests(TestCase):
         self.assertEqual(episode.order, 3)
         self.assertEqual(episode.title, 'Edited episode')
 
+    def test_episode_edit_saves_progress_setting_for_every_episode_type(self):
+        section = self.section('Section')
+
+        for episode_type, _label in Episode.TYPE_CHOICES:
+            with self.subTest(episode_type=episode_type):
+                episode = self.episode(
+                    section,
+                    f'{episode_type.title()} episode',
+                    episode_type=episode_type,
+                )
+                url = reverse('teacher:episode_edit', args=[episode.id])
+
+                response = self.client.get(url)
+                self.assertContains(response, 'name="counts_toward_progress"')
+                self.assertContains(response, 'Include in Progress Overview')
+                self.assertContains(
+                    response,
+                    'id="countsTowardProgress" name="counts_toward_progress"\n'
+                    '                                   checked',
+                )
+
+                response = self.client.post(url, {
+                    'title': episode.title,
+                    'type': episode_type,
+                    'info_page_content': '',
+                })
+
+                self.assertRedirects(
+                    response,
+                    reverse('teacher:course_edit', args=[self.course.id]),
+                )
+                episode.refresh_from_db()
+                self.assertFalse(episode.counts_toward_progress)
+
+                self.client.post(url, {
+                    'title': episode.title,
+                    'type': episode_type,
+                    'info_page_content': '',
+                    'counts_toward_progress': 'on',
+                })
+                episode.refresh_from_db()
+                self.assertTrue(episode.counts_toward_progress)
+
     def test_section_reorder_rejects_non_owner_without_changes(self):
         first = self.section('First', 0)
         second = self.section('Second', 1)

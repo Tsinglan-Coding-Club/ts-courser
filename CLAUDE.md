@@ -62,7 +62,7 @@ Student submission/progress access is centralized in `progress.views._get_access
 
 `Section` and `Episode` order by `(order, id)`. Creation appends to the parent. Drag-and-drop sorting is owned by the course editor and checked on the server. Do not reintroduce episode order fields in the episode form.
 
-Episode types are `material`, `quiz`, `code`, and `paper`. Shared fields include Markdown information and PDFs. Quiz configuration is `quiz_require_all` and `quiz_release_policy`; `quiz_show_results` is a legacy field. Code configuration includes `starter_code`, `code_oj_enabled`, JSON test cases, `show_interactive`, `show_reference`, and `reference_sheet_content`. The default starter code is defined by `DEFAULT_STARTER_CODE` in `courses/models.py`.
+Episode types are `material`, `quiz`, `code`, and `paper`. Shared fields include Markdown information, PDFs, and `counts_toward_progress`; progress totals include only episodes where that flag is enabled. Quiz configuration is `quiz_require_all` and `quiz_release_policy`; `quiz_show_results` is a legacy field. Code configuration includes `starter_code`, `code_oj_enabled`, JSON test cases, `show_interactive`, `show_reference`, and `reference_sheet_content`. The default starter code is defined by `DEFAULT_STARTER_CODE` in `courses/models.py`.
 
 Progress records:
 
