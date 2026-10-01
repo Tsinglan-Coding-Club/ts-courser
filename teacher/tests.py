@@ -775,6 +775,45 @@ class AssignmentCompletionTests(TestCase):
         self.assertEqual(progress_by_user['pending'], (0, 1, 0))
         self.assertEqual(response.context['stats']['median'], 50)
 
+    def test_progress_overview_shows_quartiles_when_values_coincide(self):
+        EpisodeReadStatus.objects.create(
+            episode=self.quiz, user=self.pending_student, is_read=True,
+        )
+
+        response = self.client.get(reverse('teacher:course_manage', args=[self.course.id]))
+
+        self.assertEqual(response.context['stats']['q1'], 100)
+        self.assertEqual(response.context['stats']['q3'], 100)
+        self.assertContains(response, 'class="box-plot-val box-plot-val--q1"')
+        self.assertContains(response, 'class="box-plot-val box-plot-val--q3"')
+        self.assertContains(response, 'Q1 100%')
+        self.assertContains(response, 'Q3 100%')
+
+    def test_assignments_are_grouped_by_section_and_collapsed(self):
+        first_section = self.quiz.section
+        later_section = Section.objects.create(
+            course=self.course, title='Later section', order=1,
+        )
+        code = Episode.objects.create(
+            section=first_section, title='Code', type='code', order=1,
+        )
+        later_quiz = Episode.objects.create(
+            section=later_section, title='Later quiz', type='quiz',
+        )
+
+        response = self.client.get(reverse('teacher:course_manage', args=[self.course.id]))
+
+        sections = response.context['assignment_sections']
+        self.assertEqual([section['id'] for section in sections], [first_section.id, later_section.id])
+        self.assertEqual(
+            [[ep['id'] for ep in section['episodes']] for section in sections],
+            [[self.quiz.id, code.id], [later_quiz.id]],
+        )
+        self.assertContains(response, '<details class="assignment-section-group">', count=2)
+        self.assertNotContains(response, '<details class="assignment-section-group" open')
+        self.assertContains(response, '2 assignments')
+        self.assertContains(response, '1 assignment')
+
     def test_manage_without_students_does_not_count_preview_submissions(self):
         CourseEnrollment.objects.filter(course=self.course, user__role='student').delete()
 

@@ -145,18 +145,11 @@
                         <div class="box-plot-tick-label" style="left: 75%;">75%</div>
                         <div class="box-plot-tick" style="left: 100%;"></div>
                         <div class="box-plot-tick-label" style="left: 100%;">100%</div>
-                        <!-- Median always shown on top -->
-                        <div class="box-plot-val" style="left: {{ stats.median }}%;">Median {{ stats.median }}%</div>
-                        <!-- Q1 / Q3 only if far enough from median -->
-                        {% if stats.show_q1 %}
-                        <div class="box-plot-val" style="left: {{ stats.q1 }}%;">Q1 {{ stats.q1 }}%</div>
-                        {% endif %}
-                        {% if stats.show_q3 %}
-                        <div class="box-plot-val" style="left: {{ stats.q3 }}%;">Q3 {{ stats.q3 }}%</div>
-                        {% endif %}
-                        <!-- Min / Max on top of bar -->
-                        <div class="box-plot-val" style="left: {{ stats.min }}%;">Min {{ stats.min }}%</div>
-                        <div class="box-plot-val" style="left: {{ stats.max }}%;">Max {{ stats.max }}%</div>
+                        <div class="box-plot-val box-plot-val--min" style="left: {{ stats.min }}%;">Min {{ stats.min }}%</div>
+                        <div class="box-plot-val box-plot-val--median" style="left: {{ stats.median }}%;">Median {{ stats.median }}%</div>
+                        <div class="box-plot-val box-plot-val--max" style="left: {{ stats.max }}%;">Max {{ stats.max }}%</div>
+                        <div class="box-plot-val box-plot-val--q1" style="left: {{ stats.q1 }}%;">Q1 {{ stats.q1 }}%</div>
+                        <div class="box-plot-val box-plot-val--q3" style="left: {{ stats.q3 }}%;">Q3 {{ stats.q3 }}%</div>
                     </div>
                     {% else %}
                     <p class="text-muted text-center mb-0">No progress data yet.</p>
@@ -299,22 +292,32 @@
 
     <!-- Tab 3: Assignments -->
     <div id="panelAssignments" class="manage-panel" style="display:none;">
-        {% if quiz_episodes %}
+        {% if assignment_sections %}
             <div class="card section-card">
                 <div class="card-header section-card-header">
                     <h2 class="section-card-title"><i class="bi bi-clipboard-check"></i> Assignments</h2>
                 </div>
-                <div class="list-group list-group-flush">
-                    {% for ep in quiz_episodes %}
-                        <a href="{% url 'teacher:assignment_review' course.id ep.id %}"
-                           class="list-group-item list-group-item-action assignment-link">
-                            <div class="assignment-main">
-                                <span class="assignment-title">{{ ep.title }}</span>
-                                <span class="assignment-section">{{ ep.section.title }}</span>
-                                <span class="teacher-status {% if ep.type == 'quiz' %}teacher-status-draft{% else %}teacher-status-published{% endif %} ms-1">{{ ep.type|upper }}</span>
-                            </div>
-                            <span class="section-count">{{ ep.submission_count }}/{{ stats.total_students }}</span>
-                        </a>
+                <div class="assignment-sections">
+                    {% for section in assignment_sections %}
+                    <details class="assignment-section-group">
+                        <summary class="assignment-section-heading">
+                            <span class="assignment-section-name">{{ section.title }}</span>
+                            <span class="section-count">{{ section.episodes|length }} assignment{{ section.episodes|pluralize }}</span>
+                            <i class="bi bi-chevron-down assignment-section-chevron" aria-hidden="true"></i>
+                        </summary>
+                        <div class="list-group list-group-flush">
+                            {% for ep in section.episodes %}
+                            <a href="{% url 'teacher:assignment_review' course.id ep.id %}"
+                               class="list-group-item list-group-item-action assignment-link">
+                                <div class="assignment-main">
+                                    <span class="assignment-title">{{ ep.title }}</span>
+                                    <span class="teacher-status {% if ep.type == 'quiz' %}teacher-status-draft{% else %}teacher-status-published{% endif %} mt-1">{{ ep.type|upper }}</span>
+                                </div>
+                                <span class="section-count">{{ ep.submission_count }}/{{ stats.total_students }}</span>
+                            </a>
+                            {% endfor %}
+                        </div>
+                    </details>
                     {% endfor %}
                 </div>
             </div>
