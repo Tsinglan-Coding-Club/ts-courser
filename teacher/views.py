@@ -547,24 +547,22 @@ def course_manage(request, course_id):
             'min': _min, 'q1': _q1, 'median': _median, 'q3': _q3, 'max': _max,
             'whisker_width': _max - _min,
             'box_width': _q3 - _q1,
-            'show_q1': (_median - _q1) >= 5,
-            'show_q3': (_q3 - _median) >= 5,
             'total_students': len(students_data),
         }
     else:
         stats = {
             'min': 0, 'q1': 0, 'median': 0, 'q3': 0, 'max': 0,
             'whisker_width': 0, 'box_width': 0,
-            'show_q1': False, 'show_q3': False,
             'total_students': 0,
         }
 
     # Get quiz and code episodes with submission counts
     quiz_episodes = []
+    assignment_sections = []
     assignable_types = ['quiz', 'code']
     for ep in Episode.objects.filter(
         section__course=course, type__in=assignable_types
-    ).select_related('section'):
+    ).select_related('section').order_by('section__order', 'section__id', 'order', 'id'):
         if ep.type == 'quiz':
             count = QuizSubmission.objects.filter(
                 episode=ep, user_id__in=enrollments.values('user_id'),
@@ -574,13 +572,21 @@ def course_manage(request, course_id):
                 episode=ep, is_submitted=True,
                 user_id__in=enrollments.values('user_id'),
             ).count()
-        quiz_episodes.append({
+        assignment = {
             'id': ep.id,
             'title': ep.title,
             'section': ep.section,
             'type': ep.type,
             'submission_count': count,
-        })
+        }
+        quiz_episodes.append(assignment)
+        if not assignment_sections or assignment_sections[-1]['id'] != ep.section_id:
+            assignment_sections.append({
+                'id': ep.section_id,
+                'title': ep.section.title,
+                'episodes': [],
+            })
+        assignment_sections[-1]['episodes'].append(assignment)
 
     context = {
         'course': course,
@@ -588,6 +594,7 @@ def course_manage(request, course_id):
         'available_students': available_students,
         'stats': stats,
         'quiz_episodes': quiz_episodes,
+        'assignment_sections': assignment_sections,
         'memberships': course.teacher_memberships.select_related('user'),
         'role_choices': CourseTeacherMembership.ROLE_CHOICES,
         'available_teachers': (

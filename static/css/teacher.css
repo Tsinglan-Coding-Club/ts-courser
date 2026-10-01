@@ -245,6 +245,52 @@
 }
 
 /* ---------------------------- Assignments ------------------------------- */
+.assignment-section-group + .assignment-section-group {
+    border-top: 1px solid var(--border-color);
+}
+
+.assignment-section-heading {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 1rem 1.25rem;
+    cursor: pointer;
+    list-style: none;
+}
+
+.assignment-section-heading::-webkit-details-marker {
+    display: none;
+}
+
+.assignment-section-heading:hover {
+    background: var(--bg-tertiary);
+}
+
+.assignment-section-heading:focus-visible {
+    outline: 2px solid var(--primary-color);
+    outline-offset: -2px;
+}
+
+.assignment-section-name {
+    flex: 1;
+    min-width: 0;
+    font-weight: 650;
+}
+
+.assignment-section-chevron {
+    color: var(--text-secondary);
+    transition: transform 0.16s ease;
+}
+
+.assignment-section-group[open] .assignment-section-chevron {
+    transform: rotate(180deg);
+}
+
+.assignment-section-group .assignment-link {
+    padding-left: 2rem;
+    border-top: 1px solid var(--border-color);
+}
+
 .assignment-link {
     display: flex;
     align-items: center;
@@ -268,21 +314,16 @@
     font-weight: 650;
 }
 
-.assignment-section {
-    color: var(--text-secondary);
-    font-size: 0.85rem;
-}
-
 /* ------------------------- Box plot (progress) -------------------------- */
 .box-plot {
     position: relative;
-    height: 86px;
-    margin: 0.25rem 0.75rem 2.2rem;
+    height: 148px;
+    margin: 0.25rem 3.25rem 0.5rem;
 }
 
 .box-plot-bar {
     position: absolute;
-    top: 26px;
+    top: 60px;
     left: 0;
     width: 100%;
     height: 12px;
@@ -292,7 +333,7 @@
 
 .box-plot-whisker {
     position: absolute;
-    top: 26px;
+    top: 60px;
     height: 12px;
     background: rgba(136, 56, 144, 0.24);
     border-radius: 999px;
@@ -300,7 +341,7 @@
 
 .box-plot-box {
     position: absolute;
-    top: 19px;
+    top: 53px;
     height: 26px;
     background: var(--primary-color);
     border-radius: 5px;
@@ -308,7 +349,7 @@
 
 .box-plot-median {
     position: absolute;
-    top: 16px;
+    top: 50px;
     width: 3px;
     height: 32px;
     background: var(--bg-primary);
@@ -318,7 +359,7 @@
 
 .box-plot-tick {
     position: absolute;
-    top: 22px;
+    top: 56px;
     width: 1px;
     height: 20px;
     background: var(--text-secondary);
@@ -327,7 +368,7 @@
 
 .box-plot-tick-label {
     position: absolute;
-    top: 45px;
+    top: 80px;
     font-size: 0.7rem;
     color: var(--text-secondary);
     transform: translateX(-50%);
@@ -335,13 +376,18 @@
 
 .box-plot-val {
     position: absolute;
-    top: 0;
     font-size: 0.7rem;
     font-weight: 650;
     color: var(--primary-color);
     transform: translateX(-50%);
     white-space: nowrap;
 }
+
+.box-plot-val--min { top: 0; }
+.box-plot-val--median { top: 18px; }
+.box-plot-val--max { top: 36px; }
+.box-plot-val--q1 { top: 103px; }
+.box-plot-val--q3 { top: 122px; }
 
 /* ----------------------------- Empty states ----------------------------- */
 .teacher-empty {
@@ -365,6 +411,10 @@
 
 /* ------------------------------ Responsive ------------------------------ */
 @media (max-width: 767.98px) {
+    .box-plot {
+        margin-inline: 2.75rem;
+    }
+
     .teacher-page-header {
         flex-direction: column;
         align-items: stretch;
