@@ -86,36 +86,6 @@
     color: var(--text-primary);
 }
 
-.md-preview h1, .md-preview h2, .md-preview h3 {
-    margin-top: 1rem;
-    margin-bottom: 0.5rem;
-}
-
-.md-preview img {
-    max-width: 100%;
-    height: auto;
-}
-
-.md-preview code {
-    background-color: var(--bg-tertiary);
-    padding: 0.2rem 0.4rem;
-    border-radius: 0.25rem;
-}
-
-.md-preview pre {
-    background-color: var(--bg-tertiary);
-    padding: 1rem;
-    border-radius: 0.25rem;
-    overflow-x: auto;
-}
-
-.md-preview blockquote {
-    border-left: 4px solid var(--primary-color);
-    padding-left: 1rem;
-    margin-left: 0;
-    color: var(--text-secondary);
-}
-
 #typeToggleGroup .btn-outline-primary {
     color: var(--primary-color);
     border-color: var(--primary-color);
@@ -759,7 +729,7 @@
                         </div>
                         <div class="md-editor-panel">
                             <div class="md-panel-header">Preview</div>
-                            <div class="md-preview" id="mdPreview"></div>
+                            <div class="md-preview markdown-body" id="mdPreview"></div>
                         </div>
                     </div>
                 </div>
@@ -830,7 +800,7 @@
                         </div>
                         <div class="md-editor-panel">
                             <div class="md-panel-header">Questions Preview</div>
-                            <div class="md-preview" id="quizPreview"></div>
+                            <div class="md-preview markdown-body" id="quizPreview"></div>
                         </div>
                     </div>
                 </div>
