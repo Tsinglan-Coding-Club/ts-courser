@@ -1,4 +1,50 @@
-/* Shared rules for HTML produced by Markdown renderers. */
+/* Shared rules for HTML produced by Markdown renderers.
+ * Base typography: vendor/github-markdown/github-markdown.css (5.8.1, MIT).
+ * Keep this file after the vendor stylesheet and before reference-sheet.css.
+ */
+[data-theme] .markdown-body {
+    --fgColor-default: var(--text-primary);
+    --fgColor-muted: var(--text-secondary);
+    --fgColor-accent: var(--primary-color);
+    --bgColor-default: var(--bg-secondary);
+    --bgColor-muted: var(--bg-tertiary);
+    --bgColor-neutral-muted: var(--bg-tertiary);
+    --borderColor-default: var(--border-color);
+    --borderColor-muted: var(--border-color);
+    --borderColor-neutral-muted: var(--border-color);
+}
+
+.markdown-body {
+    box-sizing: border-box;
+    min-width: 0;
+    line-height: 1.7;
+}
+
+.markdown-body img {
+    height: auto;
+}
+
+/* Scroll wide tables inside the reading column, never the entire page. */
+.markdown-body table {
+    width: max-content;
+    max-width: 100%;
+    overflow-x: auto;
+    font-size: inherit;
+}
+
+.markdown-body table th,
+.markdown-body table td {
+    padding: 0.6em 0.85em;
+}
+
+.markdown-body table th {
+    background: var(--bg-tertiary);
+}
+
+.markdown-body pre {
+    tab-size: 4;
+}
+
 
 /*
  * Inline code intentionally has padding. Fenced code already sits inside a

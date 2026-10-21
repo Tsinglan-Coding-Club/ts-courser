@@ -103,44 +103,11 @@
     background-color: white;
 }
 
-.markdown-body {
-    box-sizing: border-box;
-    min-width: 200px;
+#markdown-content {
     max-width: 980px;
     margin: 0 auto;
-    padding: 45px;
-    background: var(--bg-secondary);
-    color: var(--text-primary);
-    line-height: 1.6;
+    padding: clamp(16px, 3vw, 45px);
     border-radius: 8px;
-}
-
-.markdown-body h1, .markdown-body h2, .markdown-body h3 {
-    border-bottom: 1px solid var(--border-color);
-    padding-bottom: 0.3em;
-    margin-top: 24px;
-    margin-bottom: 16px;
-    font-weight: 600;
-    color: var(--text-primary);
-}
-
-.markdown-body code {
-    background-color: var(--bg-tertiary);
-    padding: 0.2em 0.4em;
-    border-radius: 6px;
-    font-size: 85%;
-    color: var(--text-primary);
-}
-
-.markdown-body pre {
-    background-color: var(--bg-tertiary);
-    padding: 16px;
-    border-radius: 6px;
-    overflow: auto;
-}
-
-.markdown-body pre code {
-    background-color: transparent;
 }
 
 .accordion-button {
@@ -259,6 +226,7 @@
 }
 
 /* Info column markdown: remove max-width, reduce padding for narrow column */
+.code-panel-body #markdown-content,
 .code-panel-body .markdown-body {
     min-width: 0;
     max-width: none;
