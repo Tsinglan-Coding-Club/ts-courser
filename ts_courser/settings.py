@@ -143,6 +143,22 @@ STATICFILES_DIRS = [
         'vendor/webgl-fluid',
         BASE_DIR / 'node_modules' / 'webgl-fluid' / 'dist',
     ),
+    (
+        'vendor/emoji-picker-element',
+        BASE_DIR / 'node_modules' / 'emoji-picker-element',
+    ),
+    (
+        'vendor/emoji-data',
+        BASE_DIR / 'node_modules' / 'emoji-picker-element-data' / 'en' / 'emojibase',
+    ),
+    (
+        'vendor/devicon',
+        BASE_DIR / 'node_modules' / 'devicon' / 'icons',
+    ),
+    (
+        'vendor/heroicons',
+        BASE_DIR / 'node_modules' / 'heroicons',
+    ),
 ]
 
 # Media files (User uploads)

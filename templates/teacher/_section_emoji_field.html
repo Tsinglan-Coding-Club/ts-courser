@@ -1,0 +1,28 @@
+{% load static %}
+<div class="mb-3 section-emoji-field" data-section-emoji-field>
+    <div class="d-flex justify-content-between align-items-center mb-1">
+        <span class="form-label mb-0">Emoji</span>
+        <button type="button" class="btn btn-sm btn-link text-reset" data-emoji-clear>Clear</button>
+    </div>
+    <input type="hidden" id="{{ input_id }}" name="emoji">
+    <details data-emoji-details>
+        <summary class="btn btn-outline-secondary" aria-label="Choose section emoji">
+            <span data-emoji-preview aria-hidden="true">📁</span>
+            <i class="bi bi-chevron-down ms-2" aria-hidden="true"></i>
+        </summary>
+        <div class="mt-2" data-emoji-picker-host data-source="{% static 'vendor/emoji-data/data.json' %}">
+            <div class="section-icon-filters" data-icon-filters role="group" aria-label="Custom icon filters" hidden>
+                <button type="button" data-icon-filter="all" aria-pressed="true">All</button>
+                <button type="button" data-icon-filter="devicon" aria-pressed="false">Devicon</button>
+                <button type="button" data-icon-filter="navigation" aria-pressed="false">Navigation</button>
+                <button type="button" data-icon-filter="files" aria-pressed="false">Files &amp; Editing</button>
+                <button type="button" data-icon-filter="communication" aria-pressed="false">People &amp; Messages</button>
+                <button type="button" data-icon-filter="media" aria-pressed="false">Media &amp; Design</button>
+                <button type="button" data-icon-filter="tools" aria-pressed="false">Tools &amp; Data</button>
+                <button type="button" data-icon-filter="status" aria-pressed="false">Status &amp; Security</button>
+                <button type="button" data-icon-filter="everyday" aria-pressed="false">Everyday</button>
+            </div>
+        </div>
+        <div class="small text-muted" data-emoji-picker-status role="status"></div>
+    </details>
+</div>

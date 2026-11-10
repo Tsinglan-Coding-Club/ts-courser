@@ -70,19 +70,31 @@
         <div class="list-group list-group-flush">
             {% for section in sections %}
                 <div class="list-group-item">
-                    <h6 class="mb-2"><i class="bi bi-folder"></i> {{ section.title }}</h6>
-                    <ul class="list-unstyled ms-3">
-                        {% for episode in section.episodes.all %}
-                            <li class="mb-1">
-                                {% with type_cfg=episode.type|episode_type_config %}
-                                    <i class="bi {{ type_cfg.icon }} text-{{ type_cfg.badge|slice:'3:' }}"></i>
-                                {% endwith %}
-                                {{ episode.title }}
-                            </li>
-                        {% empty %}
-                            <li class="text-muted">No episodes yet</li>
-                        {% endfor %}
-                    </ul>
+                    <h6 class="mb-0">
+                        <button type="button"
+                                class="btn btn-link text-reset text-decoration-none text-start w-100 p-0 d-flex justify-content-between align-items-center collapsed"
+                                data-bs-toggle="collapse"
+                                data-bs-target="#section-episodes-{{ section.id }}"
+                                aria-expanded="false"
+                                aria-controls="section-episodes-{{ section.id }}">
+                            <span>{% if section.emoji %}<span aria-hidden="true">{% section_icon section.emoji %}</span>{% else %}<i class="bi bi-folder" aria-hidden="true"></i>{% endif %} {{ section.title }}</span>
+                            <i class="bi bi-chevron-expand ms-2" aria-hidden="true"></i>
+                        </button>
+                    </h6>
+                    <div class="collapse" id="section-episodes-{{ section.id }}">
+                        <ul class="list-unstyled ms-3 mt-2 mb-0">
+                            {% for episode in section.episodes.all %}
+                                <li class="mb-1">
+                                    {% with type_cfg=episode.type|episode_type_config %}
+                                        <i class="bi {{ type_cfg.icon }} text-{{ type_cfg.badge|slice:'3:' }}"></i>
+                                    {% endwith %}
+                                    {{ episode.title }}
+                                </li>
+                            {% empty %}
+                                <li class="text-muted">No episodes yet</li>
+                            {% endfor %}
+                        </ul>
+                    </div>
                 </div>
             {% empty %}
                 <div class="list-group-item text-muted">

@@ -4,16 +4,19 @@ from django.contrib.auth import get_user_model
 from django.contrib import messages
 from django.core.exceptions import PermissionDenied
 from django.http import JsonResponse
-from django.views.decorators.http import require_POST
+from django.views.decorators.gzip import gzip_page
+from django.views.decorators.http import require_GET, require_POST
 from django.utils import timezone
 from django.db import models, transaction
 from accounts.models import User
 from courses.models import Course, CourseTeacherMembership, Section, Episode, Tag
+from courses.icons import section_icon_choices
 from courses.quiz import _parse_quiz_markdown
 from progress.models import (
     CourseEnrollment, EpisodeReadStatus, QuizSubmission, CodeSubmission,
     CodeSubmissionHistory,
 )
+from .forms import SectionForm
 from .decorators import (
     teacher_required,
     require_course_permission,
@@ -166,14 +169,19 @@ def course_edit(request, course_id):
 
 
 @teacher_required
+@require_GET
+@gzip_page
+def section_icon_options(request):
+    return JsonResponse(section_icon_choices(), safe=False)
+
+
+@teacher_required
 def section_create(request):
     """Create a new section. Only the course owner (or admin) can add sections."""
     if request.method == 'POST':
         course_id = request.POST.get('course_id')
-        title = request.POST.get('title')
-
-        if not all([course_id, title]):
-            messages.error(request, 'Course and title are required.')
+        if not course_id:
+            messages.error(request, 'Course is required.')
             return redirect('teacher:course_list')
 
         course = get_object_or_404(Course, id=course_id)
@@ -181,6 +189,14 @@ def section_create(request):
         # Ownership check: only the course creator or admin can add sections
         if not course.teacher_can(request.user, CourseTeacherMembership.EDIT):
             raise PermissionDenied("You can only add sections to assigned courses.")
+
+        form = SectionForm(request.POST)
+        if not form.is_valid():
+            for errors in form.errors.values():
+                for error in errors:
+                    messages.error(request, error)
+            return redirect('teacher:course_edit', course_id=course.pk)
+        title = form.cleaned_data['title']
 
         with transaction.atomic():
             Course.objects.select_for_update().get(pk=course.pk)
@@ -193,6 +209,7 @@ def section_create(request):
             Section.objects.create(
                 course=course,
                 title=title,
+                emoji=form.cleaned_data['emoji'],
                 order=new_order
             )
 
@@ -206,13 +223,18 @@ def section_create(request):
 @require_POST
 def section_rename(request, section_id):
     section, course = check_section_ownership(request, section_id)
-    title = request.POST.get('title', '').strip()
-    if not title or len(title) > Section._meta.get_field('title').max_length:
-        messages.error(request, 'Section title must contain 1 to 200 characters.')
+    form = SectionForm({
+        'title': request.POST.get('title', ''),
+        'emoji': request.POST.get('emoji', section.emoji),
+    }, instance=section)
+    if form.is_valid():
+        section = form.save(commit=False)
+        section.save(update_fields=['title', 'emoji'])
+        messages.success(request, 'Section updated successfully.')
     else:
-        section.title = title
-        section.save(update_fields=['title'])
-        messages.success(request, 'Section renamed successfully.')
+        for errors in form.errors.values():
+            for error in errors:
+                messages.error(request, error)
     return redirect('teacher:course_edit', course_id=course.pk)
 
 
@@ -641,6 +663,7 @@ def course_manage(request, course_id):
             assignment_sections.append({
                 'id': ep.section_id,
                 'title': ep.section.title,
+                'emoji': ep.section.emoji,
                 'episodes': [],
             })
         assignment_sections[-1]['episodes'].append(assignment)

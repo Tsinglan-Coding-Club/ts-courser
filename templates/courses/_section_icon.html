@@ -1,0 +1,1 @@
+{% if icon_url or emoji %}<span class="section-icon-frame" aria-hidden="true">{% if icon_url %}<img src="{{ icon_url }}" width="24" height="24" class="section-icon {% if is_heroicon %}section-icon-heroicons{% else %}section-icon-devicon{% endif %}" alt="">{% else %}{{ emoji }}{% endif %}</span>{% endif %}

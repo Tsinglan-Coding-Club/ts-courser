@@ -301,7 +301,7 @@
                     {% for section in assignment_sections %}
                     <details class="assignment-section-group">
                         <summary class="assignment-section-heading">
-                            <span class="assignment-section-name">{{ section.title }}</span>
+                            <span class="assignment-section-name">{% if section.emoji %}<span class="me-1" aria-hidden="true">{% section_icon section.emoji %}</span>{% endif %}{{ section.title }}</span>
                             <span class="section-count">{{ section.episodes|length }} assignment{{ section.episodes|pluralize }}</span>
                             <i class="bi bi-chevron-down assignment-section-chevron" aria-hidden="true"></i>
                         </summary>

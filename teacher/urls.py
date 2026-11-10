@@ -11,6 +11,7 @@ urlpatterns = [
     path('courses/<int:course_id>/teachers/save/', views.course_member_save, name='course_member_save'),
     path('courses/<int:course_id>/teachers/<int:membership_id>/remove/', views.course_member_remove, name='course_member_remove'),
     path('courses/<int:course_id>/delete/', views.course_delete, name='course_delete'),
+    path('sections/icon-options/', views.section_icon_options, name='section_icon_options'),
     path('sections/create/', views.section_create, name='section_create'),
     path('sections/<int:section_id>/delete/', views.section_delete, name='section_delete'),
     path('sections/<int:section_id>/rename/', views.section_rename, name='section_rename'),

@@ -7,6 +7,99 @@ from progress.models import CourseEnrollment, EpisodeReadStatus, QuizSubmission
 from .models import Course, Episode, Section
 
 
+class SectionPresentationTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.student = get_user_model().objects.create_user(username='section-student')
+        cls.course = Course.objects.create(
+            title='Python', description='Course', is_published=True,
+        )
+        cls.section = Section.objects.create(
+            course=cls.course, title='Basics', emoji='🐍',
+        )
+        cls.empty_section = Section.objects.create(
+            course=cls.course, title='Coming soon', order=1,
+        )
+        cls.episode = Episode.objects.create(
+            section=cls.section, title='First lesson', type='material',
+        )
+
+    def setUp(self):
+        self.client.force_login(self.student)
+
+    def test_overview_and_dashboard_start_with_all_sections_collapsed(self):
+        for route in ('courses:course_overview', 'courses:course_dashboard'):
+            with self.subTest(route=route):
+                if route == 'courses:course_dashboard':
+                    CourseEnrollment.objects.create(
+                        user=self.student, course=self.course,
+                    )
+                response = self.client.get(reverse(route, args=[self.course.pk]))
+                self.assertEqual(response.status_code, 200)
+                self.assertContains(response, 'aria-expanded="false"', count=2)
+                self.assertNotContains(response, 'class="collapse show"')
+                for section in (self.section, self.empty_section):
+                    target = f'section-episodes-{section.pk}'
+                    self.assertContains(response, f'data-bs-target="#{target}"')
+                    self.assertContains(response, f'aria-controls="{target}"')
+                    self.assertContains(response, f'<div class="collapse" id="{target}">')
+                self.assertContains(
+                    response,
+                    '<span aria-hidden="true">'
+                    '<span class="section-icon-frame" aria-hidden="true">🐍</span>'
+                    '</span> Basics',
+                    html=True,
+                )
+                self.assertContains(response, 'First lesson')
+                self.assertContains(response, 'No episodes yet')
+
+    def test_learning_sidebar_shows_emoji_before_section_title(self):
+        CourseEnrollment.objects.create(user=self.student, course=self.course)
+        response = self.client.get(reverse(
+            'courses:learning_interface_episode',
+            args=[self.course.pk, self.episode.pk],
+        ))
+        self.assertEqual(response.status_code, 200)
+        self.assertRegex(
+            response.content.decode(),
+            r'<span class="me-2" aria-hidden="true">'
+            r'<span class="section-icon-frame" aria-hidden="true">🐍</span>\s*</span>\s*Basics',
+        )
+        self.assertEqual(response.context['expanded_section_id'], self.section.pk)
+
+    def test_custom_icons_render_as_local_images_on_all_student_pages(self):
+        for value, path in (
+            ('devicon:python:original', 'devicon/python/python-original.svg'),
+            ('heroicons:24-outline:academic-cap', 'heroicons/24/outline/academic-cap.svg'),
+        ):
+            self.section.emoji = value
+            self.section.save(update_fields=['emoji'])
+            CourseEnrollment.objects.filter(user=self.student, course=self.course).delete()
+            for route, args in (
+                ('courses:course_overview', [self.course.pk]),
+                ('courses:course_dashboard', [self.course.pk]),
+                ('courses:learning_interface_episode', [self.course.pk, self.episode.pk]),
+            ):
+                with self.subTest(icon=value, route=route):
+                    if route == 'courses:course_dashboard':
+                        CourseEnrollment.objects.create(user=self.student, course=self.course)
+                    response = self.client.get(reverse(route, args=args))
+                    self.assertEqual(response.status_code, 200)
+                    self.assertContains(response, f'src="/static/vendor/{path}"')
+                    self.assertNotContains(response, value)
+                    if value.startswith('heroicons:'):
+                        self.assertContains(response, 'section-icon-heroicons')
+
+    def test_emoji_is_escaped_on_student_pages(self):
+        self.section.emoji = '<img src=x onerror=alert(1)>'
+        self.section.save(update_fields=['emoji'])
+        response = self.client.get(reverse(
+            'courses:course_overview', args=[self.course.pk],
+        ))
+        self.assertContains(response, '&lt;img src=x onerror=alert(1)&gt;')
+        self.assertNotContains(response, self.section.emoji)
+
+
 class QuizLearningInterfaceTests(TestCase):
     def setUp(self):
         self.student = get_user_model().objects.create_user(

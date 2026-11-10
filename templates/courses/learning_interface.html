@@ -288,7 +288,7 @@
                                         data-bs-target="#section{{ section.id }}"
                                         aria-expanded="{% if section.id == expanded_section_id %}true{% else %}false{% endif %}"
                                         aria-controls="section{{ section.id }}">
-                                    {{ section.title }}
+                                    {% if section.emoji %}<span class="me-2" aria-hidden="true">{% section_icon section.emoji %}</span>{% endif %}{{ section.title }}
                                 </button>
                             </h2>
                             <div id="section{{ section.id }}"
@@ -335,7 +335,7 @@
                             {% with type_cfg=current_episode.type|episode_type_config %}
                                 <span class="badge {{ type_cfg.badge }}">{{ type_cfg.label }}</span>
                             {% endwith %}
-                            {{ current_episode.section.title }}
+                            {% if current_episode.section.emoji %}<span aria-hidden="true">{% section_icon current_episode.section.emoji %}</span> {% endif %}{{ current_episode.section.title }}
                         </p>
                     </div>
 

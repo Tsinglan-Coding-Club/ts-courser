@@ -1,8 +1,24 @@
 import os
 
 from django import template
+from django.templatetags.static import static
+
+from courses.icons import section_icon_catalog
 
 register = template.Library()
+
+
+@register.inclusion_tag('courses/_section_icon.html')
+def section_icon(value):
+    icon = (
+        section_icon_catalog().get(value)
+        if value and value.startswith(('devicon:', 'heroicons:')) else None
+    )
+    return {
+        'icon_url': static(icon['path']) if icon else '',
+        'is_heroicon': bool(icon and value.startswith('heroicons:')),
+        'emoji': value if not icon else '',
+    }
 
 
 @register.filter

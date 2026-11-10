@@ -7,6 +7,10 @@
     "doc": "docs"
   },
   "dependencies": {
+    "devicon": "^2.18.0",
+    "emoji-picker-element": "^1.29.1",
+    "emoji-picker-element-data": "^1.8.0",
+    "heroicons": "^2.2.0",
     "monaco-editor": "^0.45.0",
     "pyodide": "^0.29.4",
     "webgl-fluid": "0.4.0"

@@ -4,6 +4,8 @@ import secrets
 import uuid
 import os
 
+from .icons import validate_section_icon
+
 
 DEFAULT_STARTER_CODE = '# Write your Python code here\n'
 
@@ -178,6 +180,9 @@ class Section(models.Model):
         related_name='sections'
     )
     title = models.CharField(max_length=200)
+    emoji = models.CharField(
+        max_length=128, blank=True, default='', validators=[validate_section_icon],
+    )
     order = models.IntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
 
