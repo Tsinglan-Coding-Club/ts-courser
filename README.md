@@ -29,6 +29,8 @@ This README describes the current working tree as of **2026-09-08**.
 
 New sections and episodes append to their parent. Reorder them on the course editing page; the episode editor has no numeric order input. Courses support multiple teachers with view, edit, and manage permissions. The creator starts as a manager and has the same permissions as any other manager; managers can change or remove one another’s access while retaining at least one manager. Admins have full access.
 
+**Section icons:** Sections support a Unicode emoji or a selected Devicon/Heroicons SVG before the title in the course overview, dashboard, teacher pages, and learning navigation. Overview and dashboard sections start collapsed. The picker, emoji data, and SVG icons are served locally from npm packages, without an icon CDN.
+
 ### Submission and progress semantics
 
 Read progress indicates completion activity, not demonstrated mastery. Quiz and formal code submission mark an episode as read.
@@ -59,7 +61,7 @@ uv run python manage.py runserver 8000
 
 Create a course from the teacher interface using an admin or verified teacher account, add episodes, and publish it for student access. There is no automatic demo-data import during setup.
 
-`uv sync` installs the Python dependencies, including Django and MSAL from `uv.lock`. Microsoft login is disabled locally until `MS_ENTRA_CLIENT_SECRET` is provided; its production redirect URI is intentionally fixed in the deployment configuration. `npm install` supplies Monaco and Pyodide assets used by Django staticfiles. Bootstrap, Vditor, marked.js, and PDF.js are used by the templates; local setup is not a fully offline bundle.
+`uv sync` installs the Python dependencies, including Django and MSAL from `uv.lock`. Microsoft login is disabled locally until `MS_ENTRA_CLIENT_SECRET` is provided; its production redirect URI is intentionally fixed in the deployment configuration. `npm install` supplies Monaco, Pyodide, and the local section-icon packages (`devicon`, `heroicons`, `emoji-picker-element`, and `emoji-picker-element-data`). Keep `node_modules/` readable by the Django process: the server dynamically builds the icon catalog and validates selections from these packages, in addition to using them for staticfiles. There is no separate frontend build or icon-generation step. Bootstrap, Vditor, marked.js, and PDF.js are used by the templates; local setup is not a fully offline bundle.
 
 ## Development and checks
 
@@ -91,7 +93,7 @@ The independent Python tests under `tests/` require the separate unittest comman
 
 ## Deployment and current boundaries
 
-Use [DEPLOYMENT.md](docs/DEPLOYMENT.md) and `.env.example` for production settings, HTTPS/static assets, and backups. `.env` is **not loaded automatically**. The production profile requires environment-provided secret and hostnames; changing the development settings file is not the deployment procedure.
+Use [DEPLOYMENT.md](docs/DEPLOYMENT.md) and `.env.example` for production settings, HTTPS/static assets, backups, and the section-icon upgrade checklist. For that update, refresh Python/npm dependencies, apply migrations, collect static files, and restart the application; retain `node_modules/` in the running deployment. `.env` is **not loaded automatically**. The production profile requires environment-provided secret, hostnames, and Microsoft Entra settings; changing the development settings file is not the deployment procedure.
 
 The current classroom scope retains these documented boundaries:
 

@@ -12,7 +12,7 @@ class TagAdmin(admin.ModelAdmin):
 class SectionInline(admin.TabularInline):
     model = Section
     extra = 1
-    fields = ['title', 'order']
+    fields = ['emoji', 'title', 'order']
 
 
 @admin.register(Course)
@@ -40,7 +40,7 @@ class EpisodeInline(admin.TabularInline):
 
 @admin.register(Section)
 class SectionAdmin(admin.ModelAdmin):
-    list_display = ['title', 'course', 'order', 'created_at']
+    list_display = ['emoji', 'title', 'course', 'order', 'created_at']
     list_filter = ['course']
     search_fields = ['title']
     inlines = [EpisodeInline]

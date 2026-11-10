@@ -2,11 +2,13 @@
 
 TS-Courser can run locally with `ts_courser.settings`. A production process must
 use `DJANGO_SETTINGS_MODULE=ts_courser.settings_production` and provide a secret
-key and host list through the environment. Copy `.env.example` as a starting
-point, generate a unique random `DJANGO_SECRET_KEY`, and keep the real file
-outside version control. Production settings fail during startup when either
-required value is absent. The app does not automatically load `.env`; configure
-these environment variables in the process manager or hosting platform.
+key, host list, and Microsoft Entra settings through the environment. Copy
+`.env.example` as a starting point, generate a unique random `DJANGO_SECRET_KEY`,
+and keep the real file outside version control. Production settings fail during
+startup when required values are absent. The app does not automatically load
+`.env`; configure these environment variables in the process manager or hosting
+platform, including the values in [Microsoft Entra ID sign-in](#microsoft-entra-id-sign-in),
+before running release commands.
 
 The application should be served over HTTPS by a reverse proxy or platform
 ingress. Production enables HTTPS redirects, secure session and CSRF cookies,
@@ -49,6 +51,58 @@ response headers `Cross-Origin-Opener-Policy: same-origin` and
 `Cross-Origin-Embedder-Policy: credentialless` on the application and static
 responses. Verify those headers and that `.wasm` files are served successfully
 after every proxy/CDN change.
+
+### Local section-icon assets
+
+Sections can show Unicode emoji or selected Devicon/Heroicons SVGs before their
+titles. The picker includes Devicon SVG variants and Heroicons' 24px outline and
+solid sets. It uses these official npm packages and static mappings; URLs below
+are relative to `/static/`:
+
+| Package (`package.json` range) | Static prefix | Source directory |
+| --- | --- | --- |
+| `devicon` (`^2.18.0`) | `vendor/devicon/` | `node_modules/devicon/icons/` |
+| `heroicons` (`^2.2.0`) | `vendor/heroicons/` | `node_modules/heroicons/` |
+| `emoji-picker-element` (`^1.29.1`) | `vendor/emoji-picker-element/` | `node_modules/emoji-picker-element/` |
+| `emoji-picker-element-data` (`^1.8.0`) | `vendor/emoji-data/` | `node_modules/emoji-picker-element-data/en/emojibase/` |
+
+`npm install` and `collectstatic` supply these files without a separate frontend
+build or icon-generation step. These icons and emoji data do not use a CDN.
+The course editor loads the picker and its icon catalog when first opened.
+The picker requests SVGs for rows near its scroll viewport, including in search results.
+**Keep `node_modules/` in the running application release and readable by the
+Django service account.** The server dynamically builds its icon registry and
+validates selections from the installed packages; copying only `STATIC_ROOT`
+into a runtime image is insufficient. Restart the application after package
+updates so the catalog is refreshed.
+
+### Upgrading an existing server for section icons
+
+1. Back up the database and media as described below. Deploy the complete update,
+   including its section model migrations and static mappings, into the release
+   directory.
+2. In that directory, with the production environment exported, run the release
+   commands above: `uv sync`, `npm install`, `uv run python manage.py migrate`,
+   `uv run python manage.py collectstatic --noinput`, and
+   `uv run python manage.py check --deploy`. Use the supplied migrations; do not
+   generate migrations on the server. The repository ignores `package-lock.json`,
+   so use `npm install` rather than requiring `npm ci`.
+3. Retain the installed packages in the runtime deployment, publish the collected
+   files through the static server, and restart the WSGI application using the
+   site's process manager.
+4. Check these public URLs on the deployment host return HTTP 200 with the
+   expected SVG, JavaScript, or JSON content, rather than an HTML error page:
+
+   - `/static/vendor/devicon/python/python-original.svg`
+   - `/static/vendor/heroicons/24/outline/academic-cap.svg`
+   - `/static/vendor/emoji-picker-element/picker.js`
+   - `/static/vendor/emoji-data/data.json`
+
+5. In the teacher section editor, verify the picker loads and save a Unicode
+   emoji, a Devicon, and a Heroicon on test sections. Confirm they appear before
+   section titles in the overview, dashboard, teacher pages, and learning
+   navigation. Overview and dashboard sections should start collapsed and expand
+   on click. Check the browser network panel for missing picker modules or assets.
 
 Back up the production SQLite database and uploaded media together, using a
 consistent snapshot while the service is quiesced. Store backups encrypted,

@@ -1,0 +1,44 @@
+.section-emoji-field summary {
+    list-style: none;
+}
+
+.section-emoji-field summary::-webkit-details-marker {
+    display: none;
+}
+
+.section-emoji-field [data-emoji-preview] {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.4rem;
+    height: 1.4rem;
+    overflow: hidden;
+    vertical-align: middle;
+    font-size: 1.4rem;
+    line-height: 1;
+}
+
+.section-emoji-field emoji-picker {
+    width: 100%;
+    height: 360px;
+    color-scheme: inherit;
+    --background: var(--bg-primary);
+    --border-color: var(--bs-border-color);
+    --border-radius: 0.375rem;
+    --button-active-background: var(--bg-tertiary);
+    --button-hover-background: var(--bg-secondary);
+    --category-font-color: var(--text-primary);
+    --indicator-color: var(--primary-color);
+    --input-border-color: var(--bs-border-color);
+    --input-font-color: var(--text-primary);
+    --input-placeholder-color: var(--text-secondary);
+    --outline-color: var(--primary-color);
+}
+
+@media (max-width: 400px) {
+    .section-emoji-field emoji-picker {
+        --num-columns: 6;
+        --category-emoji-size: 1rem;
+        --category-emoji-padding: 0.375rem;
+    }
+}

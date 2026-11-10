@@ -21,6 +21,8 @@
     --text-muted: #adb5bd;
 
     --border-color: #dee2e6;
+    --heroicon-filter: none;
+    --devicon-background: transparent;
     --shadow-color: rgba(0, 0, 0, 0.1);
 
     --success-color: #28a745;
@@ -45,12 +47,45 @@
     --text-muted: #808080;
 
     --border-color: #404040;
+    --heroicon-filter: invert(1);
+    --devicon-background: #ffffff;
     --shadow-color: rgba(0, 0, 0, 0.3);
 
     --success-color: #3dd865;
     --warning-color: #ffd54f;
     --danger-color: #f56565;
     --info-color: #4fc3f7;
+}
+
+.section-icon-frame {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.15em;
+    height: 1.15em;
+    flex: 0 0 1.15em;
+    line-height: 1;
+    overflow: hidden;
+    vertical-align: text-bottom;
+}
+
+.section-icon {
+    display: block;
+    width: 100%;
+    height: 100%;
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    object-position: center;
+}
+
+.section-icon-heroicons {
+    filter: var(--heroicon-filter);
+}
+
+.section-icon-devicon {
+    background-color: var(--devicon-background);
+    border-radius: 0.15em;
 }
 
 /* ----------------------------- Layout ---------------------------------- */
