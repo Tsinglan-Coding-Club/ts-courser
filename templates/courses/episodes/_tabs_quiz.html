@@ -966,6 +966,7 @@
                 });
                 var data = await response.json();
                 if (data.success) {
+                    window.SubmissionCelebration?.afterReload();
                     location.reload();
                 } else {
                     alert('Error: ' + (data.error || 'Submission failed'));

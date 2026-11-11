@@ -7,6 +7,7 @@
     "doc": "docs"
   },
   "dependencies": {
+    "canvas-confetti": "1.9.4",
     "devicon": "^2.18.0",
     "emoji-picker-element": "^1.29.1",
     "emoji-picker-element-data": "^1.8.0",
