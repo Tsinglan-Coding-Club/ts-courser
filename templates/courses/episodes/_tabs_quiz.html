@@ -1048,7 +1048,7 @@
 
         function isCBAComplete(q, lines) {
             var required = cbaMovableIds(q);
-            var placed = flattenTokenLines(lines);
+            var placed = flattenTokenLines(lines).filter(function(id) { return id != null; });
             if (placed.length !== required.length || new Set(placed).size !== placed.length) return false;
             return required.every(function(id) { return placed.indexOf(id) !== -1; });
         }
@@ -1154,20 +1154,33 @@
             return q.lines[lineIndex].choices.filter(function(choice) { return !choice.hint; }).length;
         }
 
+        // Null marks an empty slot: removing or moving a token must not shift its neighbors.
         function removeCBAToken(lines, tokenId) {
             for (var lineIndex = 0; lineIndex < lines.length; lineIndex++) {
                 var position = lines[lineIndex].indexOf(tokenId);
-                if (position !== -1) lines[lineIndex].splice(position, 1);
+                if (position !== -1) lines[lineIndex][position] = null;
             }
         }
 
         function placeCBAToken(q, lines, tokenId, lineIndex, position) {
+            if (!cbaMovableIds(q).includes(tokenId) || !Number.isInteger(lineIndex) ||
+                lineIndex < 0 || lineIndex >= q.lines.length || !Number.isInteger(position) ||
+                position < 0 || position >= cbaLineCapacity(q, lineIndex)) return;
             removeCBAToken(lines, tokenId);
             var line = lines[lineIndex];
-            var capacity = cbaLineCapacity(q, lineIndex);
-            position = Math.max(0, Math.min(position, line.length));
-            if (line.length >= capacity && position < line.length) line.splice(position, 1, tokenId);
-            else if (line.length < capacity) line.splice(position, 0, tokenId);
+            while (line.length <= position) line.push(null);
+            line[position] = tokenId;
+        }
+
+        function placeCBAInFirstEmptySlot(q, lines, tokenId) {
+            for (var li = 0; li < q.lines.length; li++) {
+                for (var position = 0; position < cbaLineCapacity(q, li); position++) {
+                    if (lines[li][position] == null) {
+                        placeCBAToken(q, lines, tokenId, li, position);
+                        return;
+                    }
+                }
+            }
         }
 
         function renderCBAWorkspace(q, tokenLines, resultsMode) {
@@ -1234,12 +1247,7 @@
                     if (this.dataset.placed === 'true') {
                         removeCBAToken(lines, tokenId);
                     } else {
-                        for (var li = 0; li < q.lines.length; li++) {
-                            if (lines[li].length < cbaLineCapacity(q, li)) {
-                                lines[li].push(tokenId);
-                                break;
-                            }
-                        }
+                        placeCBAInFirstEmptySlot(q, lines, tokenId);
                     }
                     renderQuestion();
                 });
@@ -1273,7 +1281,7 @@
             var typeCSS = 'quiz-view-type-' + q.type;
             var instruction = q.type === 'mrq' ? 'Select all that apply' :
                 (q.type === 'srt' ? 'Drag or use the arrow controls to arrange' :
-                (q.type === 'cba' ? 'Build the program one line at a time' :
+                (q.type === 'cba' ? 'Drag each code block to any empty slot' :
                 (q.type === 'mcq' ? 'Select one answer' : 'Write your answer')));
             var html = '<div class="quiz-view-card">';
             html += '<div class="quiz-view-header">';

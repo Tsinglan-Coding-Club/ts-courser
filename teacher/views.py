@@ -867,6 +867,9 @@ def _normalize_cba_token_lines(value, quiz_question):
             return None
         normalized_line = []
         for token_id in line:
+            if token_id is None:
+                normalized_line.append(None)
+                continue
             if (
                 not isinstance(token_id, str)
                 or token_id not in allowed_ids
@@ -905,7 +908,7 @@ def _is_cba_answer_correct(quiz_question, value):
         if len(submitted_ids) != len(expected):
             return False
         if not all(
-            _cba_tokens_equivalent(choices_by_id[token_id], choice)
+            _cba_tokens_equivalent(choices_by_id.get(token_id), choice)
             for token_id, choice in zip(submitted_ids, expected)
         ):
             return False
@@ -935,16 +938,19 @@ def _build_cba_review_lines(quiz_question, token_lines):
             else:
                 submitted_id = next(submitted_iter, None)
                 if submitted_id is None:
-                    continue
-                rendered = choices_by_id[submitted_id].copy()
-                rendered['positionCorrect'] = _cba_tokens_equivalent(
-                    rendered, expected_choice
-                )
+                    rendered = {'kind': 'empty', 'text': '＿', 'positionCorrect': False}
+                else:
+                    rendered = choices_by_id[submitted_id].copy()
+                    rendered['positionCorrect'] = _cba_tokens_equivalent(
+                        rendered, expected_choice
+                    )
             rendered_tokens.append(rendered)
 
         # A malformed/incomplete row can contain more tokens than its own line.
         # Preserve those known tokens in the review instead of hiding the error.
         for submitted_id in submitted_iter:
+            if submitted_id is None:
+                continue
             rendered = choices_by_id[submitted_id].copy()
             rendered['positionCorrect'] = False
             rendered_tokens.append(rendered)
