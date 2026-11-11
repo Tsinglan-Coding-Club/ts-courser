@@ -369,6 +369,23 @@ class AssignmentReviewTests(TestCase):
                 self.assertFalse(question['is_correct'])
                 self.assertContains(response, 'Invalid submission payload')
 
+    def test_cba_review_preserves_empty_slots_and_fixed_hints(self):
+        self._use_cba_quiz({
+            'type': 'cba', 'tokenIds': [[None], [None, 'l1c0', None]],
+        })
+        response = self.client.get(
+            reverse('teacher:assignment_review', args=[self.course.id, self.episode.id]),
+            {'user_id': self.first_student.id},
+        )
+        question = response.context['selected_questions'][0]
+        self.assertTrue(question['answer_valid'])
+        self.assertFalse(question['is_correct'])
+        self.assertTrue(question['student_lines'][0]['tokens'][0]['hint'])
+        tokens = question['student_lines'][1]['tokens']
+        self.assertEqual([token['kind'] for token in tokens], ['empty', 'token', 'empty'])
+        self.assertEqual(tokens[1]['id'], 'l1c0')
+        self.assertTrue(tokens[1]['positionCorrect'])
+
     def test_cba_review_grades_merged_indent_as_first_chunk(self):
         self._use_cba_quiz(
             {

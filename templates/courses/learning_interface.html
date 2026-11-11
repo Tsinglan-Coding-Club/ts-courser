@@ -435,6 +435,10 @@
 
 {% block extra_js %}
 {% load static %}
+{% if current_episode.type == 'code' or current_episode.type == 'quiz' %}
+<script src="{% static 'vendor/canvas-confetti/confetti.browser.js' %}"></script>
+<script src="{% static 'js/submission-celebration.js' %}" data-devicon-base="{% static 'vendor/devicon/' %}"></script>
+{% endif %}
 <!-- Marked.js for markdown -->
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <!-- PDF.js -->
@@ -1012,12 +1016,14 @@ if (submitCodeBtn) {
 
         let testResults = [];
         let allPassed = true;
+        let expectedTestCount = 0;
         let testingAborted = false;
 
         if (ojEnabled) {
             // Parse test cases
             let testCases = [];
             try { testCases = JSON.parse(testCasesJson); } catch(e) {}
+            expectedTestCount = testCases.length;
 
             if (testCases.length > 0) {
                 this.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Testing...';
@@ -1139,6 +1145,10 @@ if (submitCodeBtn) {
             const data = await response.json();
             if (data.success) {
                 // Brief success feedback, then re-enable for next submit
+                if (ojEnabled && allPassed && expectedTestCount > 0 &&
+                    testResults.length === expectedTestCount) {
+                    window.SubmissionCelebration?.play();
+                }
                 this.disabled = true;
                 this.innerHTML = '<i class="bi bi-check-circle-fill"></i> Submitted ✓';
                 this.className = 'btn btn-primary';

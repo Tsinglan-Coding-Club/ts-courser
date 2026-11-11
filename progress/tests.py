@@ -1,7 +1,7 @@
 import json
 from copy import deepcopy
 
-from courses.quiz import token_id
+from courses.quiz import review_answers, token_id
 
 from django.test import TestCase
 from django.urls import reverse
@@ -79,7 +79,10 @@ class ProgressAccessAndSubmissionTests(TestCase):
         for index, question in enumerate(result['questions']):
             if question['type'] == 'cba':
                 question['tokenIds'] = [
-                    [token_id(self.cba_episode, index, item) for item in line]
+                    [
+                        token_id(self.cba_episode, index, item) if item is not None else None
+                        for item in line
+                    ]
                     for line in question['tokenIds']
                 ]
         return result
@@ -321,6 +324,23 @@ class ProgressAccessAndSubmissionTests(TestCase):
             {'episode_id': self.cba_episode.id, 'answers': json.dumps(self.wire_answers(answer))},
         )
         self.assertEqual(response.status_code, 400)
+
+    def test_code_assembly_preserves_empty_slots_in_storage_and_review(self):
+        self.client.force_login(self.student)
+        answer = {'questions': [{
+            'type': 'cba',
+            'tokenIds': [[None, 'l0c1'], [None, None, 'l1c1', None, 'l1c3']],
+        }]}
+        payload = {'episode_id': self.cba_episode.id,
+                   'answers': json.dumps(self.wire_answers(answer))}
+        self.assertEqual(self.client.post(reverse('progress:submit_quiz'), payload).status_code, 400)
+        self.cba_episode.quiz_require_all = False
+        self.cba_episode.save(update_fields=['quiz_require_all'])
+        response = self.client.post(reverse('progress:submit_quiz'), payload)
+        self.assertEqual(response.status_code, 200)
+        submission = QuizSubmission.objects.get(user=self.student, episode=self.cba_episode)
+        self.assertEqual(json.loads(submission.answers), answer)
+        self.assertEqual(review_answers(self.cba_episode, submission.answers), answer)
 
     def test_code_assembly_submission_accepts_merged_indent_token(self):
         config = {

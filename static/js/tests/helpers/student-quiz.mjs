@@ -10,3 +10,9 @@ if (start < 0 || end <= start) throw new Error('Student quiz function boundaries
 const scope = {};
 vm.runInNewContext(template.slice(start, end) + '\nthis.exports = {parseQuiz, cbaTokensEquivalent, isCBACorrect};', scope);
 export const studentQuiz = scope.exports;
+
+const placementStart = template.indexOf('        function cbaMovableIds(');
+const placementEnd = template.indexOf('        function renderCBAWorkspace(');
+if (placementStart < 0 || placementEnd <= placementStart) throw new Error('CBA placement boundaries changed');
+vm.runInNewContext(template.slice(placementStart, placementEnd) + '\nthis.placement = {placeCBAToken, removeCBAToken, placeCBAInFirstEmptySlot, isCBAComplete};', scope);
+export const cbaPlacement = scope.placement;

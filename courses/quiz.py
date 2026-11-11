@@ -101,6 +101,10 @@ def validate_answers(episode, answers):
                     raise ValueError(f'{label}: too many tokens on a line.')
                 converted = []
                 for submitted_id in line:
+                    if submitted_id is None:
+                        # Preserve empty slots so later tokens retain their positions.
+                        converted.append(None)
+                        continue
                     if not isinstance(submitted_id, str) or submitted_id not in allowed or submitted_id in seen:
                         raise ValueError(f'{label}: invalid or repeated token.')
                     seen.add(submitted_id)
@@ -152,10 +156,12 @@ def review_answers(episode, raw):
                 capacity = sum(not c.get('hint') for c in expected['choices'])
                 valid = []
                 if isinstance(line, list):
-                    for value in line:
-                        if isinstance(value, str) and value in allowed and value not in seen and len(valid) < capacity:
+                    for value in line[:capacity]:
+                        if isinstance(value, str) and value in allowed and value not in seen:
                             valid.append(value)
                             seen.add(value)
+                        else:
+                            valid.append(None)
                 result['tokenIds'].append(valid)
         cleaned.append(result)
     return {'questions': cleaned}

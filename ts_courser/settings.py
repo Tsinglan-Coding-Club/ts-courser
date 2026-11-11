@@ -137,6 +137,7 @@ STATIC_URL = 'static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 STATICFILES_DIRS = [
     BASE_DIR / 'static',
+    ('vendor/canvas-confetti', BASE_DIR / 'node_modules' / 'canvas-confetti' / 'dist'),
     BASE_DIR / 'node_modules' / 'monaco-editor' / 'min',
     BASE_DIR / 'node_modules' / 'pyodide',
     (
